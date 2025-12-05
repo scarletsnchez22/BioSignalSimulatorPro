@@ -12,7 +12,7 @@
 NextionDriver::NextionDriver(HardwareSerial& serialPort) : serial(serialPort) {
     eventCallback = nullptr;
     rxIndex = 0;
-    currentPage = NextionPage::SPLASH;
+    currentPage = NextionPage::PORTADA;
     displayedSignal = SignalType::NONE;
 }
 
@@ -27,8 +27,8 @@ bool NextionDriver::begin() {
     sendCommand("rest");
     delay(500);
     
-    // Ir a página splash
-    goToPage(NextionPage::SPLASH);
+    // Ir a página portada
+    goToPage(NextionPage::PORTADA);
     
     return true;
 }
@@ -78,47 +78,182 @@ void NextionDriver::parseEvent() {
         uint8_t component = rxBuffer[2];
         uint8_t touchEvent = rxBuffer[3];
         
-        if (touchEvent != 1) return;  // Solo eventos de touch
+        if (touchEvent != 1) return;  // Solo eventos de release (1)
         
         UIEvent uiEvent = UIEvent::NONE;
         uint8_t param = 0;
         
         switch (page) {
-            case 0:  // SPLASH
-                uiEvent = UIEvent::BUTTON_START;
-                break;
-                
-            case 1:  // SELECT_SIGNAL
-                switch (component) {
-                    case 1: uiEvent = UIEvent::BUTTON_ECG; break;
-                    case 2: uiEvent = UIEvent::BUTTON_EMG; break;
-                    case 3: uiEvent = UIEvent::BUTTON_PPG; break;
+            case 0:  // PORTADA
+                if (component == 1) {  // bt_comenzar
+                    uiEvent = UIEvent::BUTTON_COMENZAR;
                 }
                 break;
                 
-            case 2:  // SELECT_CONDITION
-                if (component >= 1 && component <= 10) {
-                    uiEvent = UIEvent::BUTTON_CONDITION;
-                    param = component - 1;
-                } else if (component == 20) {
-                    uiEvent = UIEvent::BUTTON_BACK;
+            case 1:  // MENU
+                switch (component) {
+                    case 1: uiEvent = UIEvent::BUTTON_ECG; break;   // bt_ecg
+                    case 2: uiEvent = UIEvent::BUTTON_EMG; break;   // bt_emg
+                    case 3: uiEvent = UIEvent::BUTTON_PPG; break;   // bt_ppg
+                    case 4: uiEvent = UIEvent::BUTTON_ATRAS; break; // bt_atras
+                    case 5: uiEvent = UIEvent::BUTTON_IR; break;    // bt_ir
                 }
                 break;
                 
-            case 3:  // SIMULATION
+            case 2:  // ECG_SIM
+                // Estructura de ecg_sim:
+                // ID 0: bt_atras (hotspot) → volver a menu
+                // ID 1: bt_ir (hotspot) → ir a ecg_wave (si sel_ecg >= 0)
+                // ID 3: sel_ecg (number) - variable, no genera evento
+                // ID 4-12: botones de condición (dual-state)
+                //   4=Normal(0), 5=Taquicardia(1), 6=Bradicardia(2),
+                //   7=FA(3), 8=FV(4), 9=PVC(5), 10=BRB(6), 11=STup(7), 12=STdn(8)
                 switch (component) {
-                    case 1: uiEvent = UIEvent::BUTTON_PAUSE; break;
-                    case 2: uiEvent = UIEvent::BUTTON_STOP; break;
-                    case 3: uiEvent = UIEvent::BUTTON_PARAMS; break;
-                    case 4: uiEvent = UIEvent::BUTTON_BACK; break;
+                    case 0: 
+                        uiEvent = UIEvent::BUTTON_ATRAS; 
+                        break;
+                    case 1: 
+                        uiEvent = UIEvent::BUTTON_IR; 
+                        break;
+                    case 4: case 5: case 6: case 7: case 8: 
+                    case 9: case 10: case 11: case 12:
+                        uiEvent = UIEvent::BUTTON_CONDITION;
+                        param = component - 4;  // ID 4 → condición 0, ID 12 → condición 8
+                        break;
                 }
                 break;
                 
-            case 4:  // PARAMETERS
+            case 3:  // EMG_SIM
+                // Estructura de emg_sim:
+                // ID 1-10: botones de condición (dual-state)
+                //   1=Reposo(0), 2=Leve(1), 3=Moderada(2), 4=Fuerte(3), 5=Máxima(4),
+                //   6=Temblor(5), 7=Miopatía(6), 8=Neuropatía(7), 9=Fasciculación(8), 10=Fatiga(9)
+                // ID 11: sel_emg (number) - variable, no genera evento
+                // ID 12: bt_atras (hotspot) → volver a menu
+                // ID 13: bt_ir (hotspot) → ir a emg_wave (si sel_emg >= 0)
                 switch (component) {
-                    case 10: uiEvent = UIEvent::BUTTON_APPLY; break;
-                    case 11: uiEvent = UIEvent::BUTTON_CANCEL; break;
-                    case 12: uiEvent = UIEvent::BUTTON_DEFAULTS; break;
+                    case 12: 
+                        uiEvent = UIEvent::BUTTON_ATRAS; 
+                        break;
+                    case 13: 
+                        uiEvent = UIEvent::BUTTON_IR; 
+                        break;
+                    case 1: case 2: case 3: case 4: case 5:
+                    case 6: case 7: case 8: case 9: case 10:
+                        uiEvent = UIEvent::BUTTON_CONDITION;
+                        param = component - 1;  // ID 1 → condición 0, ID 10 → condición 9
+                        break;
+                }
+                break;
+                
+            case 4:  // PPG_SIM
+                // Estructura de ppg_sim:
+                // ID 1: bt_norm (dual-state) → sel_ppg=0 (Normal)
+                // ID 2: sel_ppg (number) - variable, no genera evento
+                // ID 3: bt_arr (dual-state) → sel_ppg=1 (Arritmia)
+                // ID 4: bt_spo2 (dual-state) → sel_ppg=2 (SPO2 Bajo)
+                // ID 5: bt_lowp (dual-state) → sel_ppg=3 (Perfusión Débil)
+                // ID 6: bt_highp (dual-state) → sel_ppg=4 (Perfusión Fuerte)
+                // ID 7: bt_vasc (dual-state) → sel_ppg=5 (Vasoconstricción)
+                // ID 8: bt_art (dual-state) → sel_ppg=6 (Ruido Movimiento)
+                // ID 9: bt_atras (hotspot) → volver a menu
+                // ID 10: bt_ir (hotspot) → ir a ppg_wave (si sel_ppg >= 0)
+                switch (component) {
+                    case 9: 
+                        uiEvent = UIEvent::BUTTON_ATRAS; 
+                        break;
+                    case 10: 
+                        uiEvent = UIEvent::BUTTON_IR; 
+                        break;
+                    case 1:
+                        uiEvent = UIEvent::BUTTON_CONDITION;
+                        param = 0;  // Normal
+                        break;
+                    case 3: case 4: case 5: case 6: case 7: case 8:
+                        uiEvent = UIEvent::BUTTON_CONDITION;
+                        param = component - 2;  // ID 3 → condición 1, ID 8 → condición 6
+                        break;
+                }
+                break;
+                
+            case 5:  // ECG_WAVE
+                // Estructura de ecg_wave:
+                // ID 1: ecg (waveform) 399x211 - no genera evento de touch
+                // ID 2: v_actual (hotspot) → mostrar popup valores actuales
+                // ID 3: parametros (hotspot) → mostrar popup parámetros
+                // ID 4: play (hotspot) → iniciar/reanudar señal
+                // ID 5: pause (hotspot) → pausar señal
+                // ID 6: stop (hotspot) → detener y volver a menú
+                switch (component) {
+                    case 2: 
+                        uiEvent = UIEvent::BUTTON_VALORES; 
+                        break;
+                    case 3: 
+                        uiEvent = UIEvent::BUTTON_PARAMETROS; 
+                        break;
+                    case 4: 
+                        uiEvent = UIEvent::BUTTON_START; 
+                        break;
+                    case 5: 
+                        uiEvent = UIEvent::BUTTON_PAUSE; 
+                        break;
+                    case 6: 
+                        uiEvent = UIEvent::BUTTON_STOP; 
+                        break;
+                }
+                break;
+                
+            case 6:  // EMG_WAVE
+                // Estructura de emg_wave:
+                // ID 1: emg (waveform) 399x211 - no genera evento de touch
+                // ID 2: v_actual (hotspot) → mostrar popup valores actuales
+                // ID 3: parametros (hotspot) → mostrar popup parámetros
+                // ID 4: play (hotspot) → iniciar/reanudar señal
+                // ID 5: pause (hotspot) → pausar señal
+                // ID 6: stop (hotspot) → detener y volver a menú
+                switch (component) {
+                    case 2: 
+                        uiEvent = UIEvent::BUTTON_VALORES; 
+                        break;
+                    case 3: 
+                        uiEvent = UIEvent::BUTTON_PARAMETROS; 
+                        break;
+                    case 4: 
+                        uiEvent = UIEvent::BUTTON_START; 
+                        break;
+                    case 5: 
+                        uiEvent = UIEvent::BUTTON_PAUSE; 
+                        break;
+                    case 6: 
+                        uiEvent = UIEvent::BUTTON_STOP; 
+                        break;
+                }
+                break;
+                
+            case 7:  // PPG_WAVE
+                // Estructura de ppg_wave:
+                // ID 1: ppg (waveform) 399x211 - no genera evento de touch
+                // ID 2: v_actual (hotspot) → mostrar popup valores actuales
+                // ID 3: parametros (hotspot) → mostrar popup parámetros
+                // ID 4: play (hotspot) → iniciar/reanudar señal
+                // ID 5: pause (hotspot) → pausar señal
+                // ID 6: stop (hotspot) → detener y volver a menú
+                switch (component) {
+                    case 2: 
+                        uiEvent = UIEvent::BUTTON_VALORES; 
+                        break;
+                    case 3: 
+                        uiEvent = UIEvent::BUTTON_PARAMETROS; 
+                        break;
+                    case 4: 
+                        uiEvent = UIEvent::BUTTON_START; 
+                        break;
+                    case 5: 
+                        uiEvent = UIEvent::BUTTON_PAUSE; 
+                        break;
+                    case 6: 
+                        uiEvent = UIEvent::BUTTON_STOP; 
+                        break;
                 }
                 break;
         }

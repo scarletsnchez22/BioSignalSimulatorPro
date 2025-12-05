@@ -97,6 +97,12 @@ void setLEDState(SignalState state) {
 // ============================================================================
 void handleUIEvent(UIEvent event, uint8_t param) {
     switch (event) {
+        // Portada
+        case UIEvent::BUTTON_COMENZAR:
+            stateMachine.processEvent(SystemEvent::GO_TO_MENU);
+            break;
+        
+        // Menú - Selección de señal
         case UIEvent::BUTTON_ECG:
             stateMachine.processEvent(SystemEvent::SELECT_ECG);
             break;
@@ -108,11 +114,28 @@ void handleUIEvent(UIEvent event, uint8_t param) {
         case UIEvent::BUTTON_PPG:
             stateMachine.processEvent(SystemEvent::SELECT_PPG);
             break;
+        
+        case UIEvent::BUTTON_IR:
+            // Comportamiento depende del estado actual
+            if (stateMachine.getState() == SystemState::MENU) {
+                // En menú: ir a selección de condición
+                stateMachine.processEvent(SystemEvent::GO_TO_CONDITION);
+            } else if (stateMachine.getState() == SystemState::SELECT_CONDITION) {
+                // En ecg_sim/emg_sim/ppg_sim: ir a waveform
+                stateMachine.processEvent(SystemEvent::GO_TO_WAVEFORM);
+            }
+            break;
             
+        case UIEvent::BUTTON_ATRAS:
+            stateMachine.processEvent(SystemEvent::BACK);
+            break;
+            
+        // Selección de condición
         case UIEvent::BUTTON_CONDITION:
             stateMachine.processEvent(SystemEvent::SELECT_CONDITION, param);
             break;
             
+        // Controles de simulación (en páginas waveform)
         case UIEvent::BUTTON_START:
             stateMachine.processEvent(SystemEvent::START_SIMULATION);
             break;
@@ -128,21 +151,16 @@ void handleUIEvent(UIEvent event, uint8_t param) {
         case UIEvent::BUTTON_STOP:
             stateMachine.processEvent(SystemEvent::STOP);
             break;
-            
-        case UIEvent::BUTTON_PARAMS:
-            stateMachine.processEvent(SystemEvent::OPEN_PARAMS);
+        
+        // Popups (páginas waveform)
+        case UIEvent::BUTTON_VALORES:
+            // TODO: Mostrar popup con valores actuales
+            Serial.println("[UI] Popup valores actuales");
             break;
             
-        case UIEvent::BUTTON_APPLY:
-            stateMachine.processEvent(SystemEvent::APPLY_PARAMS);
-            break;
-            
-        case UIEvent::BUTTON_CANCEL:
-            stateMachine.processEvent(SystemEvent::CANCEL_PARAMS);
-            break;
-            
-        case UIEvent::BUTTON_BACK:
-            stateMachine.processEvent(SystemEvent::BACK);
+        case UIEvent::BUTTON_PARAMETROS:
+            // TODO: Mostrar popup con parámetros ajustables
+            Serial.println("[UI] Popup parámetros");
             break;
             
         default:
@@ -161,18 +179,52 @@ void handleStateChange(SystemState oldState, SystemState newState) {
                   stateMachine.stateToString(newState));
     
     switch (newState) {
-        case SystemState::IDLE:
-            nextion->goToPage(NextionPage::SELECT_SIGNAL);
+        case SystemState::PORTADA:
+            nextion->goToPage(NextionPage::PORTADA);
+            signalEngine->stopSignal();
             setLEDState(SignalState::STOPPED);
             break;
             
-        case SystemState::SIGNAL_SELECTED:
-            nextion->setupConditionPage(stateMachine.getSelectedSignal());
-            nextion->goToPage(NextionPage::SELECT_CONDITION);
+        case SystemState::MENU:
+            nextion->goToPage(NextionPage::MENU);
+            signalEngine->stopSignal();
+            setLEDState(SignalState::STOPPED);
+            break;
+            
+        case SystemState::SELECT_CONDITION:
+            // Ir a página de selección de condición (ecg_sim/emg_sim/ppg_sim)
+            switch (stateMachine.getSelectedSignal()) {
+                case SignalType::ECG:
+                    nextion->goToPage(NextionPage::ECG_SIM);
+                    break;
+                case SignalType::EMG:
+                    nextion->goToPage(NextionPage::EMG_SIM);
+                    break;
+                case SignalType::PPG:
+                    nextion->goToPage(NextionPage::PPG_SIM);
+                    break;
+                default:
+                    break;
+            }
+            setLEDState(SignalState::STOPPED);
             break;
             
         case SystemState::SIMULATING:
-            nextion->goToPage(NextionPage::SIMULATION);
+            // Ir a página de waveform correspondiente
+            switch (stateMachine.getSelectedSignal()) {
+                case SignalType::ECG:
+                    nextion->goToPage(NextionPage::ECG_WAVE);
+                    break;
+                case SignalType::EMG:
+                    nextion->goToPage(NextionPage::EMG_WAVE);
+                    break;
+                case SignalType::PPG:
+                    nextion->goToPage(NextionPage::PPG_WAVE);
+                    break;
+                default:
+                    break;
+            }
+            // Iniciar generación de señal
             signalEngine->startSignal(
                 stateMachine.getSelectedSignal(),
                 stateMachine.getSelectedCondition()
@@ -183,10 +235,6 @@ void handleStateChange(SystemState oldState, SystemState newState) {
         case SystemState::PAUSED:
             signalEngine->pauseSignal();
             setLEDState(SignalState::PAUSED);
-            break;
-            
-        case SystemState::PARAMETERS:
-            nextion->goToPage(NextionPage::PARAMETERS);
             break;
             
         default:
@@ -203,13 +251,20 @@ void updateDisplay() {
     
     unsigned long now = millis();
     
-    // Actualizar waveform a 100 Hz
+    // Actualizar waveform a 100 Hz (enviar punto cada 10ms)
     if (now - lastWaveform >= WAVEFORM_UPDATE_MS) {
         if (signalEngine->getState() == SignalState::RUNNING) {
+            // Obtener valor DAC actual (0-255)
             uint8_t dacValue = signalEngine->getLastDACValue();
-            // Escalar de 0-255 a 0-100 (altura del waveform)
-            uint8_t waveValue = map(dacValue, 0, 255, 0, 100);
-            nextion->addWaveformPoint(1, 0, waveValue);
+            
+            // Escalar a la altura del waveform (0-211)
+            // El waveform de Nextion acepta 0-255, pero se recorta a su altura
+            // Usamos todo el rango 0-255 y el waveform lo escala internamente
+            // Para mejor visualización, mapeamos a WAVEFORM_HEIGHT
+            uint8_t waveValue = map(dacValue, 0, 255, 10, WAVEFORM_HEIGHT - 10);
+            
+            // Enviar al waveform (ID=1, Canal=0)
+            nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, WAVEFORM_CHANNEL, waveValue);
         }
         lastWaveform = now;
     }

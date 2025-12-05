@@ -2,6 +2,9 @@
  * @file state_machine.cpp
  * @brief Implementación de la máquina de estados
  * @version 1.0.0
+ * 
+ * Flujo: INIT → PORTADA → MENU → SELECT_CONDITION → SIMULATING
+ *        (portada)  (menu)  (ecg_sim/emg_sim/ppg_sim)  (ecg_wave/emg_wave/ppg_wave)
  */
 
 #include "core/state_machine.h"
@@ -26,38 +29,52 @@ void StateMachine::processEvent(SystemEvent event, uint8_t param) {
     switch (currentState) {
         case SystemState::INIT:
             if (event == SystemEvent::INIT_COMPLETE) {
-                newState = SystemState::IDLE;
+                newState = SystemState::PORTADA;
             }
             break;
             
-        case SystemState::IDLE:
+        case SystemState::PORTADA:
+            if (event == SystemEvent::GO_TO_MENU) {
+                newState = SystemState::MENU;
+            }
+            break;
+            
+        case SystemState::MENU:
             switch (event) {
                 case SystemEvent::SELECT_ECG:
                     selectedSignal = SignalType::ECG;
-                    newState = SystemState::SIGNAL_SELECTED;
                     break;
                 case SystemEvent::SELECT_EMG:
                     selectedSignal = SignalType::EMG;
-                    newState = SystemState::SIGNAL_SELECTED;
                     break;
                 case SystemEvent::SELECT_PPG:
                     selectedSignal = SignalType::PPG;
-                    newState = SystemState::SIGNAL_SELECTED;
+                    break;
+                case SystemEvent::GO_TO_CONDITION:
+                    if (selectedSignal != SignalType::NONE) {
+                        selectedCondition = 0;  // Reset condición
+                        newState = SystemState::SELECT_CONDITION;
+                    }
+                    break;
+                case SystemEvent::BACK:
+                    selectedSignal = SignalType::NONE;
+                    newState = SystemState::PORTADA;
                     break;
                 default:
                     break;
             }
             break;
             
-        case SystemState::SIGNAL_SELECTED:
+        case SystemState::SELECT_CONDITION:
             switch (event) {
                 case SystemEvent::SELECT_CONDITION:
-                    selectedCondition = param;
+                    selectedCondition = param;  // 0-8 para ECG
+                    break;
+                case SystemEvent::GO_TO_WAVEFORM:
                     newState = SystemState::SIMULATING;
                     break;
                 case SystemEvent::BACK:
-                    selectedSignal = SignalType::NONE;
-                    newState = SystemState::IDLE;
+                    newState = SystemState::MENU;
                     break;
                 default:
                     break;
@@ -66,17 +83,16 @@ void StateMachine::processEvent(SystemEvent event, uint8_t param) {
             
         case SystemState::SIMULATING:
             switch (event) {
+                case SystemEvent::SELECT_CONDITION:
+                    // Cambio de condición durante simulación
+                    selectedCondition = param;
+                    break;
                 case SystemEvent::PAUSE:
                     newState = SystemState::PAUSED;
                     break;
                 case SystemEvent::STOP:
-                    newState = SystemState::IDLE;
-                    break;
-                case SystemEvent::OPEN_PARAMS:
-                    newState = SystemState::PARAMETERS;
-                    break;
                 case SystemEvent::BACK:
-                    newState = SystemState::SIGNAL_SELECTED;
+                    newState = SystemState::SELECT_CONDITION;
                     break;
                 default:
                     break;
@@ -89,21 +105,8 @@ void StateMachine::processEvent(SystemEvent event, uint8_t param) {
                     newState = SystemState::SIMULATING;
                     break;
                 case SystemEvent::STOP:
-                    newState = SystemState::IDLE;
-                    break;
-                case SystemEvent::OPEN_PARAMS:
-                    newState = SystemState::PARAMETERS;
-                    break;
-                default:
-                    break;
-            }
-            break;
-            
-        case SystemState::PARAMETERS:
-            switch (event) {
-                case SystemEvent::APPLY_PARAMS:
-                case SystemEvent::CANCEL_PARAMS:
-                    newState = SystemState::SIMULATING;
+                case SystemEvent::BACK:
+                    newState = SystemState::SELECT_CONDITION;
                     break;
                 default:
                     break;
@@ -112,7 +115,7 @@ void StateMachine::processEvent(SystemEvent event, uint8_t param) {
             
         case SystemState::ERROR:
             if (event == SystemEvent::INIT_COMPLETE) {
-                newState = SystemState::IDLE;
+                newState = SystemState::PORTADA;
             }
             break;
     }
@@ -138,33 +141,33 @@ void StateMachine::setStateChangeCallback(void (*callback)(SystemState, SystemSt
 // ============================================================================
 const char* StateMachine::stateToString(SystemState state) {
     switch (state) {
-        case SystemState::INIT:             return "INIT";
-        case SystemState::IDLE:             return "IDLE";
-        case SystemState::SIGNAL_SELECTED:  return "SIGNAL_SELECTED";
-        case SystemState::SIMULATING:       return "SIMULATING";
-        case SystemState::PAUSED:           return "PAUSED";
-        case SystemState::PARAMETERS:       return "PARAMETERS";
-        case SystemState::ERROR:            return "ERROR";
-        default:                            return "UNKNOWN";
+        case SystemState::INIT:              return "INIT";
+        case SystemState::PORTADA:           return "PORTADA";
+        case SystemState::MENU:              return "MENU";
+        case SystemState::SELECT_CONDITION:  return "SELECT_CONDITION";
+        case SystemState::SIMULATING:        return "SIMULATING";
+        case SystemState::PAUSED:            return "PAUSED";
+        case SystemState::ERROR:             return "ERROR";
+        default:                             return "UNKNOWN";
     }
 }
 
 const char* StateMachine::eventToString(SystemEvent event) {
     switch (event) {
-        case SystemEvent::INIT_COMPLETE:        return "INIT_COMPLETE";
-        case SystemEvent::SELECT_ECG:           return "SELECT_ECG";
-        case SystemEvent::SELECT_EMG:           return "SELECT_EMG";
-        case SystemEvent::SELECT_PPG:           return "SELECT_PPG";
-        case SystemEvent::SELECT_CONDITION:     return "SELECT_CONDITION";
-        case SystemEvent::START_SIMULATION:     return "START_SIMULATION";
-        case SystemEvent::PAUSE:                return "PAUSE";
-        case SystemEvent::RESUME:               return "RESUME";
-        case SystemEvent::STOP:                 return "STOP";
-        case SystemEvent::OPEN_PARAMS:          return "OPEN_PARAMS";
-        case SystemEvent::APPLY_PARAMS:         return "APPLY_PARAMS";
-        case SystemEvent::CANCEL_PARAMS:        return "CANCEL_PARAMS";
-        case SystemEvent::ERROR_OCCURRED:       return "ERROR_OCCURRED";
-        case SystemEvent::BACK:                 return "BACK";
-        default:                                return "UNKNOWN";
+        case SystemEvent::INIT_COMPLETE:     return "INIT_COMPLETE";
+        case SystemEvent::GO_TO_MENU:        return "GO_TO_MENU";
+        case SystemEvent::SELECT_ECG:        return "SELECT_ECG";
+        case SystemEvent::SELECT_EMG:        return "SELECT_EMG";
+        case SystemEvent::SELECT_PPG:        return "SELECT_PPG";
+        case SystemEvent::GO_TO_CONDITION:   return "GO_TO_CONDITION";
+        case SystemEvent::SELECT_CONDITION:  return "SELECT_CONDITION";
+        case SystemEvent::GO_TO_WAVEFORM:    return "GO_TO_WAVEFORM";
+        case SystemEvent::START_SIMULATION:  return "START_SIMULATION";
+        case SystemEvent::PAUSE:             return "PAUSE";
+        case SystemEvent::RESUME:            return "RESUME";
+        case SystemEvent::STOP:              return "STOP";
+        case SystemEvent::ERROR_OCCURRED:    return "ERROR_OCCURRED";
+        case SystemEvent::BACK:              return "BACK";
+        default:                             return "UNKNOWN";
     }
 }

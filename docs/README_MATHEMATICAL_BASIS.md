@@ -943,4 +943,3 @@ Donde $f_{resp} \approx 0.25$ Hz (15 respiraciones/minuto).
 
 ---
 
-*Fin del Documento*

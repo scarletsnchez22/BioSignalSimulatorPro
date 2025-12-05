@@ -14,14 +14,17 @@
 #include "../data/signal_types.h"
 
 // ============================================================================
-// PÁGINAS NEXTION
+// PÁGINAS NEXTION (deben coincidir con el .HMI)
 // ============================================================================
 enum class NextionPage : uint8_t {
-    SPLASH = 0,
-    SELECT_SIGNAL = 1,
-    SELECT_CONDITION = 2,
-    SIMULATION = 3,
-    PARAMETERS = 4
+    PORTADA = 0,        // Splash/bienvenida
+    MENU = 1,           // Selección de señal (ECG/EMG/PPG)
+    ECG_SIM = 2,        // Selección condición ECG
+    EMG_SIM = 3,        // Selección condición EMG
+    PPG_SIM = 4,        // Selección condición PPG
+    ECG_WAVE = 5,       // Waveform ECG + sliders + métricas
+    EMG_WAVE = 6,       // Waveform EMG + sliders + métricas
+    PPG_WAVE = 7        // Waveform PPG + sliders + métricas
 };
 
 // ============================================================================
@@ -29,19 +32,32 @@ enum class NextionPage : uint8_t {
 // ============================================================================
 enum class UIEvent : uint8_t {
     NONE = 0,
-    BUTTON_ECG,
-    BUTTON_EMG,
-    BUTTON_PPG,
-    BUTTON_CONDITION,       // param = índice condición
-    BUTTON_START,
-    BUTTON_PAUSE,
-    BUTTON_STOP,
-    BUTTON_PARAMS,
-    BUTTON_APPLY,
-    BUTTON_CANCEL,
-    BUTTON_DEFAULTS,
-    BUTTON_BACK,
-    SLIDER_CHANGED          // param = slider ID
+    
+    // Portada
+    BUTTON_COMENZAR,        // Botón "Comenzar" en portada
+    
+    // Menú selección de señal
+    BUTTON_ECG,             // Selección ECG
+    BUTTON_EMG,             // Selección EMG
+    BUTTON_PPG,             // Selección PPG
+    BUTTON_IR,              // Botón "Ir" (navegar a simulación)
+    
+    // Simulación (común a ECG/EMG/PPG)
+    BUTTON_CONDITION,       // param = índice condición (0-9)
+    BUTTON_START,           // Iniciar/Play simulación
+    BUTTON_PAUSE,           // Pausar simulación
+    BUTTON_STOP,            // Detener y volver a menú
+    BUTTON_ATRAS,           // Regresar
+    
+    // Popups waveform
+    BUTTON_VALORES,         // Mostrar popup valores actuales
+    BUTTON_PARAMETROS,      // Mostrar popup parámetros
+    
+    // Sliders
+    SLIDER_PARAM1,          // Slider 1 (HR/Excitation/HR)
+    SLIDER_PARAM2,          // Slider 2 (Amplitude)
+    SLIDER_PARAM3,          // Slider 3 (ST/Noise/Dicrotic)
+    SLIDER_PARAM4           // Slider 4 (Noise)
 };
 
 // ============================================================================

@@ -105,6 +105,14 @@
 #define WAVEFORM_UPDATE_MS      10      // 100 Hz refresh waveform
 
 // ============================================================================
+// CONFIGURACIÓN NEXTION WAVEFORM
+// ============================================================================
+#define WAVEFORM_HEIGHT         211     // Altura del waveform en píxeles
+#define WAVEFORM_WIDTH          399     // Ancho del waveform en píxeles
+#define WAVEFORM_COMPONENT_ID   1       // ID del componente waveform
+#define WAVEFORM_CHANNEL        0       // Canal del waveform (solo usamos 1)
+
+// ============================================================================
 // CONFIGURACIÓN DE DEBUG
 // ============================================================================
 #ifdef DEBUG_ENABLED

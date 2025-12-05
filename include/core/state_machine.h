@@ -17,11 +17,11 @@
 // ============================================================================
 enum class SystemState : uint8_t {
     INIT,               // Inicializando
-    IDLE,               // Esperando selección
-    SIGNAL_SELECTED,    // Señal seleccionada, esperando condición
-    SIMULATING,         // Generando señal
+    PORTADA,            // En pantalla de bienvenida
+    MENU,               // En menú de selección de señal
+    SELECT_CONDITION,   // Seleccionando condición (ecg_sim/emg_sim/ppg_sim)
+    SIMULATING,         // Generando señal (en ecg_wave/emg_wave/ppg_wave)
     PAUSED,             // Señal pausada
-    PARAMETERS,         // En pantalla de parámetros
     ERROR               // Error del sistema
 };
 
@@ -30,17 +30,17 @@ enum class SystemState : uint8_t {
 // ============================================================================
 enum class SystemEvent : uint8_t {
     INIT_COMPLETE,
+    GO_TO_MENU,         // bt_comenzar en portada
     SELECT_ECG,
     SELECT_EMG,
     SELECT_PPG,
-    SELECT_CONDITION,
+    GO_TO_CONDITION,    // bt_ir en menu → ir a ecg_sim/emg_sim/ppg_sim
+    SELECT_CONDITION,   // Seleccionar condición (param = 0-8 para ECG)
+    GO_TO_WAVEFORM,     // bt_ir en ecg_sim → ir a ecg_wave
     START_SIMULATION,
     PAUSE,
     RESUME,
     STOP,
-    OPEN_PARAMS,
-    APPLY_PARAMS,
-    CANCEL_PARAMS,
     ERROR_OCCURRED,
     BACK
 };
