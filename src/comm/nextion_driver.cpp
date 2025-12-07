@@ -460,10 +460,18 @@ void NextionDriver::updateMenuButtons(SignalType selected) {
 // ACTUALIZAR BOTONES DE CONDICIONES ECG
 // ============================================================================
 void NextionDriver::updateECGConditionButtons(int selectedCondition) {
-    // Forzar limpieza total: val=0, pic=0, pic2=0 para dual-state
-    sendCommand("bt_nom.val=0");
-    sendCommand("bt_nom.pic=0");
-    sendCommand("bt_nom.pic2=0");
+    Serial.printf("[ECG] updateConditionButtons: cond=%d\n", selectedCondition);
+    
+    // Limpiar primero por IDs genéricos (b4..b12) para evitar conflictos de nombre
+    char cmd[32];
+    for (int id = 4; id <= 12; id++) {
+        sprintf(cmd, "b%d.val=0", id);
+        sendCommand(cmd);
+    }
+    
+    // Luego limpiar por nombres (sin pic/pic2 que pueden causar loops)
+    sendCommand("bt_norm.val=0");
+    Serial.println("[ECG] Limpiado bt_norm.val=0");
     sendCommand("bt_taq.val=0");
     sendCommand("bt_bra.val=0");
     sendCommand("bt_fa.val=0");
@@ -473,15 +481,10 @@ void NextionDriver::updateECGConditionButtons(int selectedCondition) {
     sendCommand("bt_stup.val=0");
     sendCommand("bt_stdn.val=0");
 
-    char cmd[32];
-    for (int id = 4; id <= 12; id++) {
-        sprintf(cmd, "b%d.val=0", id);
-        sendCommand(cmd);
-    }
-
     switch (selectedCondition) {
         case 0: 
-            sendCommand("bt_nom.val=1"); 
+            sendCommand("bt_norm.val=1");
+            Serial.println("[ECG] Activado bt_norm.val=1");
             sendCommand("b4.val=1"); 
             break;
         case 1: sendCommand("bt_taq.val=1"); sendCommand("b5.val=1"); break;
@@ -542,10 +545,18 @@ void NextionDriver::updateEMGConditionButtons(int selectedCondition) {
 // ACTUALIZAR BOTONES DE CONDICIONES PPG
 // ============================================================================
 void NextionDriver::updatePPGConditionButtons(int selectedCondition) {
-    // Forzar limpieza total: val=0, pic=0, pic2=0 para dual-state
-    sendCommand("bt_nom.val=0");
-    sendCommand("bt_nom.pic=0");
-    sendCommand("bt_nom.pic2=0");
+    Serial.printf("[PPG] updateConditionButtons: cond=%d\n", selectedCondition);
+    
+    // Limpiar primero por IDs genéricos (b1..b7) para evitar conflictos de nombre
+    char cmd[32];
+    for (int id = 1; id <= 7; id++) {
+        sprintf(cmd, "b%d.val=0", id);
+        sendCommand(cmd);
+    }
+    
+    // Luego limpiar por nombres (sin pic/pic2 que pueden causar loops)
+    sendCommand("bt_norm.val=0");
+    Serial.println("[PPG] Limpiado bt_norm.val=0");
     sendCommand("bt_arr.val=0");
     sendCommand("bt_spo2.val=0");
     sendCommand("bt_lowp.val=0");
@@ -553,15 +564,10 @@ void NextionDriver::updatePPGConditionButtons(int selectedCondition) {
     sendCommand("bt_vasc.val=0");
     sendCommand("bt_art.val=0");
 
-    char cmd[32];
-    for (int id = 1; id <= 7; id++) {
-        sprintf(cmd, "b%d.val=0", id);
-        sendCommand(cmd);
-    }
-
     switch (selectedCondition) {
         case 0: 
-            sendCommand("bt_nom.val=1"); 
+            sendCommand("bt_norm.val=1");
+            Serial.println("[PPG] Activado bt_norm.val=1");
             sendCommand("b1.val=1"); 
             break;
         case 1: sendCommand("bt_arr.val=1"); sendCommand("b2.val=1"); break;

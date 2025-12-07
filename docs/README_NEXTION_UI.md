@@ -2,6 +2,7 @@
 
 ## Documentación de la Experiencia de Usuario y Comunicación ESP32-Nextion
 *Última actualización: 07.12.2025*
+*Estado: ✅ Validado - Selección única funcionando en ECG/EMG/PPG*
 
 ---
 
@@ -602,12 +603,14 @@ if(sel_ecg.val>=0)
 
 **PÁGINAS 2, 3, 4 - *_SIM (Selección de Condición):**
 - **Botones condición (dual-state)**: Solo `sel_*.val=X` y `printh 65 0X 0X 01 FF FF FF` (SIN page, SIN lógica extra)
-  - ECG (página 2): bt_nom (ID 4), bt_taq (5), bt_bra (6), bt_fa (7), bt_fv (8), bt_pvc (9), bt_brb (10), bt_stup (11), bt_stdn (12)
+  - ECG (página 2): **bt_norm** (ID 4), bt_taq (5), bt_bra (6), bt_fa (7), bt_fv (8), bt_pvc (9), bt_brb (10), bt_stup (11), bt_stdn (12)
   - EMG (página 3): bt_reposo (1), bt_leve (2), bt_moderada (3), bt_fuerte (4), bt_maxima (5), bt_temblor (6), bt_miopatia (7), bt_neuropatia (8), bt_fasc (9), bt_fatiga (10)
-  - PPG (página 4): bt_nom (1), bt_arr (2), bt_spo2 (3), bt_lowp (4), bt_highp (5), bt_vasc (6), bt_art (7)
+  - PPG (página 4): **bt_norm** (1), bt_arr (2), bt_spo2 (3), bt_lowp (4), bt_highp (5), bt_vasc (6), bt_art (7)
 - **bt_atras** → `page menu`
 - **bt_ir** → `if(sel_*.val>=0){printh 65 0X 0X 01 FF FF FF}` (ESP32 decide página destino)
-- **Selección única enforced por ESP32**: Al recibir evento de condición, ESP32 limpia todos los botones (`val=0`, `pic=0`, `pic2=0` para dual-state) y solo marca el elegido.
+- **✅ Selección única validada**: ESP32 limpia todos los botones por ID (b1..bX) y por nombre (bt_*) antes de marcar el seleccionado.
+  - **Importante**: Los botones "Normal" se llaman `bt_norm` (no `bt_nom`).
+  - Orden de limpieza: primero IDs genéricos, luego nombres específicos para evitar conflictos entre páginas.
 
 **PÁGINAS 5, 8, 11 - WAVEFORM_*:**
 - Todos los botones → `printh 65 0X 0X 01 FF FF FF`
@@ -632,7 +635,24 @@ case 2:  // bt_act (puede ser button, hotspot, dual-state)
 **Lo que importa:**
 - ✅ ID correcto del componente
 - ✅ Touch Release Event correcto
+- ✅ Nombres exactos de componentes (ej: `bt_norm` no `bt_nom`)
 - ❌ El tipo visual (button/hotspot/dual-state) es irrelevante para ESP32
+
+---
+
+## 🔧 Troubleshooting: Botones que no se deseleccionan
+
+**Síntoma:** Un botón dual-state queda "pegado" aunque se presionen otros.
+
+**Causas comunes:**
+1. **Nombre incorrecto en código**: Verificar que `bt_norm` coincida exactamente con el `objname` en Nextion.
+2. **IDs duplicados**: Asegurar que cada botón tenga un ID único dentro de su página.
+3. **Touch Release con lógica extra**: Los botones de condición solo deben tener `sel_*.val=X` y `printh`, NO `page` ni comandos adicionales.
+4. **Comandos `pic/pic2` innecesarios**: Para dual-state, `val=0/1` es suficiente; agregar `pic=0/pic2=0` puede causar loops de re-dibujado.
+
+**Solución validada:**
+- ESP32 limpia primero por IDs genéricos (`b1.val=0`, `b2.val=0`...), luego por nombres (`bt_norm.val=0`, `bt_arr.val=0`...).
+- Esto evita conflictos si componentes en páginas diferentes comparten nombres similares.
 
 ---
 
