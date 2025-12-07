@@ -15,7 +15,7 @@
 StateMachine::StateMachine() {
     currentState = SystemState::INIT;
     selectedSignal = SignalType::NONE;
-    selectedCondition = 0;
+    selectedCondition = 0xFF; // sin selección
     onStateChange = nullptr;
 }
 
@@ -43,21 +43,25 @@ void StateMachine::processEvent(SystemEvent event, uint8_t param) {
             switch (event) {
                 case SystemEvent::SELECT_ECG:
                     selectedSignal = SignalType::ECG;
+                    selectedCondition = 0xFF;
                     break;
                 case SystemEvent::SELECT_EMG:
                     selectedSignal = SignalType::EMG;
+                    selectedCondition = 0xFF;
                     break;
                 case SystemEvent::SELECT_PPG:
                     selectedSignal = SignalType::PPG;
+                    selectedCondition = 0xFF;
                     break;
                 case SystemEvent::GO_TO_CONDITION:
                     if (selectedSignal != SignalType::NONE) {
-                        selectedCondition = 0;  // Reset condición
+                        selectedCondition = 0xFF;  // sin selección
                         newState = SystemState::SELECT_CONDITION;
                     }
                     break;
                 case SystemEvent::BACK:
                     selectedSignal = SignalType::NONE;
+                    selectedCondition = 0xFF;
                     newState = SystemState::PORTADA;
                     break;
                 default:

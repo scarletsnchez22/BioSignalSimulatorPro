@@ -1063,3 +1063,16 @@ ECGDisplayMetrics ECGModel::getDisplayMetrics() const {
     metrics.conditionName = getConditionName();
     return metrics;
 }
+
+/**
+ * @brief Obtiene los rangos de HR para la patología actual
+ * @param minHR Valor mínimo de HR para la patología
+ * @param maxHR Valor máximo de HR para la patología
+ */
+void ECGModel::getHRRange(float& minHR, float& maxHR) const {
+    uint8_t idx = static_cast<uint8_t>(currentCondition);
+    if (idx >= 9) idx = 0;
+    
+    minHR = ECG_RANGES[idx].hrMin;
+    maxHR = ECG_RANGES[idx].hrMax;
+}

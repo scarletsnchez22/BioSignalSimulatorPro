@@ -219,6 +219,15 @@ public:
     float getCurrentHeartRate() const { return morphology.hrMean; }
     float getCurrentRRInterval() const { return currentRR * 1000.0f; }
     ECGCondition getCondition() const { return currentCondition; }
+    
+    // Getters para parámetros actuales (para página parametros_ecg)
+    float getHRMean() const { return morphology.hrMean; }
+    float getHRStd() const { return morphology.hrStd; }
+    float getQRSAmplitude() const { return params.qrsAmplitude; }
+    float getNoiseLevel() const { return params.noiseLevel; }
+    
+    // Obtener rangos de HR según patología actual
+    void getHRRange(float& minHR, float& maxHR) const;
 };
 
 #endif // ECG_MODEL_H

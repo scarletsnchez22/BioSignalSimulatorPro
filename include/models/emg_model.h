@@ -132,6 +132,11 @@ public:
     float getContractionLevel() const;
     const char* getConditionName() const;
     EMGDisplayMetrics getDisplayMetrics() const;
+    
+    // Getters de parámetros
+    EMGCondition getCondition() const { return params.condition; }
+    float getNoiseLevel() const { return params.noiseLevel; }
+    float getAmplitude() const { return params.amplitude; }
 };
 
 #endif // EMG_MODEL_H

@@ -337,5 +337,18 @@ float PPGModel::getPerfusionIndex() const {
  * @return true si fase < 25% del ciclo
  */
 bool PPGModel::isInSystole() const {
-    return (phaseInCycle < 0.25f);
+    return (phaseInCycle < 0.3f);
+}
+
+const char* PPGModel::getConditionName() const {
+    switch (params.condition) {
+        case PPGCondition::NORMAL: return "Normal";
+        case PPGCondition::ARRHYTHMIA: return "Arritmia";
+        case PPGCondition::WEAK_PERFUSION: return "Perfusión Débil";
+        case PPGCondition::STRONG_PERFUSION: return "Perfusión Fuerte";
+        case PPGCondition::VASOCONSTRICTION: return "Vasoconstricción";
+        case PPGCondition::MOTION_ARTIFACT: return "Artefacto Movim.";
+        case PPGCondition::LOW_SPO2: return "SpO2 Bajo";
+        default: return "Desconocido";
+    }
 }

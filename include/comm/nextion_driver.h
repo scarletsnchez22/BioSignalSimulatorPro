@@ -22,9 +22,15 @@ enum class NextionPage : uint8_t {
     ECG_SIM = 2,        // Selección condición ECG
     EMG_SIM = 3,        // Selección condición EMG
     PPG_SIM = 4,        // Selección condición PPG
-    ECG_WAVE = 5,       // Waveform ECG + sliders + métricas
-    EMG_WAVE = 6,       // Waveform EMG + sliders + métricas
-    PPG_WAVE = 7        // Waveform PPG + sliders + métricas
+    WAVEFORM_ECG = 5,   // Waveform ECG
+    VALORES_ECG = 6,    // Popup valores ECG
+    PARAMETROS_ECG = 7, // Popup parámetros ECG
+    WAVEFORM_EMG = 8,   // Waveform EMG
+    VALORES_EMG = 9,    // Popup valores EMG
+    PARAMETROS_EMG = 10,// Popup parámetros EMG
+    WAVEFORM_PPG = 11,  // Waveform PPG
+    VALORES_PPG = 12,   // Popup valores PPG
+    PARAMETROS_PPG = 13 // Popup parámetros PPG
 };
 
 // ============================================================================
@@ -52,12 +58,26 @@ enum class UIEvent : uint8_t {
     // Popups waveform
     BUTTON_VALORES,         // Mostrar popup valores actuales
     BUTTON_PARAMETROS,      // Mostrar popup parámetros
+    BUTTON_BACK_POPUP,      // Volver desde popup valores (solo cierra)
+    BUTTON_APPLY_PARAMS,    // bt_act: Aplicar parámetros y cerrar
+    BUTTON_CANCEL_PARAMS,   // bt_ex: Cancelar sin guardar
+    BUTTON_RESET_PARAMS,    // bt_reset: Resetear a valores por defecto
     
-    // Sliders
-    SLIDER_PARAM1,          // Slider 1 (HR/Excitation/HR)
-    SLIDER_PARAM2,          // Slider 2 (Amplitude)
-    SLIDER_PARAM3,          // Slider 3 (ST/Noise/Dicrotic)
-    SLIDER_PARAM4           // Slider 4 (Noise)
+    // Sliders ECG (parametros_ecg página 7)
+    SLIDER_ECG_HR,          // Slider frecuencia cardíaca (ID 10)
+    SLIDER_ECG_AMP,         // Slider amplitud QRS (ID 11)
+    SLIDER_ECG_NOISE,       // Slider nivel de ruido (ID 12)
+    SLIDER_ECG_HRV,         // Slider variabilidad HRV (ID 13)
+    
+    // Sliders EMG (parametros_emg página 10)
+    SLIDER_EMG_EXC,         // Slider excitación (ID 8)
+    SLIDER_EMG_AMP,         // Slider amplitud (ID 9)
+    SLIDER_EMG_NOISE,       // Slider ruido (ID 10)
+    
+    // Sliders PPG (parametros_ppg página 13)
+    SLIDER_PPG_HR,          // Slider frecuencia cardíaca (ID 8)
+    SLIDER_PPG_PI,          // Slider índice de perfusión (ID 9)
+    SLIDER_PPG_NOISE        // Slider ruido (ID 10)
 };
 
 // ============================================================================
@@ -122,6 +142,18 @@ public:
     void goToPage(NextionPage page);
     NextionPage getCurrentPage() const { return currentPage; }
     
+    // Actualizar botones del menú (selección de señal)
+    void updateMenuButtons(SignalType selected);
+    
+    // Actualizar botones de condiciones ECG (página ECG_SIM)
+    void updateECGConditionButtons(int selectedCondition);
+
+    // Actualizar botones de condiciones EMG (página EMG_SIM)
+    void updateEMGConditionButtons(int selectedCondition);
+
+    // Actualizar botones de condiciones PPG (página PPG_SIM)
+    void updatePPGConditionButtons(int selectedCondition);
+    
     // Actualizar textos
     void setText(const char* component, const char* text);
     void setNumber(const char* component, int value);
@@ -147,6 +179,31 @@ public:
     
     // Estado de simulación
     void setSimulationState(SignalState state);
+    
+    // Actualizar valores en página valores_ecg
+    void updateECGValuesPage(int bpm, int rr_ms, int rAmp_x100, int st_x100, 
+                              uint32_t beats, const char* patologia);
+    
+    // Actualizar valores en página valores_emg
+    void updateEMGValuesPage(int rms_x100, int activeUnits, int freq_x10, int contraction,
+                              const char* condicion);
+    
+    // Actualizar valores en página valores_ppg
+    void updatePPGValuesPage(int hr, int rr_ms, int pi_x10, int spo2,
+                              uint32_t beats, const char* condicion);
+    
+    // Configurar página parametros_ecg con límites según patología
+    void setupECGParametersPage(int hrMin, int hrMax, int hrCurrent,
+                                 int ampCurrent, int noiseCurrent, int hrvCurrent);
+    
+    // Configurar página parametros_emg
+    void setupEMGParametersPage(int excCurrent, int ampCurrent, int noiseCurrent);
+    
+    // Configurar página parametros_ppg
+    void setupPPGParametersPage(int hrCurrent, int piCurrent, int noiseCurrent);
+    
+    // Leer valor de un slider (retorna -1 si error)
+    int readSliderValue(const char* sliderName);
     
     // Callback
     void setEventCallback(UIEventCallback callback);

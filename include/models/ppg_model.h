@@ -121,6 +121,9 @@ public:
     uint32_t getBeatCount() const { return beatCount; }
     float getPerfusionIndex() const;
     bool isInSystole() const;
+    PPGCondition getCondition() const { return params.condition; }
+    const char* getConditionName() const;
+    float getNoiseLevel() const { return params.noiseLevel; }
 };
 
 #endif // PPG_MODEL_H
