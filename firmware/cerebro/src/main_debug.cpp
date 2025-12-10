@@ -2,12 +2,19 @@
  * @file main_debug.cpp
  * @brief Modo Debug interactivo para verificación de señales biológicas
  * @version 2.0.0
+ * @date Diciembre 2024
+ * 
+ * Firmware ESP32 Cerebro - BioSignalSimulator Pro
  * 
  * Menú interactivo que permite seleccionar:
  * - Tipo de señal (ECG, EMG, PPG)
  * - Patología específica dentro de cada señal
  * - Duración del ploteo
  * - Volver al menú en cualquier momento
+ * 
+ * Hardware: ESP32-WROOM-32 (NodeMCU v1.1)
+ * Salida DAC: GPIO25 (0-3.3V)
+ * Comunicación: UART @ 921600 baud con HMI ELECROW
  */
 
 #include <Arduino.h>

@@ -1,9 +1,13 @@
 /**
  * @file config.h
- * @brief Configuración global del sistema BioSimulator Pro
- * @version 1.0.0
+ * @brief Configuración global del sistema BioSimulator Pro - ESP32 Cerebro
+ * @version 1.1.0
+ * @date Diciembre 2024
  * 
  * Configuración de hardware, pines, frecuencias y constantes del sistema.
+ * 
+ * Hardware: ESP32-WROOM-32 (NodeMCU v1.1)
+ * Comunicación: UART con HMI ELECROW @ 921600 baud
  */
 
 #ifndef CONFIG_H
@@ -15,8 +19,9 @@
 // IDENTIFICACIÓN DEL SISTEMA
 // ============================================================================
 #define DEVICE_NAME             "BioSimulator Pro"
-#define FIRMWARE_VERSION        "1.0.0"
-#define HARDWARE_MODEL          "ESP32-WROOM-32"
+#define FIRMWARE_VERSION        "1.1.0"
+#define FIRMWARE_DATE           "Diciembre 2024"
+#define HARDWARE_MODEL          "ESP32-WROOM-32 (NodeMCU v1.1)"
 #define HAS_PSRAM               false
 #define SRAM_SIZE_KB            520
 #define FLASH_SIZE_MB           4
@@ -28,12 +33,18 @@
 #define DAC_REFERENCE_PIN       26      // GPIO26 - DAC2 (Opcional)
 
 // ============================================================================
-// CONFIGURACIÓN DE PINES - NEXTION
+// CONFIGURACIÓN DE PINES - UART HMI (ELECROW ESP32-S3)
 // ============================================================================
-#define NEXTION_SERIAL          Serial2
-#define NEXTION_RX_PIN          16      // RX2
-#define NEXTION_TX_PIN          17      // TX2
-#define NEXTION_BAUD            115200
+#define HMI_SERIAL              Serial2
+#define HMI_RX_PIN              16      // RX2 (GPIO16)
+#define HMI_TX_PIN              17      // TX2 (GPIO17)
+#define HMI_BAUD                921600  // Alta velocidad para datos en tiempo real
+
+// Aliases para compatibilidad con código legacy
+#define NEXTION_SERIAL          HMI_SERIAL
+#define NEXTION_RX_PIN          HMI_RX_PIN
+#define NEXTION_TX_PIN          HMI_TX_PIN
+#define NEXTION_BAUD            HMI_BAUD
 
 // ============================================================================
 // CONFIGURACIÓN DE PINES - LED RGB
@@ -105,12 +116,18 @@
 #define WAVEFORM_UPDATE_MS      10      // 100 Hz refresh waveform
 
 // ============================================================================
-// CONFIGURACIÓN NEXTION WAVEFORM
+// CONFIGURACIÓN HMI DISPLAY (ELECROW 7" 800x480)
 // ============================================================================
-#define WAVEFORM_HEIGHT         211     // Altura del waveform en píxeles
-#define WAVEFORM_WIDTH          399     // Ancho del waveform en píxeles
-#define WAVEFORM_COMPONENT_ID   1       // ID del componente waveform
-#define WAVEFORM_CHANNEL        0       // Canal del waveform (solo usamos 1)
+#define HMI_DISPLAY_WIDTH       800     // Ancho del display en píxeles
+#define HMI_DISPLAY_HEIGHT      480     // Altura del display en píxeles
+#define HMI_CHART_WIDTH         700     // Ancho del gráfico de señal
+#define HMI_CHART_HEIGHT        300     // Altura del gráfico de señal
+
+// Legacy Nextion (deprecated - mantener para compatibilidad)
+#define WAVEFORM_HEIGHT         211     // Altura del waveform Nextion (obsoleto)
+#define WAVEFORM_WIDTH          399     // Ancho del waveform Nextion (obsoleto)
+#define WAVEFORM_COMPONENT_ID   1       // ID del componente (obsoleto)
+#define WAVEFORM_CHANNEL        0       // Canal del waveform (obsoleto)
 
 // ============================================================================
 // CONFIGURACIÓN DE DEBUG
