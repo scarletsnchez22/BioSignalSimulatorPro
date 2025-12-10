@@ -1,75 +1,80 @@
-# BioSignalSimulator Pro - Diseño Electrónico
+# BioSimulator Pro - Diseño Electrónico de Hardware
 
-**Especificación completa del hardware electrónico del dispositivo**
-
----
-
-| Campo | Valor |
-|-------|-------|
-| **Versión** | 1.1.0 |
-| **Fecha** | Diciembre 2024 |
-| **Estado** | Diseño Final |
+**Versión 1.1.0 | Diciembre 2024**
 
 ---
 
-## Tabla de Contenidos
+## Índice
 
-1. [Resumen del Sistema](#1-resumen-del-sistema)
+1. [Arquitectura General](#1-arquitectura-general)
 2. [Sistema de Alimentación](#2-sistema-de-alimentación)
-3. [Módulo TP4056](#3-módulo-tp4056)
-4. [Módulo Boost MT3608](#4-módulo-boost-mt3608)
-5. [Distribución de Energía](#5-distribución-de-energía)
-6. [Circuito de Salida Analógica](#6-circuito-de-salida-analógica)
-7. [Indicadores LED](#7-indicadores-led)
-8. [Conexiones UART](#8-conexiones-uart)
-9. [Esquema General](#9-esquema-general)
-10. [Cálculos de Consumo y Autonomía](#10-cálculos-de-consumo-y-autonomía)
-11. [Lista de Materiales (BOM)](#11-lista-de-materiales-bom)
+3. [Cálculos de Consumo y Autonomía](#3-cálculos-de-consumo-y-autonomía)
+4. [Circuito de Salida Analógica](#4-circuito-de-salida-analógica)
+5. [Conexiones UART](#5-conexiones-uart)
+6. [Indicador LED RGB](#6-indicador-led-rgb)
+7. [Esquema General](#7-esquema-general)
+8. [Lista de Materiales (BOM)](#8-lista-de-materiales-bom)
 
 ---
 
-## 1. Resumen del Sistema
+## 1. Arquitectura General
 
-### 1.1 Arquitectura de Hardware
+### 1.1 Diagrama de Bloques
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                         BIOSIGNALSIMULATOR PRO - ARQUITECTURA                       │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-
-    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-    │   BATERÍAS      │────►│   CARGA Y       │────►│   REGULACIÓN    │
-    │   2P 18650      │     │   PROTECCIÓN    │     │   BOOST         │
-    │   3.7V 4400mAh  │     │   TP4056        │     │   MT3608        │
-    │   (PARALELO)    │     │                 │     │   3.7V → 5V     │
-    └─────────────────┘     └─────────────────┘     └────────┬────────┘
-                                                             │ 5V
-                            ┌────────────────────────────────┼────────────────────────┐
-                            │                                │                        │
-                            ▼                                ▼                        ▼
-                    ┌───────────────┐              ┌───────────────┐        ┌───────────────┐
-                    │   PANTALLA    │◄────UART────►│   ESP32       │───────►│   SALIDA      │
-                    │   HMI 7"      │   921600     │   CEREBRO     │        │   ANALÓGICA   │
-                    │   ELECROW     │              │   NodeMCU     │        │   BNC         │
-                    └───────────────┘              └───────┬───────┘        └───────────────┘
-                                                           │
-                                                    ┌──────┴──────┐
-                                                    │  LED RGB    │
-                                                    └─────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           BIOSIMULATOR PRO v1.1                             │
+│                         Arquitectura con Nextion                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
+│  │  2× 18650   │───►│  BMS 2S     │───►│  SWITCH     │───►│  BORNERA    │  │
+│  │  2800mAh    │    │  HX-2S-D01  │    │  ON/OFF     │    │  7.4V       │  │
+│  │  (SERIE)    │    │             │    │             │    │             │  │
+│  └─────────────┘    └─────────────┘    └─────────────┘    └──────┬──────┘  │
+│                                                                   │         │
+│                     ┌─────────────────────────────────────────────┤         │
+│                     │                                             │         │
+│              ┌──────▼──────┐                              ┌───────▼───────┐ │
+│              │  XL4015     │                              │   NEXTION     │ │
+│              │  BUCK       │                              │   NX4024T032  │ │
+│              │  7.4V→5V    │                              │   3.2" 400mA  │ │
+│              └──────┬──────┘                              └───────┬───────┘ │
+│                     │ 5V                                          │ UART    │
+│              ┌──────▼──────┐                                      │         │
+│              │  BORNERA    │◄─────────────────────────────────────┘         │
+│              │  5V         │                                                │
+│              └──────┬──────┘                                                │
+│                     │                                                       │
+│         ┌───────────┼───────────┐                                           │
+│         │           │           │                                           │
+│  ┌──────▼──────┐ ┌──▼───┐ ┌─────▼─────┐                                    │
+│  │  ESP32      │ │MCP6002│ │  LED RGB  │                                    │
+│  │  NodeMCU    │ │Buffer │ │  Estado   │                                    │
+│  │  ~80mA      │ └──┬───┘ └───────────┘                                    │
+│  └──────┬──────┘    │                                                       │
+│         │           │                                                       │
+│         │    ┌──────▼──────┐                                                │
+│         │    │  BNC        │                                                │
+│         │    │  Output     │                                                │
+│         └────┤  0-3.3V     │                                                │
+│              └─────────────┘                                                │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.2 Especificaciones Generales
 
 | Parámetro | Valor |
 |-----------|-------|
-| Voltaje de batería | 3.7V nominal (3.0V - 4.2V) |
-| Configuración baterías | 2P (paralelo) |
-| Capacidad total | 4400 mAh |
+| Voltaje de batería | 7.4V nominal (6.0V - 8.4V) |
+| Configuración baterías | 2S (serie) |
+| Capacidad total | 2800 mAh |
 | Voltaje de operación | 5V (regulado) |
-| Consumo típico | ~475 mA @ 5V |
-| Consumo pico | ~691 mA @ 5V |
-| Autonomía típica | **5.5 horas** |
-| Autonomía mínima | **3.8 horas** |
+| Consumo típico | ~530 mA @ 5V |
+| Consumo pico | ~650 mA @ 5V |
+| Autonomía típica | **4.5 horas** |
+| Autonomía mínima | **3.7 horas** |
 
 ---
 
@@ -77,675 +82,612 @@
 
 ### 2.1 Baterías
 
-**Configuración: 2P (Paralelo) - 3.7V nominal, 4400mAh**
+**Modelo:** Steren BAT-LI-18650/2800  
+**Configuración:** 2S (Serie) para aumentar voltaje
 
-| Especificación | Valor |
-|----------------|-------|
-| **Tipo** | Li-ion 18650 |
-| **Modelo** | BAT-LI-18650 |
-| **Capacidad por celda** | 2200 mAh |
-| **Voltaje nominal** | 3.7V |
-| **Voltaje cargada** | 4.2V |
-| **Voltaje descargada** | 3.0V |
-| **Configuración** | 2P (paralelo) |
-| **Capacidad total** | 4400 mAh (se suma en paralelo) |
-| **Precio unitario** | $7.99 USD |
-
-### 2.2 Cálculos del Pack 2P
+| Parámetro | Por Celda | Pack 2S |
+|-----------|-----------|---------|
+| Voltaje nominal | 3.7V | 7.4V |
+| Voltaje máximo | 4.2V | 8.4V |
+| Voltaje mínimo | 3.0V | 6.0V |
+| Capacidad | 2800 mAh | 2800 mAh |
+| Energía | 10.36 Wh | 20.72 Wh |
 
 ```
-CONFIGURACIÓN PARALELO (2P):
-════════════════════════════
+┌─────────────────────────────────────────────────────────────┐
+│                    PACK DE BATERÍAS 2S                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│    ┌─────────────┐         ┌─────────────┐                 │
+│    │  18650      │         │  18650      │                 │
+│    │  2800mAh    │         │  2800mAh    │                 │
+│    │  CELDA 1    │         │  CELDA 2    │                 │
+│    │             │         │             │                 │
+│    │   (+)       │         │   (+)       │                 │
+│    └──────┬──────┘         └──────┬──────┘                 │
+│           │                       │                         │
+│    ┌──────┴──────┐         ┌──────┴──────┐                 │
+│    │   (-)       │─────────│   (+)       │                 │
+│    └─────────────┘  SERIE  └─────────────┘                 │
+│           │                       │                         │
+│           │                       │                         │
+│      B- (GND)                B+ (7.4V)                     │
+│           │                       │                         │
+│           └───────────┬───────────┘                         │
+│                       │                                     │
+│                       ▼                                     │
+│                   A BMS 2S                                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────┐
-│                                                                 │
-│   En PARALELO: El voltaje se MANTIENE, la capacidad se SUMA    │
-│                                                                 │
-│   V_total = V_celda (se mantiene)                               │
-│   C_total = C_celda1 + C_celda2 (se suma)                       │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-Voltaje nominal:
-    V_nom = 3.7V (igual que una celda)
-
-Voltaje máximo (completamente cargado):
-    V_max = 4.2V
-
-Voltaje mínimo (descargado):
-    V_min = 3.0V
-
-Capacidad total:
-    C_total = 2200mAh + 2200mAh = 4400 mAh ✅
-
-Energía total almacenada:
-    E = V_nom × C_total
-    E = 3.7V × 4.4Ah
-    E = 16.28 Wh
+Voltajes del Pack:
+- Completamente cargado: 8.4V (4.2V + 4.2V)
+- Nominal: 7.4V (3.7V + 3.7V)
+- Descargado: 6.0V (3.0V + 3.0V)
 ```
 
-### 2.3 Diagrama del Portapilas 2P
+### 2.2 BMS (Battery Management System)
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                       PORTAPILAS 2×18650 EN PARALELO (2P)                           │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-
-    ┌─────────────────────────────────────────────────────────────────────────────┐
-    │                          PORTAPILAS 2P                                      │
-    │                                                                             │
-    │   ┌─────────────────────────────┐   ┌─────────────────────────────┐         │
-    │   │         CELDA 1             │   │         CELDA 2             │         │
-    │   │    Li-ion 18650 2200mAh     │   │    Li-ion 18650 2200mAh     │         │
-    │   │         3.7V                │   │         3.7V                │         │
-    │   │                             │   │                             │         │
-    │   │   (+) ═══════════ (-)       │   │   (+) ═══════════ (-)       │         │
-    │   └────┬────────────────┬───────┘   └────┬────────────────┬───────┘         │
-    │        │                │                │                │                 │
-    │        │                │                │                │                 │
-    │        └───────┬────────┴────────────────┴────────┬───────┘                 │
-    │                │                                  │                         │
-    │                │  (+) UNIDOS                      │  (-) UNIDOS             │
-    │                │  (PARALELO)                      │  (PARALELO)             │
-    │                │                                  │                         │
-    │           ┌────┴────┐                        ┌────┴────┐                    │
-    │           │   B+    │                        │   B-    │                    │
-    │           │  3.7V   │                        │   GND   │                    │
-    │           │ (ROJO)  │                        │ (NEGRO) │                    │
-    │           └────┬────┘                        └────┬────┘                    │
-    │                │                                  │                         │
-    └────────────────┼──────────────────────────────────┼─────────────────────────┘
-                     │                                  │
-                     ▼                                  ▼
-              Al TP4056 B+                       Al TP4056 B-
-```
-
----
-
-## 3. Módulo TP4056
-
-### 3.1 Especificaciones
+**Modelo:** HX-2S-D01 (o equivalente 2S 8A)
 
 | Parámetro | Valor |
 |-----------|-------|
-| **Modelo** | TP4056 con DW01A + FS8205A |
-| **Voltaje de entrada** | 4.5V - 5.5V (USB) |
-| **Corriente de carga** | 1A máximo |
-| **Voltaje de carga** | 4.2V |
-| **Protección sobrecarga** | 4.25V - 4.3V |
-| **Protección sobredescarga** | 2.4V - 2.5V |
-| **Protección cortocircuito** | Sí |
-| **LEDs indicadores** | ROJO = Cargando, AZUL = Completo |
-
-### 3.2 Diagrama de Conexiones
+| Configuración | 2S (7.4V) |
+| Corriente continua | 8A |
+| Corriente pico | 15A |
+| Protección sobrecarga | 8.4V ±0.05V |
+| Protección sobredescarga | 5.6V ±0.1V |
+| Protección cortocircuito | Sí |
+| Balanceo | Sí (pasivo) |
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                    MÓDULO TP4056 CON PROTECCIÓN - CONEXIONES                        │
-└─────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      BMS HX-2S-D01                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   ENTRADA (Baterías)              SALIDA (Carga/Descarga)   │
+│                                                             │
+│   B-  ●────────────────────────────────● P-                │
+│                    │                                        │
+│   BM  ●────────────┼───── Balanceo                         │
+│                    │                                        │
+│   B+  ●────────────┼───────────────────● P+                │
+│                    │                                        │
+│                    │                                        │
+│              ┌─────┴─────┐                                  │
+│              │  CIRCUITO │                                  │
+│              │  PROTEC.  │                                  │
+│              │           │                                  │
+│              │ • Sobre-  │                                  │
+│              │   carga   │                                  │
+│              │ • Sobre-  │                                  │
+│              │   descarga│                                  │
+│              │ • Corto   │                                  │
+│              │ • Balance │                                  │
+│              └───────────┘                                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 
-                         ┌─────────────────────────────────────────────────┐
-                         │           MÓDULO TP4056 + PROTECCIÓN            │
-                         │                                                 │
-                         │   ┌─────────────────────────────────────────┐   │
-                         │   │             VISTA SUPERIOR              │   │
-                         │   │                                         │   │
-                         │   │   ┌─────┐               ┌─────┐         │   │
-                         │   │   │ LED │ ROJO          │ LED │ AZUL    │   │
-                         │   │   │     │ Cargando      │     │ Listo   │   │
-                         │   │   └─────┘               └─────┘         │   │
-                         │   │                                         │   │
-                         │   │   ┌───────────────────────────────┐     │   │
-                         │   │   │         CHIP TP4056           │     │   │
-                         │   │   │    (Controlador de carga)     │     │   │
-                         │   │   └───────────────────────────────┘     │   │
-                         │   │                                         │   │
-                         │   │   ┌───────────────────────────────┐     │   │
-                         │   │   │   DW01A + FS8205A             │     │   │
-                         │   │   │   (Circuito de protección)    │     │   │
-                         │   │   └───────────────────────────────┘     │   │
-                         │   │                                         │   │
-                         │   └─────────────────────────────────────────┘   │
-                         │                                                 │
-                         │   ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐       │
-                         │   │ IN+  │  │ IN-  │  │ OUT+ │  │ OUT- │       │
-                         │   └──┬───┘  └──┬───┘  └──┬───┘  └──┬───┘       │
-                         │      │         │         │         │           │
-                         │   ┌──────┐  ┌──────┐                           │
-                         │   │  B+  │  │  B-  │                           │
-                         │   └──┬───┘  └──┬───┘                           │
-                         │      │         │                               │
-                         └──────┼─────────┼───────────────────────────────┘
-                                │         │
-                                ▼         ▼
-                           A Batería  A Batería
-                              (+)        (-)
-
-
-    PINES (6 terminales):
-    ═════════════════════
-    
-    IN+   → Entrada USB 5V (para cargar)
-    IN-   → Entrada USB GND
-    B+    → Conexión directa a batería (+)
-    B-    → Conexión directa a batería (-)
-    OUT+  → Salida protegida (+) → Al Switch ON/OFF
-    OUT-  → Salida protegida (-) → GND común
+Conexiones:
+- B-: Negativo de la celda inferior
+- BM: Punto medio (entre celdas) para balanceo
+- B+: Positivo de la celda superior
+- P-: Salida negativa (a carga)
+- P+: Salida positiva (a carga)
 ```
 
-### 3.3 Estados del LED
+### 2.3 Módulo de Carga
 
-| Estado | LED Rojo | LED Azul | Descripción |
-|--------|----------|----------|-------------|
-| Cargando | ✅ ON | ❌ OFF | Batería recibiendo carga |
-| Carga completa | ❌ OFF | ✅ ON | Batería al 100% |
-| Sin USB | ❌ OFF | ❌ OFF | No hay fuente de carga |
-
----
-
-## 4. Módulo Boost MT3608
-
-### 4.1 Especificaciones
+**Modelo:** Cargador 2S Li-ion (8.4V)
 
 | Parámetro | Valor |
 |-----------|-------|
-| **Modelo** | MT3608 (módulo) |
-| **Voltaje entrada** | 2V - 24V |
-| **Voltaje salida** | 5V - 28V (ajustable) |
-| **Corriente máxima** | 2A |
-| **Eficiencia típica** | 90% - 93% |
-| **Ajuste** | Potenciómetro multivuelta |
+| Voltaje entrada | 9-12V DC |
+| Voltaje salida | 8.4V (carga completa) |
+| Corriente carga | 1A - 2A |
+| Indicadores | LED rojo (cargando) / verde (completo) |
 
-### 4.2 Diagrama de Conexión
+> **Nota:** Se puede usar un cargador externo 2S o integrar un módulo de carga balanceada.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                            MÓDULO BOOST MT3608                                      │
-└─────────────────────────────────────────────────────────────────────────────────────┘
+### 2.4 Regulador Buck (DC-DC Step-Down)
 
-                    ┌─────────────────────────────────────────────────┐
-                    │                  MT3608 MODULE                  │
-                    │                                                 │
-                    │   ┌─────────────────────────────────────────┐   │
-                    │   │      CONVERTIDOR DC-DC BOOST            │   │
-                    │   │                                         │   │
-                    │   │   Vin: 3.7V (desde batería)             │   │
-                    │   │   Vout: 5.0V (ajustado)                 │   │
-                    │   │   Eficiencia: ~90%                      │   │
-                    │   │                                         │   │
-                    │   │   ┌───────────────────────────────┐     │   │
-                    │   │   │       POTENCIÓMETRO           │     │   │
-                    │   │   │    (Girar para ajustar 5V)    │     │   │
-                    │   │   └───────────────────────────────┘     │   │
-                    │   │                                         │   │
-                    │   └─────────────────────────────────────────┘   │
-                    │                                                 │
-                    │   ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐       │
-                    │   │ IN+  │  │ IN-  │  │ OUT+ │  │ OUT- │       │
-                    │   └──┬───┘  └──┬───┘  └──┬───┘  └──┬───┘       │
-                    │      │         │         │         │           │
-                    └──────┼─────────┼─────────┼─────────┼───────────┘
-                           │         │         │         │
-                           ▼         ▼         ▼         ▼
-                        Desde     Desde     A ESP32   A GND
-                        Switch    GND       VIN       común
-                        3.7V      común     5V
-```
-
-### 4.3 Cálculos de Eficiencia
-
-```
-CÁLCULO DE EFICIENCIA Y PÉRDIDAS:
-═════════════════════════════════
-
-Datos de entrada:
-    Vin = 3.7V (voltaje nominal batería)
-    Vout = 5.0V (voltaje de salida)
-    Iout = 475 mA (consumo típico del sistema @ 5V)
-    η = 90% (eficiencia del MT3608)
-
-Potencia de salida:
-    Pout = Vout × Iout
-    Pout = 5.0V × 0.475A = 2.375W
-
-Potencia de entrada:
-    Pin = Pout / η
-    Pin = 2.375W / 0.90 = 2.64W
-
-Corriente de entrada (desde batería):
-    Iin = Pin / Vin
-    Iin = 2.64W / 3.7V = 714 mA
-
-Pérdidas en el convertidor:
-    Ploss = Pin - Pout
-    Ploss = 2.64W - 2.375W = 0.265W
-```
-
----
-
-## 5. Distribución de Energía
-
-### 5.1 Bornera de Distribución
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                         BORNERA DE DISTRIBUCIÓN                                     │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-
-    Desde TP4056 (OUT+) después del SWITCH
-                    │
-                    ▼
-    ┌─────────────────────────────────────────────────────────────────────────────┐
-    │                                                                             │
-    │   ┌─────────────────────────────────────────────────────────────────────┐   │
-    │   │                    BORNERA 4 POSICIONES (+)                         │   │
-    │   │                                                                     │   │
-    │   │   ┌─────┐    ┌─────┐    ┌─────┐    ┌─────┐                         │   │
-    │   │   │  1  │    │  2  │    │  3  │    │  4  │                         │   │
-    │   │   │DESDE│    │  A  │    │  A  │    │RESER│                         │   │
-    │   │   │SWIT │    │PANT │    │BOOST│    │ VA  │                         │   │
-    │   │   │ CH  │    │ BAT │    │MT360│    │     │                         │   │
-    │   │   └─────┘    └─────┘    └─────┘    └─────┘                         │   │
-    │   │                                                                     │   │
-    │   └─────────────────────────────────────────────────────────────────────┘   │
-    │                                                                             │
-    │   ┌─────────────────────────────────────────────────────────────────────┐   │
-    │   │                    BORNERA 4 POSICIONES (-)                         │   │
-    │   │                                                                     │   │
-    │   │   ┌─────┐    ┌─────┐    ┌─────┐    ┌─────┐                         │   │
-    │   │   │  1  │    │  2  │    │  3  │    │  4  │                         │   │
-    │   │   │DESDE│    │  A  │    │  A  │    │RESER│                         │   │
-    │   │   │ GND │    │PANT │    │BOOST│    │ VA  │                         │   │
-    │   │   │     │    │ GND │    │ GND │    │     │                         │   │
-    │   │   └─────┘    └─────┘    └─────┘    └─────┘                         │   │
-    │   │                                                                     │   │
-    │   └─────────────────────────────────────────────────────────────────────┘   │
-    │                                                                             │
-    │   MODELO: Bornera de tornillo 4 posiciones, paso 5.08mm                     │
-    │                                                                             │
-    └─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 6. Circuito de Salida Analógica
-
-### 6.1 Especificaciones
+**Modelo:** XL4015 (o LM2596)
 
 | Parámetro | Valor |
 |-----------|-------|
-| **Fuente de señal** | ESP32 GPIO25 (DAC1) |
-| **Rango de voltaje DAC** | 0V - 3.3V |
-| **Resolución DAC** | 8 bits (256 niveles) |
-| **Buffer** | MCP6002 (voltage follower) |
-| **Impedancia de salida** | < 100Ω |
-| **Conector** | BNC hembra |
-
-### 6.2 Diagrama del Circuito Buffer
+| Voltaje entrada | 6V - 40V |
+| Voltaje salida | 5V (ajustable) |
+| Corriente máxima | 5A |
+| Eficiencia | ~90% @ 1A |
+| Frecuencia | 180 kHz |
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                       CIRCUITO DE SALIDA ANALÓGICA                                  │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-
-                                        +5V
-                                         │
-                                        ┌┴┐
-                                        │ │ C1 = 100nF
-                                        └┬┘
-                                         │
-    ┌────────────────────────────────────┼────────────────────────────────────────┐
-    │                                    │                                        │
-    │   ESP32 CEREBRO                    │         MCP6002 (U1A)                  │
-    │                                    │                                        │
-    │   ┌─────────────┐                  │    ┌─────────────────────────┐         │
-    │   │             │                  │    │                         │         │
-    │   │   GPIO25    │                  │    │    ┌───────────────┐    │         │
-    │   │   (DAC1)    ├──────────────────┼────┼───►│ 3  +          │    │         │
-    │   │             │                  │    │    │               │    │         │
-    │   │   0-3.3V    │                  │    │    │    U1A        │ 1  │         │
-    │   │             │                  │    │    │   MCP6002     ├────┼─────────┼──► BNC
-    │   │             │                  │    │    │               │    │         │
-    │   └─────────────┘                  │    │    │ 2  -          │    │         │
-    │                                    │    │    └───────┬───────┘    │         │
-    │                                    │    │            │            │         │
-    │                                    │    │            └────────────┘         │
-    │                                    │    │         (Realimentación 100%)     │
-    │                                    │    │                                   │
-    │                                    │    │    Pin 8 = VDD (+5V)              │
-    │                                    │    │    Pin 4 = VSS (GND)              │
-    │                                    │    │                                   │
-    │   GND ─────────────────────────────┴────┴───────────────────────────────────┼──► BNC GND
-    │                                                                             │
-    └─────────────────────────────────────────────────────────────────────────────┘
-
-
-    PINOUT MCP6002 (DIP-8):
-    ═══════════════════════
-              ┌─────────────┐
-         OUT1 │ 1         8 │ VDD (+5V)
-         -IN1 │ 2         7 │ OUT2 (no usar)
-         +IN1 │ 3         6 │ -IN2 (no usar)
-         VSS  │ 4         5 │ +IN2 (no usar)
-        (GND) └─────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    REGULADOR XL4015                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│                    ┌─────────────────┐                      │
+│                    │                 │                      │
+│   VIN+ ●──────────►│  IN+      OUT+ │►────────● VOUT+ (5V) │
+│   (7.4V)           │                 │                      │
+│                    │     XL4015      │                      │
+│                    │     BUCK        │                      │
+│                    │                 │                      │
+│   VIN- ●──────────►│  IN-      OUT- │►────────● VOUT- (GND)│
+│   (GND)            │                 │                      │
+│                    └─────────────────┘                      │
+│                           │                                 │
+│                           │ Ajuste                          │
+│                           ▼                                 │
+│                    ┌─────────────┐                          │
+│                    │ Potencióm.  │ ← Ajustar a 5.0V        │
+│                    │ (Multiturn) │                          │
+│                    └─────────────┘                          │
+│                                                             │
+│   IMPORTANTE: Ajustar ANTES de conectar la carga           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 6.3 Tablas de Interpretación de Señales
+### 2.5 Distribución de Energía
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DISTRIBUCIÓN DE ENERGÍA                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                     │
+│  │  PACK 2S    │    │   BMS 2S    │    │   SWITCH    │                     │
+│  │  7.4V       │───►│  HX-2S-D01  │───►│   ON/OFF    │                     │
+│  │  2800mAh    │    │             │    │             │                     │
+│  └─────────────┘    └─────────────┘    └──────┬──────┘                     │
+│                                               │                             │
+│                                               │ 7.4V                        │
+│                                               ▼                             │
+│                     ┌─────────────────────────────────────────────────┐    │
+│                     │              BORNERA 7.4V                       │    │
+│                     │  ┌─────┬─────┬─────┬─────┬─────┬─────┐         │    │
+│                     │  │ V+  │ V+  │ V+  │ GND │ GND │ GND │         │    │
+│                     │  └──┬──┴──┬──┴──┬──┴──┬──┴──┬──┴──┬──┘         │    │
+│                     └─────┼─────┼─────┼─────┼─────┼─────┼─────────────┘    │
+│                           │     │     │     │     │     │                   │
+│                           │     │     │     │     │     │                   │
+│                           │     │     └─────┼─────┼─────┘                   │
+│                           │     │           │     │                         │
+│                    ┌──────▼─────▼──┐  ┌─────▼─────▼─────┐                  │
+│                    │   XL4015      │  │    NEXTION      │                  │
+│                    │   BUCK        │  │    NX4024T032   │                  │
+│                    │   7.4V→5V     │  │    (5V directo  │                  │
+│                    └───────┬───────┘  │    del buck)    │                  │
+│                            │          └─────────────────┘                  │
+│                            │ 5V                                             │
+│                            ▼                                                │
+│          ┌─────────────────────────────────────────────────┐               │
+│          │              BORNERA 5V                         │               │
+│          │  ┌─────┬─────┬─────┬─────┬─────┬─────┐         │               │
+│          │  │ 5V  │ 5V  │ 5V  │ GND │ GND │ GND │         │               │
+│          │  └──┬──┴──┬──┴──┬──┴──┬──┴──┬──┴──┬──┘         │               │
+│          └─────┼─────┼─────┼─────┼─────┼─────┼─────────────┘               │
+│                │     │     │     │     │     │                              │
+│         ┌──────▼──┐  │  ┌──▼──┐  │     │     │                              │
+│         │ ESP32   │  │  │MCP  │  │     │     │                              │
+│         │ NodeMCU │  │  │6002 │  │     │     │                              │
+│         └─────────┘  │  └─────┘  │     │     │                              │
+│                      │           │     │     │                              │
+│               ┌──────▼──────┐    │     │     │                              │
+│               │  NEXTION    │◄───┘     │     │                              │
+│               │  (5V desde  │          │     │                              │
+│               │   bornera)  │          │     │                              │
+│               └─────────────┘          │     │                              │
+│                                        │     │                              │
+│                                 ┌──────▼─────▼──────┐                       │
+│                                 │     LED RGB       │                       │
+│                                 └───────────────────┘                       │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+NOTA: La Nextion puede alimentarse directamente desde 7.4V (tiene regulador 
+interno) o desde los 5V del buck. Se recomienda usar los 5V del buck para 
+mayor estabilidad.
+```
+
+---
+
+## 3. Cálculos de Consumo y Autonomía
+
+### 3.1 Consumo por Componente
+
+| Componente | Voltaje | Corriente Típica | Corriente Pico | Potencia |
+|------------|---------|------------------|----------------|----------|
+| ESP32 NodeMCU | 5V | 80 mA | 150 mA | 0.40 W |
+| Nextion NX4024T032 | 5V | 400 mA | 450 mA | 2.00 W |
+| MCP6002 | 5V | 0.1 mA | 0.1 mA | 0.0005 W |
+| LED RGB | 5V | 20 mA | 60 mA | 0.10 W |
+| Otros (pérdidas) | - | 30 mA | 40 mA | 0.15 W |
+| **TOTAL @ 5V** | **5V** | **~530 mA** | **~700 mA** | **2.65 W** |
+
+### 3.2 Consumo Referido a Batería
+
+Con el regulador Buck XL4015 (eficiencia ~90%):
+
+```
+Corriente desde batería = (Consumo @ 5V × 5V) / (Vbat × η)
+
+Donde:
+- Consumo @ 5V = 530 mA (típico)
+- Vbat = 7.4V (nominal)
+- η = 0.90 (eficiencia del buck)
+
+Corriente típica desde batería:
+I_bat = (0.530 A × 5V) / (7.4V × 0.90)
+I_bat = 2.65 W / 6.66 W
+I_bat = 0.398 A ≈ 400 mA
+
+Corriente pico desde batería:
+I_bat_pico = (0.700 A × 5V) / (7.4V × 0.90)
+I_bat_pico = 3.50 W / 6.66 W
+I_bat_pico = 0.526 A ≈ 530 mA
+```
+
+### 3.3 Cálculo de Autonomía
+
+```
+Autonomía = Capacidad de batería / Consumo
+
+Con baterías Steren BAT-LI-18650/2800 (2800 mAh):
+
+Autonomía típica:
+T_típico = 2800 mAh / 400 mA = 7.0 horas
+
+Autonomía mínima (uso intensivo):
+T_mínimo = 2800 mAh / 530 mA = 5.3 horas
+
+Autonomía con factor de seguridad (80% capacidad útil):
+T_real_típico = (2800 × 0.80) mAh / 400 mA = 5.6 horas
+T_real_mínimo = (2800 × 0.80) mAh / 530 mA = 4.2 horas
+```
+
+### 3.4 Resumen de Autonomía
+
+| Escenario | Consumo Batería | Autonomía Teórica | Autonomía Real (80%) |
+|-----------|-----------------|-------------------|----------------------|
+| **Típico** | 400 mA | 7.0 h | **5.6 h** |
+| **Intensivo** | 530 mA | 5.3 h | **4.2 h** |
+| **Promedio** | 450 mA | 6.2 h | **5.0 h** |
+
+> **Conclusión:** Con las baterías Steren 2800mAh en configuración 2S, se obtiene una autonomía práctica de **4-6 horas** de uso continuo.
+
+---
+
+## 4. Circuito de Salida Analógica
+
+### 4.1 Especificaciones de Salida
+
+| Parámetro | Valor |
+|-----------|-------|
+| Conector | BNC hembra |
+| Rango de voltaje | 0V - 3.3V |
+| Impedancia de salida | ~100Ω (con buffer) |
+| Resolución | 8 bits (256 niveles) |
+| Frecuencia máxima | 1 kHz |
+
+### 4.2 Circuito Buffer con MCP6002
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    CIRCUITO DE SALIDA ANALÓGICA                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│                                    VCC (5V)                                 │
+│                                       │                                     │
+│                                       │                                     │
+│                              ┌────────┴────────┐                           │
+│                              │        8        │                           │
+│                              │      VDD        │                           │
+│                              │                 │                           │
+│   ESP32                      │     MCP6002     │                           │
+│   GPIO25 ────────┬──────────►│3+     1        │                           │
+│   (DAC1)         │           │     \_____/    │────┬────────► BNC         │
+│                  │           │2-              │    │          (SEÑAL)     │
+│                  │     ┌─────│                │    │                       │
+│                  │     │     │        4       │    │                       │
+│                  │     │     │      VSS       │    R1                      │
+│                  │     │     └────────┬───────┘    │ 100Ω                  │
+│                  │     │              │            │                       │
+│                  │     │              │            │                       │
+│                  │     └──────────────┼────────────┤                       │
+│                  │                    │            │                       │
+│                  │                    │            │                       │
+│                 ===                  ===          ===                      │
+│                 GND                  GND          GND ──────► BNC (GND)    │
+│                                                                             │
+│                                                                             │
+│   Configuración: Seguidor de voltaje (ganancia = 1)                        │
+│   - Entrada no inversora (pin 3) conectada a GPIO25                        │
+│   - Salida (pin 1) realimentada a entrada inversora (pin 2)                │
+│   - R1 limita corriente y protege la salida                                │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.3 Interpretación de Señales en BNC
 
 #### ECG (Electrocardiograma)
 
-| Valor del Modelo | Voltaje en BNC | Significado Fisiológico |
-|------------------|----------------|-------------------------|
-| -0.5 mV | 0.00 V | Onda S profunda (máxima) |
-| 0.0 mV | 0.83 V | Línea base (isoeléctrica) |
-| +0.5 mV | 1.65 V | Onda T típica |
-| +1.0 mV | 2.48 V | Pico R típico |
-| +1.5 mV | 3.30 V | Pico R máximo |
+| Voltaje BNC | Valor DAC | Interpretación |
+|-------------|-----------|----------------|
+| 0.00V | 0 | Onda S profunda (-0.5 mV) |
+| 0.65V | 50 | Línea base baja |
+| 1.65V | 128 | Línea isoeléctrica (0 mV) |
+| 2.60V | 200 | Onda R moderada |
+| 3.30V | 255 | Pico R máximo (+1.5 mV) |
 
-**Escala:** 1 mV del modelo = 1.65 V en BNC
-
-**Osciloscopio:** 500 mV/div, 200 ms/div, DC coupling
+**Escala:** 1.65 mV/V (centrado en 1.65V)
 
 #### EMG (Electromiografía)
 
-| Valor del Modelo | Voltaje en BNC | Significado Fisiológico |
-|------------------|----------------|-------------------------|
-| -5.0 mV | 0.00 V | Pico negativo máximo |
-| 0.0 mV | 1.65 V | Línea base (reposo) |
-| +5.0 mV | 3.30 V | Pico positivo máximo |
+| Voltaje BNC | Valor DAC | Interpretación |
+|-------------|-----------|----------------|
+| 0.00V | 0 | Contracción negativa máxima |
+| 0.82V | 64 | Actividad baja negativa |
+| 1.65V | 128 | Reposo (línea base) |
+| 2.47V | 192 | Actividad baja positiva |
+| 3.30V | 255 | Contracción positiva máxima |
 
-**Escala:** 1 mV del modelo = 0.33 V en BNC
-
-**Osciloscopio:** 500 mV/div, 50 ms/div, DC coupling
+**Escala:** ±5 mV rango total, centrado en 1.65V
 
 #### PPG (Fotopletismografía)
 
-| Valor del Modelo | Voltaje en BNC | Significado Fisiológico |
-|------------------|----------------|-------------------------|
-| 0.0 | 0.00 V | Valle diastólico |
-| 0.5 | 1.65 V | Nivel medio |
-| 1.0 | 3.30 V | Pico sistólico máximo |
+| Voltaje BNC | Valor DAC | Interpretación |
+|-------------|-----------|----------------|
+| 0.65V | 50 | Valle diastólico |
+| 1.65V | 128 | Nivel DC (línea base) |
+| 2.60V | 200 | Pico sistólico |
+| 2.00V | 155 | Muesca dicrótica |
 
-**Escala:** 0.1 unidades = 0.33 V en BNC
-
-**Osciloscopio:** 500 mV/div, 200 ms/div, DC coupling
+**Escala:** Señal AC sobre DC, centrado en ~1.65V
 
 ---
 
-## 7. Indicadores LED
+## 5. Conexiones UART
 
-### 7.1 Circuito LED RGB
+### 5.1 ESP32 ↔ Nextion
+
+| ESP32 (NodeMCU) | Nextion | Función |
+|-----------------|---------|---------|
+| GPIO17 (TX2) | RX (cable amarillo) | Datos ESP32→Nextion |
+| GPIO16 (RX2) | TX (cable azul) | Datos Nextion→ESP32 |
+| GND | GND (cable negro) | Referencia común |
+| 5V | 5V (cable rojo) | Alimentación |
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      CONEXIÓN UART ESP32 ↔ NEXTION                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│      ESP32 NodeMCU                              Nextion NX4024T032          │
+│    ┌─────────────────┐                        ┌─────────────────┐          │
+│    │                 │                        │                 │          │
+│    │            3V3  │                        │                 │          │
+│    │                 │                        │                 │          │
+│    │           GND ●─┼────────────────────────┼─● GND (Negro)   │          │
+│    │                 │                        │                 │          │
+│    │    GPIO17 (TX) ●┼────────────────────────┼─● RX (Amarillo) │          │
+│    │                 │                        │                 │          │
+│    │    GPIO16 (RX) ●┼────────────────────────┼─● TX (Azul)     │          │
+│    │                 │                        │                 │          │
+│    │            VIN  │                        │  5V (Rojo) ●────┼──► 5V    │
+│    │                 │                        │                 │          │
+│    └─────────────────┘                        └─────────────────┘          │
+│                                                                             │
+│    Configuración UART:                                                      │
+│    - Velocidad: 115200 baud                                                │
+│    - Formato: 8N1 (8 bits, sin paridad, 1 bit stop)                        │
+│    - Nivel lógico: 3.3V (compatible con Nextion 5V tolerante)              │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 6. Indicador LED RGB
+
+### 6.1 Circuito
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         CIRCUITO LED RGB                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│                              5V                                             │
+│                               │                                             │
+│                               │                                             │
+│         ┌─────────────────────┼─────────────────────┐                      │
+│         │                     │                     │                      │
+│         │                     │                     │                      │
+│        ┌┴┐                   ┌┴┐                   ┌┴┐                     │
+│        │ │ R1                │ │ R2                │ │ R3                  │
+│        │ │ 330Ω              │ │ 330Ω              │ │ 330Ω               │
+│        └┬┘                   └┬┘                   └┬┘                     │
+│         │                     │                     │                      │
+│         │                     │                     │                      │
+│         ▼                     ▼                     ▼                      │
+│       ┌───┐                 ┌───┐                 ┌───┐                    │
+│       │ R │                 │ G │                 │ B │                    │
+│       │LED│                 │LED│                 │LED│                    │
+│       └─┬─┘                 └─┬─┘                 └─┬─┘                    │
+│         │                     │                     │                      │
+│         │                     │                     │                      │
+│         ▼                     ▼                     ▼                      │
+│       GPIO4                 GPIO5                 GPIO18                   │
+│       (ESP32)               (ESP32)               (ESP32)                  │
+│                                                                             │
+│   Configuración: Cátodo común (LEDs activos en LOW)                        │
+│   Corriente por LED: (5V - 2V) / 330Ω ≈ 9 mA                              │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 6.2 Estados del LED
+
+| Estado | Rojo | Verde | Azul | Significado |
+|--------|------|-------|------|-------------|
+| Apagado | OFF | OFF | OFF | Sistema apagado |
+| Verde fijo | OFF | ON | OFF | Sistema listo (IDLE) |
+| Verde parpadeante | OFF | BLINK | OFF | Generando señal |
+| Azul fijo | OFF | OFF | ON | Modo configuración |
+| Rojo fijo | ON | OFF | OFF | Error |
+| Amarillo | ON | ON | OFF | Batería baja |
+| Cian | OFF | ON | ON | Conectado a PC |
+
+---
+
+## 7. Esquema General
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              CIRCUITO LED RGB                                       │
+│                              BIOSIMULATOR PRO v1.1                                  │
+│                            ESQUEMA GENERAL DE CONEXIONES                            │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│   ┌─────────────┐                                                                   │
+│   │  BATERÍA    │                                                                   │
+│   │  2S 7.4V    │                                                                   │
+│   │  2800mAh    │                                                                   │
+│   └──────┬──────┘                                                                   │
+│          │                                                                          │
+│          ▼                                                                          │
+│   ┌─────────────┐      ┌─────────────┐      ┌─────────────┐                        │
+│   │  BMS 2S     │─────►│   SWITCH    │─────►│  BORNERA    │                        │
+│   │  HX-2S-D01  │      │   ON/OFF    │      │   7.4V      │                        │
+│   └─────────────┘      └─────────────┘      └──────┬──────┘                        │
+│                                                     │                               │
+│                              ┌──────────────────────┴──────────────────────┐       │
+│                              │                                             │       │
+│                       ┌──────▼──────┐                               ┌──────▼──────┐│
+│                       │  XL4015     │                               │  NEXTION    ││
+│                       │  BUCK       │                               │  NX4024T032 ││
+│                       │  7.4V→5V    │                               │  (o 5V)     ││
+│                       └──────┬──────┘                               └──────┬──────┘│
+│                              │                                             │       │
+│                              │ 5V                                    UART  │       │
+│                       ┌──────▼──────┐                                      │       │
+│                       │  BORNERA    │◄─────────────────────────────────────┘       │
+│                       │   5V        │                                              │
+│                       └──────┬──────┘                                              │
+│                              │                                                      │
+│            ┌─────────────────┼─────────────────┐                                   │
+│            │                 │                 │                                   │
+│     ┌──────▼──────┐   ┌──────▼──────┐   ┌──────▼──────┐                           │
+│     │   ESP32     │   │   MCP6002   │   │   LED RGB   │                           │
+│     │   NodeMCU   │   │   Buffer    │   │   Estado    │                           │
+│     │             │   │             │   │             │                           │
+│     │  GPIO25 ────┼──►│  IN    OUT ─┼──►│             │                           │
+│     │  (DAC)      │   │             │   │             │                           │
+│     │             │   └─────────────┘   └─────────────┘                           │
+│     │  GPIO17 ────┼────────────────────────────────────────► Nextion RX           │
+│     │  (TX2)      │                                                                │
+│     │             │                                                                │
+│     │  GPIO16 ◄───┼──────────────────────────────────────── Nextion TX            │
+│     │  (RX2)      │                                                                │
+│     │             │                                                                │
+│     │  GPIO4  ────┼──────────────────────────────────────► LED Rojo               │
+│     │  GPIO5  ────┼──────────────────────────────────────► LED Verde              │
+│     │  GPIO18 ────┼──────────────────────────────────────► LED Azul               │
+│     │             │                                                                │
+│     └─────────────┘                                                                │
+│            │                                                                        │
+│            │ GPIO25 (buffered)                                                     │
+│            ▼                                                                        │
+│     ┌─────────────┐                                                                │
+│     │    BNC      │                                                                │
+│     │   Output    │──────────────────────────────────────► Osciloscopio           │
+│     │  0-3.3V     │                                                                │
+│     └─────────────┘                                                                │
+│                                                                                     │
 └─────────────────────────────────────────────────────────────────────────────────────┘
-
-    ESP32 CEREBRO                                           LED RGB
-                                                       (Cátodo Común)
-
-    GPIO4 ────────────┬──[R1 = 330Ω]───────────────────────► ROJO
-                      │
-    GPIO5 ────────────┼──[R2 = 330Ω]───────────────────────► VERDE ──────► GND
-                      │
-    GPIO18 ───────────┴──[R3 = 330Ω]───────────────────────► AZUL
 ```
-
-### 7.2 Estados del LED
-
-| Estado del Sistema | Color | GPIO4 | GPIO5 | GPIO18 |
-|--------------------|-------|-------|-------|--------|
-| Sistema listo | Verde | LOW | HIGH | LOW |
-| Generando señal | Azul | LOW | LOW | PWM |
-| Error | Rojo | HIGH | LOW | LOW |
-| Batería baja | Rojo parpadeo | BLINK | LOW | LOW |
-| WiFi conectado | Cian | LOW | HIGH | HIGH |
 
 ---
 
-## 8. Conexiones UART
+## 8. Lista de Materiales (BOM)
 
-### 8.1 Especificaciones
+### 8.1 Componentes Principales
 
-| Parámetro | Valor |
+| # | Componente | Modelo | Cantidad | Precio Unit. | Subtotal |
+|---|------------|--------|----------|--------------|----------|
+| 1 | MCU | ESP32 NodeMCU v1.1 | 1 | $8.00 | $8.00 |
+| 2 | Display | Nextion NX4024T032 3.2" | 1 | $25.00 | $25.00 |
+| 3 | Batería Li-ion | Steren BAT-LI-18650/2800 | 2 | $6.00 | $12.00 |
+| 4 | Portapilas | Holder 18650 doble (serie) | 1 | $2.00 | $2.00 |
+| 5 | BMS 2S | HX-2S-D01 8A | 1 | $2.50 | $2.50 |
+| 6 | Cargador 2S | Módulo carga 8.4V 2A | 1 | $4.00 | $4.00 |
+| 7 | Regulador Buck | XL4015 5A | 1 | $3.00 | $3.00 |
+| 8 | Op-Amp | MCP6002 DIP-8 | 1 | $1.00 | $1.00 |
+| 9 | Conector BNC | BNC hembra panel | 1 | $1.50 | $1.50 |
+| 10 | LED RGB | 5mm cátodo común | 1 | $0.30 | $0.30 |
+| 11 | Resistencias | 330Ω 1/4W (pack 10) | 1 | $0.50 | $0.50 |
+| 12 | Resistencia | 100Ω 1/4W | 1 | $0.10 | $0.10 |
+| 13 | Switch | Interruptor palanca ON/OFF | 1 | $1.00 | $1.00 |
+| 14 | Borneras | Terminal block 2 pos (pack 5) | 2 | $1.00 | $2.00 |
+| 15 | Cables | Jumper wires pack | 1 | $2.00 | $2.00 |
+| 16 | Caja/Enclosure | Caja proyecto plástico | 1 | $5.00 | $5.00 |
+
+### 8.2 Resumen de Costos
+
+| Categoría | Costo |
 |-----------|-------|
-| **Velocidad** | 921600 baud |
-| **Formato** | 8N1 |
-| **Nivel lógico** | 3.3V |
-
-### 8.2 Diagrama de Conexión
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                         CONEXIÓN UART - ESP32 CEREBRO ↔ HMI                         │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-
-    ESP32 CEREBRO                                              ELECROW HMI
-    (NodeMCU v1.1)                                            (ESP32-S3 7")
-
-    ┌─────────────────┐                                  ┌─────────────────┐
-    │                 │         Cable VERDE              │                 │
-    │    GPIO17 ──────┼─────────────────────────────────►│ UART0_RX        │
-    │    (TX2)        │                                  │                 │
-    │                 │         Cable AMARILLO           │                 │
-    │    GPIO16 ◄─────┼──────────────────────────────────│ UART0_TX        │
-    │    (RX2)        │                                  │                 │
-    │                 │         Cable NEGRO              │                 │
-    │    GND ─────────┼─────────────────────────────────►│ GND             │
-    │                 │                                  │                 │
-    └─────────────────┘                                  └─────────────────┘
-
-
-    RESUMEN:
-    ════════
-    ESP32 GPIO17 (TX) ──────► ELECROW UART0_RX
-    ESP32 GPIO16 (RX) ◄────── ELECROW UART0_TX
-    ESP32 GND ─────────────── ELECROW GND
-```
+| Componentes electrónicos | $64.90 |
+| Envío estimado | $10.00 |
+| **TOTAL ESTIMADO** | **~$75 USD** |
 
 ---
 
-## 9. Esquema General
+## 9. Notas de Ensamblaje
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                         ESQUEMA GENERAL COMPLETO                                    │
-└─────────────────────────────────────────────────────────────────────────────────────┘
+### 9.1 Orden de Conexión Recomendado
 
-                    ┌─────────────────┐
-                    │    USB-C        │  (Para cargar)
-                    │    5V 1A        │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │    TP4056       │
-                    │  con protección │
-                    │                 │
-                    │  IN+ ◄── USB+   │
-                    │  IN- ◄── USB-   │
-                    │                 │
-                    │  B+ ────────────┼──────────────────────────────────────┐
-                    │  B- ────────────┼──────────────────────────────────┐   │
-                    │                 │                                  │   │
-                    │  OUT+ ──────────┼──────────────────────────────┐   │   │
-                    │  OUT- ──────────┼──────────────────────────┐   │   │   │
-                    │                 │                          │   │   │   │
-                    └─────────────────┘                          │   │   │   │
-                                                                 │   │   │   │
-                    ┌────────────────────────────────────────────┼───┼───┼───┼───┐
-                    │         PORTAPILAS 2×18650 PARALELO        │   │   │   │   │
-                    │                                            │   │   │   │   │
-                    │   ┌───────┐     ┌───────┐                  │   │   │   │   │
-                    │   │ BAT 1 │     │ BAT 2 │                  │   │   │   │   │
-                    │   │ 3.7V  │     │ 3.7V  │                  │   │   │   │   │
-                    │   │2200mAh│     │2200mAh│                  │   │   │   │   │
-                    │   └───┬───┘     └───┬───┘                  │   │   │   │   │
-                    │       └──────┬──────┘                      │   │   │   │   │
-                    │         (+)──┼─────────────────────────────┼───┼───┼───┘   │
-                    │         (-)──┼─────────────────────────────┼───┼───┘       │
-                    │              │                             │   │           │
-                    └──────────────┼─────────────────────────────┼───┼───────────┘
-                                   │                             │   │
-                                   │                        ┌────┘   └────┐
-                                   │                        │             │
-                                   │                   ┌────▼────┐   ┌────▼────┐
-                                   │                   │ SWITCH  │   │   GND   │
-                                   │                   │ ON/OFF  │   │         │
-                                   │                   └────┬────┘   └────┬────┘
-                                   │                        │             │
-                                   │                        │ 3.7V        │
-                    ┌──────────────┼────────────────────────┴─────────────┴──────┐
-                    │              │              BORNERA                        │
-                    │         ┌────┴────────────────┬────────────────┐           │
-                    │         │                     │                │           │
-                    │         ▼                     ▼                ▼           │
-                    │   ┌───────────┐         ┌───────────┐    ┌───────────┐     │
-                    │   │ A PANTALLA│         │  A BOOST  │    │  (GND)    │     │
-                    │   │ Puerto BAT│         │  MT3608   │    │           │     │
-                    │   └─────┬─────┘         └─────┬─────┘    └───────────┘     │
-                    │         │                     │                            │
-                    └─────────┼─────────────────────┼────────────────────────────┘
-                              │                     │
-                              ▼                     ▼
-                    ┌─────────────────┐   ┌─────────────────┐
-                    │   ELECROW HMI   │   │    MT3608       │
-                    │   7" 800×480    │   │    3.7V → 5V    │
-                    │                 │   │        │        │
-                    │   Puerto BAT ◄──┤   │        ▼        │
-                    │   (3.7V)        │   │   ┌─────────┐   │
-                    │                 │   │   │  ESP32  │   │
-                    │   UART0 ◄───────┼───┼──►│ CEREBRO │   │
-                    │                 │   │   │         │   │
-                    │                 │   │   │ GPIO25──┼───┼──► MCP6002 ──► BNC
-                    │                 │   │   │ GPIO4/5─┼───┼──► LED RGB
-                    │                 │   │   └─────────┘   │
-                    └─────────────────┘   └─────────────────┘
-```
+1. **Preparar pack de baterías** - Conectar 2× 18650 en serie
+2. **Conectar BMS** - B-, BM, B+ a las baterías
+3. **Instalar switch** - Entre P+ del BMS y bornera 7.4V
+4. **Configurar Buck** - Ajustar a 5.0V ANTES de conectar cargas
+5. **Conectar ESP32** - Alimentar desde bornera 5V
+6. **Conectar Nextion** - Alimentar desde bornera 5V, UART a ESP32
+7. **Instalar buffer** - MCP6002 entre GPIO25 y BNC
+8. **Conectar LEDs** - Con resistencias de 330Ω
+
+### 9.2 Verificaciones Antes de Encender
+
+- [ ] Voltaje del pack: 7.0V - 8.4V
+- [ ] Voltaje del buck: 5.0V ±0.1V
+- [ ] Polaridad correcta en todas las conexiones
+- [ ] Sin cortocircuitos visibles
+- [ ] Conexiones UART cruzadas (TX↔RX)
+
+### 9.3 Prueba Inicial
+
+1. Encender con switch
+2. Verificar LED de estado (debe encender verde)
+3. Verificar que Nextion muestra pantalla inicial
+4. Probar comunicación serial (115200 baud)
+5. Verificar salida DAC con multímetro (~1.65V en reposo)
 
 ---
 
-## 10. Cálculos de Consumo y Autonomía
+## 10. Comparativa con Versión Anterior (ELECROW)
 
-### 10.1 Consumo por Componente @ 5V
-
-| Componente | Típico | Pico |
-|------------|--------|------|
-| **ESP32 Cerebro** | | |
-| - CPU dual-core | 80 mA | 100 mA |
-| - WiFi promedio | 120 mA | 200 mA |
-| - DAC activo | 5 mA | 5 mA |
-| **Subtotal ESP32** | **205 mA** | **305 mA** |
-| **ELECROW HMI** | | |
-| - ESP32-S3 | 100 mA | 150 mA |
-| - LCD 7" backlight | 150 mA | 200 mA |
-| - Touch GT911 | 10 mA | 15 mA |
-| **Subtotal HMI** | **260 mA** | **365 mA** |
-| **Otros** | | |
-| - MCP6002 | 0.5 mA | 1 mA |
-| - LED RGB | 10 mA | 20 mA |
-| **Subtotal Otros** | **10.5 mA** | **21 mA** |
-| **TOTAL @ 5V** | **475.5 mA** | **691 mA** |
-
-### 10.2 Consumo desde Batería
-
-```
-CÁLCULO DE CORRIENTE DESDE BATERÍA:
-═══════════════════════════════════
-
-Fórmula:
-    I_batería = (I_carga × V_salida) / (V_batería × η)
-
-CONSUMO TÍPICO:
-    I_bat = (475.5mA × 5V) / (3.7V × 0.90)
-    I_bat = 2377.5 / 3.33
-    I_bat = 714 mA
-
-CONSUMO PICO:
-    I_bat = (691mA × 5V) / (3.7V × 0.90)
-    I_bat = 3455 / 3.33
-    I_bat = 1037 mA
-```
-
-### 10.3 Autonomía
-
-```
-AUTONOMÍA DEL SISTEMA:
-══════════════════════
-
-Capacidad útil (90% de 4400mAh):
-    C_útil = 3960 mAh
-
-AUTONOMÍA TÍPICA:
-    T = 3960 mAh / 714 mA = 5.55 horas ✅
-
-AUTONOMÍA MÍNIMA (pico):
-    T = 3960 mAh / 1037 mA = 3.82 horas ✅
-
-AUTONOMÍA SIN WiFi:
-    I_sin_wifi = 355 mA @ 5V → 533 mA desde batería
-    T = 3960 / 533 = 7.43 horas ✅
-```
-
-### 10.4 Resumen de Autonomía
-
-| Escenario | Consumo @ 5V | Consumo Batería | Autonomía |
-|-----------|--------------|-----------------|-----------|
-| Típico (WiFi activo) | 475 mA | 714 mA | **5.5 horas** ✅ |
-| Pico máximo | 691 mA | 1037 mA | **3.8 horas** ✅ |
-| Sin WiFi | 355 mA | 533 mA | **7.4 horas** ✅ |
+| Parámetro | ELECROW (cancelado) | Nextion (actual) |
+|-----------|---------------------|------------------|
+| Display | 7" 800×480 | 3.2" 400×240 |
+| MCU Display | ESP32-S3 | Integrado |
+| Baterías | 2P (3.7V, 4400mAh) | 2S (7.4V, 2800mAh) |
+| Regulador | MT3608 Boost | XL4015 Buck |
+| Autonomía | ~5.5h | ~5.0h |
+| Costo total | ~$91 | ~$75 |
+| Complejidad | Alta (2 MCUs) | Media (1 MCU) |
 
 ---
 
-## 11. Lista de Materiales (BOM)
-
-### 11.1 Componentes Principales
-
-| # | Componente | Modelo | Cant. | Precio | Total |
-|---|------------|--------|-------|--------|-------|
-| 1 | Batería Li-ion 18650 | BAT-LI-18650 2200mAh | 2 | $7.99 | $15.98 |
-| 2 | Portapilas 2×18650 | Paralelo, con cables | 1 | $3.00 | $3.00 |
-| 3 | Módulo cargador | TP4056 con protección | 1 | $2.00 | $2.00 |
-| 4 | Conector USB-C | Hembra, para PCB | 1 | $1.50 | $1.50 |
-| 5 | Módulo Boost | MT3608 3.7V→5V | 1 | $2.50 | $2.50 |
-| 6 | Switch | SPST 2A panel | 1 | $1.50 | $1.50 |
-| 7 | ESP32 NodeMCU | v1.1 WROOM-32 | 1 | $8.00 | $8.00 |
-| 8 | Pantalla ELECROW | 7" ESP32-S3 HMI | 1 | $50.00 | $50.00 |
-| 9 | Op-Amp | MCP6002 DIP-8 | 1 | $1.00 | $1.00 |
-| 10 | LED RGB | 5mm cátodo común | 1 | $0.50 | $0.50 |
-| 11 | Conector BNC | Hembra panel | 1 | $2.00 | $2.00 |
-
-### 11.2 Componentes Pasivos
-
-| # | Componente | Valor | Cant. | Precio | Total |
-|---|------------|-------|-------|--------|-------|
-| 12 | Resistencia | 330Ω 1/4W | 3 | $0.05 | $0.15 |
-| 13 | Capacitor cerámico | 100nF | 2 | $0.10 | $0.20 |
-
-### 11.3 Conectores y Cables
-
-| # | Componente | Tipo | Cant. | Precio | Total |
-|---|------------|------|-------|--------|-------|
-| 14 | Bornera | 4 pos, 5.08mm | 2 | $0.50 | $1.00 |
-| 15 | Cable JST-PH | 2 pines, 15cm | 1 | $0.50 | $0.50 |
-| 16 | Cable Dupont | H-H 3 hilos | 1 | $0.30 | $0.30 |
-| 17 | Cable AWG22 | Rojo/Negro 1m | 2 | $0.50 | $1.00 |
-
-### 11.4 Resumen de Costos
-
-| Categoría | Total |
-|-----------|-------|
-| Componentes principales | $87.98 |
-| Componentes pasivos | $0.35 |
-| Conectores y cables | $2.80 |
-| **TOTAL ESTIMADO** | **$91.13 USD** |
-
----
-
-## Notas Finales
-
-- **Baterías en PARALELO (2P):** Voltaje 3.7V, capacidad 4400mAh
-- **Cargador:** TP4056 con protección integrada
-- **Regulador:** MT3608 Boost (3.7V → 5V)
-- **Autonomía garantizada:** Mínimo 3.8 horas, típico 5.5 horas
-- **Salida analógica:** 1 BNC, 0-3.3V, buffered con MCP6002
+**Documento creado:** Diciembre 2024  
+**Versión:** 1.1.0  
+**Proyecto:** BioSimulator Pro

@@ -62,29 +62,32 @@ struct ConditionRange {
 
 // Tabla de rangos por condición ECG
 static const ConditionRange ECG_RANGES[] = {
-    // 0: NORMAL: 60-100 BPM, variabilidad 3-8%, sin ST shift
+    // NORMAL: 60-100 BPM, variabilidad 3-8%, sin ST shift
     { 60.0f, 100.0f, 0.03f, 0.08f, 0.0f, 0.0f },
     
-    // 1: TACHYCARDIA: 100-180 BPM, variabilidad 3-6%
+    // TACHYCARDIA: 100-180 BPM, variabilidad 3-6%
     { 100.0f, 180.0f, 0.03f, 0.06f, 0.0f, 0.0f },
     
-    // 2: BRADYCARDIA: 30-59 BPM, variabilidad 2-5%
+    // BRADYCARDIA: 30-59 BPM, variabilidad 2-5%
     { 30.0f, 59.0f, 0.02f, 0.05f, 0.0f, 0.0f },
     
-    // 3: ATRIAL_FIBRILLATION: 70-150 BPM base, alta variabilidad 15-25%
-    { 70.0f, 150.0f, 0.15f, 0.25f, 0.0f, 0.0f },
+    // ATRIAL_FIBRILLATION: 60-180 BPM, alta variabilidad 15-35%
+    { 60.0f, 180.0f, 0.15f, 0.35f, 0.0f, 0.0f },
     
-    // 4: VENTRICULAR_FIBRILLATION: Ondas caóticas 4-10 Hz
+    // VENTRICULAR_FIBRILLATION: No aplica rangos tradicionales (caótico)
     { 150.0f, 500.0f, 0.0f, 0.0f, 0.0f, 0.0f },
     
-    // 5: PREMATURE_VENTRICULAR: 50-120 BPM base + PVCs
+    // PREMATURE_VENTRICULAR: 50-120 BPM base + PVCs
     { 50.0f, 120.0f, 0.04f, 0.10f, 0.0f, 0.0f },
     
-    // 6: ST_ELEVATION (STEMI): 60-100 BPM, ST +0.30 a +0.55 mV
-    { 60.0f, 100.0f, 0.03f, 0.06f, 0.30f, 0.55f },
+    // BUNDLE_BRANCH_BLOCK: 40-100 BPM
+    { 40.0f, 100.0f, 0.03f, 0.07f, 0.0f, 0.0f },
     
-    // 7: ST_DEPRESSION (Isquemia): 60-100 BPM, ST -0.25 a -0.50 mV
-    { 60.0f, 100.0f, 0.03f, 0.06f, -0.50f, -0.25f }
+    // ST_ELEVATION: 50-110 BPM, ST +0.1 a +0.3 (en unidades modelo: 0.15-0.35)
+    { 50.0f, 110.0f, 0.03f, 0.08f, 0.15f, 0.35f },
+    
+    // ST_DEPRESSION: 50-150 BPM, ST -0.1 a -0.3 (en unidades modelo: -0.35 a -0.15)
+    { 50.0f, 150.0f, 0.03f, 0.08f, -0.35f, -0.15f }
 };
 
 // ============================================================================
@@ -155,9 +158,6 @@ void ECGModel::reset() {
     // Reset generador gaussiano Box-Muller
     gaussHasSpare = false;
     gaussSpare = 0.0f;
-    
-    // Inicializar ganancia del waveform
-    waveformGain = ECG_WAVEFORM_GAIN_DEFAULT;  // 5.0 por defecto
     
     // Inicializar con morfología normal
     useVFibModel = false;
@@ -279,19 +279,6 @@ void ECGModel::applyBazettCorrection() {
         morphology.bi[i] = morphology.baseBi[i] * hrfact;
         morphology.ti[i] = morphology.baseTi[i] * hrfact;
     }
-    
-    // DEBUG: Imprimir parámetros del modelo
-    Serial.printf("[ECG] Bazett: HR=%.1f, RR=%.3f, hrfact=%.3f\n", 
-                  morphology.hrMean, rrMean, hrfact);
-    Serial.printf("[ECG] ai: [%.2f, %.2f, %.2f, %.2f, %.2f]\n",
-                  morphology.ai[0], morphology.ai[1], morphology.ai[2], 
-                  morphology.ai[3], morphology.ai[4]);
-    Serial.printf("[ECG] bi: [%.3f, %.3f, %.3f, %.3f, %.3f]\n",
-                  morphology.bi[0], morphology.bi[1], morphology.bi[2], 
-                  morphology.bi[3], morphology.bi[4]);
-    Serial.printf("[ECG] ti: [%.3f, %.3f, %.3f, %.3f, %.3f]\n",
-                  morphology.ti[0], morphology.ti[1], morphology.ti[2], 
-                  morphology.ti[3], morphology.ti[4]);
 }
 
 // ============================================================================
@@ -318,6 +305,9 @@ void ECGModel::applyMorphologyFromCondition(ECGCondition condition) {
             break;
         case ECGCondition::PREMATURE_VENTRICULAR:
             setPVCMorphology();
+            break;
+        case ECGCondition::BUNDLE_BRANCH_BLOCK:
+            setBBBMorphology();
             break;
         case ECGCondition::ST_ELEVATION:
             setSTElevationMorphology();
@@ -353,19 +343,10 @@ void ECGModel::setNormalMorphology() {
         morphology.baseTi[i] = angles[i] * PI / 180.0f;
     }
     
-    // Amplitudes PQRST - del MATLAB original, escaladas x4
+    // Amplitudes PQRST - del MATLAB original
     // P: pequeña positiva, Q: pequeña negativa, R: grande positiva
     // S: pequeña negativa, T: moderada positiva
-    // 
-    // NOTA: Los valores originales [1.2, -5, 30, -7.5, 0.75] producen
-    // amplitudes pequeñas. Multiplicamos por 4 para obtener el rango
-    // correcto de [-0.4, +1.2] mV.
-    const float AMPLITUDE_SCALE = 4.0f;
-    float amps[5] = {1.2f * AMPLITUDE_SCALE, 
-                     -5.0f * AMPLITUDE_SCALE, 
-                     30.0f * AMPLITUDE_SCALE, 
-                     -7.5f * AMPLITUDE_SCALE, 
-                     0.75f * AMPLITUDE_SCALE};
+    float amps[5] = {1.2f, -5.0f, 30.0f, -7.5f, 0.75f};
     for (int i = 0; i < MCSHARRY_WAVES; i++) {
         morphology.baseAi[i] = amps[i];
         morphology.ai[i] = amps[i];
@@ -455,6 +436,22 @@ void ECGModel::setPVCMorphology() {
 }
 
 /**
+ * @brief Bloqueo de rama: QRS ancho (>120ms)
+ * 
+ * Se ensanchan las ondas Q, R, S aumentando sus parámetros bi.
+ * El QRS resultante simula la conducción retardada por una rama.
+ */
+void ECGModel::setBBBMorphology() {
+    setNormalMorphology();
+    
+    // QRS ancho: aumentar bi para Q, R, S (índices 1, 2, 3)
+    // Esto simula la duración >120ms del QRS
+    morphology.baseBi[1] = 0.15f;  // Q más ancho
+    morphology.baseBi[2] = 0.15f;  // R más ancho
+    morphology.baseBi[3] = 0.15f;  // S más ancho
+}
+
+/**
  * @brief Elevación ST (STEMI/infarto agudo)
  * 
  * El segmento ST se eleva 0.1-0.3 mV sobre la línea base.
@@ -464,42 +461,19 @@ void ECGModel::setSTElevationMorphology() {
     setNormalMorphology();
     
     // La magnitud del ST se establece en initializeFromRange()
-    
-    // T wave HIPERAGUDA (característica de STEMI hiperagudo)
-    // En fase aguda, la T es alta, puntiaguda y simétrica
-    morphology.baseAi[4] = 1.5f;   // T wave más alta (normal ~0.75)
-    morphology.ai[4] = 1.5f;
-    morphology.baseBi[4] = 0.25f;  // T wave más ancha
-    morphology.bi[4] = 0.25f;
-    
-    // Onda Q patológica puede aparecer (necrosis)
-    morphology.baseAi[1] = -0.15f; // Q wave más profunda
-    morphology.ai[1] = -0.15f;
+    // T wave hiperaguda (típico de STEMI agudo)
+    morphology.baseAi[4] = 1.2f;
+    morphology.ai[4] = 1.2f;
 }
 
 /**
  * @brief Depresión ST (isquemia subendocárdica)
  * 
  * El segmento ST se deprime 0.1-0.3 mV bajo la línea base.
- * Patrón típico: "downsloping" o "horizontal" después del punto J
- * 
- * Características en Lead II:
- * - ST claramente por debajo de la línea PR (isoeléctrica)
- * - Puede ser horizontal, descendente o en "silla de montar"
- * - Onda T puede ser aplanada o invertida
  */
 void ECGModel::setSTDepressionMorphology() {
     setNormalMorphology();
-    
     // La magnitud del ST (negativa) se establece en initializeFromRange()
-    
-    // Onda T puede estar aplanada o ligeramente invertida en isquemia
-    morphology.baseAi[4] = 0.4f;   // T wave más pequeña (normal ~0.75)
-    morphology.ai[4] = 0.4f;
-    
-    // S wave puede ser más profunda
-    morphology.baseAi[3] = -0.35f;  // S más profunda
-    morphology.ai[3] = -0.35f;
 }
 
 // ============================================================================
@@ -534,21 +508,18 @@ void ECGModel::initVFibModel() {
 
 /**
  * @brief Genera una muestra de VFib usando el modelo espectral
- * 
- * VFib real: ondas caóticas 4-10 Hz, amplitud 0.1-1.0 mV, 300-400 "latidos"/min
- * Sin estructura PQRST identificable
  */
 float ECGModel::generateVFibSample(float deltaTime) {
     vfibState.time += deltaTime;
     
-    // Actualizar parámetros cada ~50ms para efecto más caótico
+    // Actualizar parámetros cada ~80ms para efecto caótico
     uint32_t now = millis();
-    if (now - vfibState.lastUpdateMs > 50) {
+    if (now - vfibState.lastUpdateMs > 80) {
         updateVFibParameters();
         vfibState.lastUpdateMs = now;
     }
     
-    // Suma de componentes sinusoidales (ondas caóticas)
+    // Suma de componentes sinusoidales
     float signal = 0.0f;
     for (int k = 0; k < VFIB_COMPONENTS; k++) {
         signal += vfibState.amplitudes[k] * 
@@ -556,19 +527,11 @@ float ECGModel::generateVFibSample(float deltaTime) {
                        vfibState.phases[k]);
     }
     
-    // Añadir ruido de alta frecuencia para más caos
-    signal += gaussianRandom(0.0f, 0.08f);
+    // Añadir ruido de alta frecuencia
+    signal += gaussianRandom(0.0f, 0.06f);
     
-    // Escalar para obtener amplitud típica de VFib (0.1-1.0 mV pico)
-    // Las ondas de VFib son más pequeñas que QRS normal
-    signal = signal * 0.8f + ECG_BASELINE;
-    
-    // IMPORTANTE: Actualizar state.z para que getCurrentValueMV() funcione
-    state.z = signal;
-    
-    // Calcular pseudo-HR basado en frecuencia dominante (~300-400 BPM)
-    // Esto es solo para referencia, VFib no tiene HR real
-    currentRR = 60.0f / (vfibState.frequencies[0] * 60.0f);  // ~0.15-0.2s
+    // Escalar al rango del modelo
+    signal = signal * 0.6f + ECG_BASELINE;
     
     return signal;
 }
@@ -619,18 +582,9 @@ float ECGModel::generateNextRR() {
         rr *= (1.0f + irregularity);
     }
     
-    // Obtener límites de la condición actual
-    uint8_t idx = static_cast<uint8_t>(currentCondition);
-    if (idx < 9) {
-        const ConditionRange& range = ECG_RANGES[idx];
-        // Convertir HR a RR: RR_min = 60/HR_max, RR_max = 60/HR_min
-        float rrMin = 60.0f / (range.hrMax * 1.05f);  // 5% margen
-        float rrMax = 60.0f / (range.hrMin * 0.95f);  // 5% margen
-        rr = constrain(rr, rrMin, rrMax);
-    } else {
-        // Limitar a rangos fisiológicos extremos como fallback
-        rr = constrain(rr, 0.2f, 2.5f);
-    }
+    // Limitar a rangos fisiológicos extremos
+    // RR mínimo ~0.2s = 300 BPM, RR máximo ~2.5s = 24 BPM
+    rr = constrain(rr, 0.2f, 2.5f);
     
     return rr;
 }
@@ -789,13 +743,6 @@ void ECGModel::computeDerivatives(const ECGDynamicState& s, ECGDynamicState& ds,
     
     // Derivada de z (forma de onda ECG)
     // Suma de contribuciones Gaussianas de cada onda PQRST
-    // 
-    // Ecuación McSharry: dz/dt = -Σ(ai * Δθi * exp(-Δθi²/2bi²)) - (z - z0)
-    // 
-    // NOTA: Los parámetros ai del paper están normalizados para producir
-    // amplitudes en el rango [-0.4, +1.2]. El factor omega (velocidad angular)
-    // afecta la escala temporal, por lo que multiplicamos por omega para
-    // mantener la amplitud correcta independiente del HR.
     float zDot = 0.0f;
     for (int i = 0; i < MCSHARRY_WAVES; i++) {
         // Saltar P wave si no está presente (AFib, PVC)
@@ -805,66 +752,25 @@ void ECGModel::computeDerivatives(const ECGDynamicState& s, ECGDynamicState& ds,
         float dTheta = fmodf(theta - morphology.ti[i] + PI, 2.0f * PI) - PI;
         
         // Contribución Gaussiana de esta onda
-        // Multiplicamos por omega para escalar correctamente con el HR
         float biSq = morphology.bi[i] * morphology.bi[i];
-        zDot -= omega * morphology.ai[i] * dTheta * expf(-0.5f * dTheta * dTheta / biSq);
+        zDot -= morphology.ai[i] * dTheta * expf(-0.5f * dTheta * dTheta / biSq);
     }
     
     // Restauración a línea base (constante de tiempo ~1)
     zDot -= (s.z - ECG_BASELINE);
     
-    // =========================================================================
-    // ELEVACIÓN/DEPRESIÓN ST - Modelos diferenciados
-    // =========================================================================
+    // Elevación/depresión ST en el segmento correcto
+    // ST segment: entre S wave (~20°) y T wave (~80°)
     if (fabsf(morphology.stElevation) > 0.001f) {
-        // Rango del segmento ST
-        const float ST_START = 0.25f;      // Punto J (fin QRS)
-        const float ST_END = 1.3f;         // Inicio onda T
-        
-        if (theta > ST_START && theta < ST_END) {
-            float envelope = 0.0f;
-            float stPosition = (theta - ST_START) / (ST_END - ST_START);
+        if (theta > ST_SEGMENT_START && theta < ST_SEGMENT_END) {
+            // Posición normalizada en segmento ST
+            float stPosition = (theta - ST_SEGMENT_START) / (ST_SEGMENT_END - ST_SEGMENT_START);
             
-            if (morphology.stElevation > 0) {
-                // =====================================================
-                // ELEVACIÓN ST (STEMI) - Patrón "meseta/lomo de delfín"
-                // =====================================================
-                const float PLATEAU_START = 0.15f;  // 15% del segmento
-                const float PLATEAU_END = 0.75f;    // 75% del segmento
-                
-                if (stPosition < PLATEAU_START) {
-                    // Subida rápida desde punto J
-                    envelope = stPosition / PLATEAU_START;
-                    envelope = envelope * envelope;
-                } else if (stPosition < PLATEAU_END) {
-                    // MESETA SOSTENIDA
-                    envelope = 1.0f;
-                } else {
-                    // Transición suave a onda T
-                    float pos = (stPosition - PLATEAU_END) / (1.0f - PLATEAU_END);
-                    envelope = 1.0f - (pos * pos);
-                }
-                
-                // Factor 3.0 para elevación muy visible
-                zDot += morphology.stElevation * envelope * 3.0f;
-                
-            } else {
-                // =====================================================
-                // DEPRESIÓN ST (Isquemia) - Patrón "downsloping"
-                // =====================================================
-                // La depresión ST típica es descendente: empieza en punto J
-                // y baja progresivamente hasta la onda T
-                //
-                // Patrón: máxima depresión al inicio, recuperación gradual
-                
-                // Downsloping: máximo al inicio, decrece linealmente
-                // envelope va de 1.0 (inicio) a 0.3 (fin) - no llega a 0
-                envelope = 1.0f - (stPosition * 0.7f);
-                
-                // Factor 3.5 para depresión muy visible (didáctico)
-                // stElevation es negativo, así que esto resta de zDot
-                zDot += morphology.stElevation * envelope * 3.5f;
-            }
+            // Envolvente suave sin²(x*π) para transiciones naturales
+            float envelope = sinf(stPosition * PI);
+            envelope = envelope * envelope;
+            
+            zDot += morphology.stElevation * envelope * 0.5f;
         }
     }
     
@@ -885,16 +791,6 @@ void ECGModel::computeDerivatives(const ECGDynamicState& s, ECGDynamicState& ds,
  * Error de truncamiento O(h⁵) vs O(h²) de Euler.
  */
 void ECGModel::rungeKutta4Step(float dt) {
-    // DEBUG: Imprimir estado cada 1000 pasos (~1 segundo)
-    static uint32_t stepCount = 0;
-    stepCount++;
-    if (stepCount % 1000 == 0) {
-        float theta = atan2f(state.y, state.x);
-        float radius = sqrtf(state.x * state.x + state.y * state.y);
-        Serial.printf("[RK4] x=%.4f, y=%.4f, z=%.4f, theta=%.2f, r=%.4f, dt=%.6f, RR=%.3f\n",
-                      state.x, state.y, state.z, theta, radius, dt, currentRR);
-    }
-    
     // k1
     computeDerivatives(state, k1, currentRR);
     
@@ -1067,63 +963,6 @@ float ECGModel::getCurrentValueMV() const {
 }
 
 // ============================================================================
-// ESCALADO CON GANANCIA FIJA PARA WAVEFORM
-// ============================================================================
-/**
- * @brief Obtiene valor escalado 0-255 para el waveform Nextion
- * @return Valor amplificado con ganancia fija para ocupar ~90% del display
- * 
- * ESTRATEGIA DE AMPLIFICACIÓN (preserva morfología):
- * 
- * 1. El modelo McSharry produce z(t) en rango teórico [-0.4, +1.2]
- * 2. En la práctica, la señal puede usar solo parte de ese rango
- * 3. Aplicamos ganancia fija para amplificar ANTES del mapeo
- * 4. Mapeamos al rango 0-255 usando el rango teórico completo
- * 
- * Fórmula:
- *   v' = G * (v - centro) + centro   // Amplificar respecto al centro
- *   v_255 = round((v' - ECG_MODEL_MIN) / ECG_MODEL_RANGE * 255)
- *   v_255 = clamp(v_255, 0, 255)
- * 
- * Con G=5.0 (default), una señal que usa 20% del rango pasará a usar ~100%
- */
-uint8_t ECGModel::getWaveformValue() const {
-    float sample = state.z;
-    
-    // =========================================================================
-    // ESTRATEGIA DE AMPLIFICACIÓN SIMPLE Y DIRECTA
-    // =========================================================================
-    // 
-    // El modelo McSharry produce z(t) en rango teórico [-0.4, +1.2]
-    // Rango total = 1.6 unidades
-    // 
-    // Para el waveform queremos:
-    // 1. Multiplicar la señal por la ganancia (amplificar)
-    // 2. Mapear al rango 0-255 para ocupar todo el display
-    // 
-    // Fórmula simplificada:
-    //   v' = sample * waveformGain
-    //   v_255 = (v' - min_amplificado) / rango_amplificado * 255
-    // =========================================================================
-    
-    // Amplificar la señal directamente
-    float amplified = sample * waveformGain;
-    
-    // Rango amplificado (el rango original multiplicado por ganancia)
-    const float AMP_MIN = ECG_MODEL_MIN * waveformGain;  // -0.4 * 5 = -2.0
-    const float AMP_MAX = ECG_MODEL_MAX * waveformGain;  // 1.2 * 5 = 6.0
-    const float AMP_RANGE = AMP_MAX - AMP_MIN;           // 8.0
-    
-    // Mapear al rango 0-1
-    float normalized = (amplified - AMP_MIN) / AMP_RANGE;
-    
-    // Clampeo seguro
-    normalized = constrain(normalized, 0.0f, 1.0f);
-    
-    return (uint8_t)(normalized * 255.0f);
-}
-
-// ============================================================================
 // GETTERS PARA VISUALIZACIÓN EDUCATIVA
 // ============================================================================
 // Estas funciones proveen métricas en tiempo real para mostrar en la
@@ -1141,17 +980,10 @@ bool ECGModel::isInBeat() const {
 /**
  * @brief Obtiene BPM instantáneo basado en el RR actual
  * @return Frecuencia cardíaca en latidos por minuto
- * 
- * Para VFib: retorna pseudo-HR basado en frecuencia dominante (300-400 BPM)
- * Nota: VFib no tiene latidos reales, pero las ondas caóticas tienen
- * una frecuencia de 4-10 Hz que equivale a 240-600 "ciclos"/min
  */
 float ECGModel::getCurrentBPM() const {
     if (useVFibModel) {
-        // Pseudo-HR basado en frecuencia dominante de ondas caóticas
-        // Frecuencia típica VFib: 4-7 Hz = 240-420 BPM equivalente
-        float dominantFreq = vfibState.frequencies[0];
-        return dominantFreq * 60.0f;  // Hz a BPM
+        return 0.0f;  // VFib no tiene BPM definible
     }
     if (currentRR <= 0.0f) return 0.0f;
     return 60.0f / currentRR;
@@ -1192,70 +1024,6 @@ float ECGModel::getSTDeviation_mV() const {
 }
 
 /**
- * @brief Obtiene duración estimada del complejo QRS
- * @return Duración QRS en milisegundos
- * 
- * Referencias:
- * - Surawicz B, Knilans T. Chou's Electrocardiography (8th ed, 2008)
- * - Goldberger AL. Clinical Electrocardiography (9th ed, 2017)
- * 
- * Valores típicos:
- * - Normal: 80-100 ms
- * - PVC: 120-200 ms
- * - VFib: No definido (0 ms)
- */
-float ECGModel::getQRSDuration_ms() const {
-    if (useVFibModel) {
-        return 0.0f;  // VFib no tiene QRS identificable
-    }
-    
-    // La duración QRS depende del ancho (bi) de las ondas Q, R, S
-    // bi[1]=Q, bi[2]=R, bi[3]=S en el modelo McSharry
-    // El ancho en radianes se convierte a tiempo usando el período RR
-    
-    // Ancho combinado QRS en radianes (aproximación)
-    float qrsWidthRad = morphology.bi[1] + morphology.bi[2] + morphology.bi[3];
-    
-    // Convertir de radianes a fracción del ciclo (2π = ciclo completo)
-    float qrsFraction = qrsWidthRad / (2.0f * PI);
-    
-    // Duración base según condición (valores clínicos típicos)
-    float baseDuration_ms;
-    
-    switch (currentCondition) {
-        case ECGCondition::PREMATURE_VENTRICULAR:
-            // PVC: QRS ancho 120-200 ms
-            baseDuration_ms = 160.0f;
-            break;
-            
-        case ECGCondition::VENTRICULAR_FIBRILLATION:
-            // VFib: sin QRS definido
-            return 0.0f;
-            
-        case ECGCondition::TACHYCARDIA:
-            // Taquicardia: QRS puede ser ligeramente más corto
-            baseDuration_ms = 85.0f;
-            break;
-            
-        case ECGCondition::BRADYCARDIA:
-            // Bradicardia: QRS normal
-            baseDuration_ms = 90.0f;
-            break;
-            
-        default:
-            // Normal y otras: 80-100 ms
-            baseDuration_ms = 90.0f;
-            break;
-    }
-    
-    // Ajustar ligeramente por el ancho del modelo (±10%)
-    float adjustment = 1.0f + (qrsFraction - 0.1f) * 0.5f;
-    adjustment = constrain(adjustment, 0.9f, 1.1f);
-    
-    return baseDuration_ms * adjustment;
-}
-
-/**
  * @brief Obtiene nombre de la condición actual
  * @return String con nombre de la condición
  */
@@ -1267,6 +1035,7 @@ const char* ECGModel::getConditionName() const {
         case ECGCondition::ATRIAL_FIBRILLATION:   return "FA";
         case ECGCondition::VENTRICULAR_FIBRILLATION: return "FV";
         case ECGCondition::PREMATURE_VENTRICULAR: return "PVC";
+        case ECGCondition::BUNDLE_BRANCH_BLOCK:   return "BRD/BRI";
         case ECGCondition::ST_ELEVATION:          return "STEMI";
         case ECGCondition::ST_DEPRESSION:         return "Isquemia";
         default:                                  return "Desconocido";

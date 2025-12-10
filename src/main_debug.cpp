@@ -1,20 +1,20 @@
-/**
+﻿/**
  * @file main_debug.cpp
- * @brief Modo Debug interactivo para verificación de señales biológicas
+ * @brief Modo Debug interactivo para verificacion de senales biologicas
  * @version 2.0.0
  * @date Diciembre 2024
  * 
- * Firmware ESP32 Cerebro - BioSignalSimulator Pro
+ * Firmware ESP32 - BioSimulator Pro
  * 
- * Menú interactivo que permite seleccionar:
- * - Tipo de señal (ECG, EMG, PPG)
- * - Patología específica dentro de cada señal
- * - Duración del ploteo
- * - Volver al menú en cualquier momento
+ * Menu interactivo que permite seleccionar:
+ * - Tipo de senal (ECG, EMG, PPG)
+ * - Patologia especifica dentro de cada senal
+ * - Duracion del ploteo
+ * - Volver al menu en cualquier momento
  * 
  * Hardware: ESP32-WROOM-32 (NodeMCU v1.1)
  * Salida DAC: GPIO25 (0-3.3V)
- * Comunicación: UART @ 921600 baud con HMI ELECROW
+ * Comunicacion: UART @ 115200 baud con Nextion
  */
 
 #include <Arduino.h>
@@ -25,19 +25,19 @@
 #include "models/ppg_model.h"
 
 // ============================================================================
-// CONFIGURACIÓN
+// CONFIGURACI├ôN
 // ============================================================================
 #define DEBUG_SAMPLE_RATE_HZ    100
 #define DEBUG_SAMPLE_INTERVAL   (1000 / DEBUG_SAMPLE_RATE_HZ)
 #define PLOT_DURATION_MS        10000   // 10 segundos por defecto
 
 // ============================================================================
-// CONFIGURACIÓN AUTO-START (Para Serial Plotter)
+// CONFIGURACI├ôN AUTO-START (Para Serial Plotter)
 // ============================================================================
-// Cambiar estos valores para seleccionar señal y patología
-#define AUTO_START              1       // 1 = inicio automático, 0 = menú interactivo
+// Cambiar estos valores para seleccionar se├▒al y patolog├¡a
+#define AUTO_START              1       // 1 = inicio autom├ítico, 0 = men├║ interactivo
 
-// Tipo de señal: 0=ECG, 1=EMG, 2=PPG
+// Tipo de se├▒al: 0=ECG, 1=EMG, 2=PPG
 #define AUTO_SIGNAL_TYPE        2
 
 // Condiciones ECG (solo si AUTO_SIGNAL_TYPE==0):
@@ -59,7 +59,7 @@
 #define AUTO_CONTINUOUS         1       // 1 = continuo, 0 = usar PLOT_DURATION_MS
 
 // ============================================================================
-// ESTADOS DEL MENÚ
+// ESTADOS DEL MEN├Ü
 // ============================================================================
 enum class MenuState {
     MAIN_MENU,
@@ -216,14 +216,14 @@ static const PPGExpectedRange PPG_CLINICAL_RANGES[] = {
 };
 
 // ============================================================================
-// MENÚ PRINCIPAL
+// MEN├Ü PRINCIPAL
 // ============================================================================
 void showMainMenu() {
     Serial.println();
-    Serial.println("╔════════════════════════════════════════════════════╗");
-    Serial.println("║       BIOSIMULATOR PRO - DEBUG MODE v2.0           ║");
-    Serial.println("║          Verificacion de Senales                   ║");
-    Serial.println("╚════════════════════════════════════════════════════╝");
+    Serial.println("ÔòöÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòù");
+    Serial.println("Ôòæ       BIOSIMULATOR PRO - DEBUG MODE v2.0           Ôòæ");
+    Serial.println("Ôòæ          Verificacion de Senales                   Ôòæ");
+    Serial.println("ÔòÜÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòØ");
     Serial.println();
     Serial.println("  Seleccione tipo de senal:");
     Serial.println();
@@ -238,13 +238,13 @@ void showMainMenu() {
 }
 
 // ============================================================================
-// MENÚ ECG
+// MEN├Ü ECG
 // ============================================================================
 void showECGMenu() {
     Serial.println();
-    Serial.println("╔════════════════════════════════════════════════════╗");
-    Serial.println("║              ECG - PATOLOGIAS                      ║");
-    Serial.println("╚════════════════════════════════════════════════════╝");
+    Serial.println("ÔòöÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòù");
+    Serial.println("Ôòæ              ECG - PATOLOGIAS                      Ôòæ");
+    Serial.println("ÔòÜÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòØ");
     Serial.println();
     Serial.println("  Seleccione patologia:");
     Serial.println();
@@ -264,13 +264,13 @@ void showECGMenu() {
 }
 
 // ============================================================================
-// MENÚ EMG - Modelo Fuglevand 1993
+// MEN├Ü EMG - Modelo Fuglevand 1993
 // ============================================================================
 void showEMGMenu() {
     Serial.println();
-    Serial.println("╔════════════════════════════════════════════════════╗");
-    Serial.println("║     EMG - CONDICIONES (Fuglevand 1993)             ║");
-    Serial.println("╚════════════════════════════════════════════════════╝");
+    Serial.println("ÔòöÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòù");
+    Serial.println("Ôòæ     EMG - CONDICIONES (Fuglevand 1993)             Ôòæ");
+    Serial.println("ÔòÜÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòØ");
     Serial.println();
     Serial.println("  Seleccione condicion:");
     Serial.println();
@@ -291,13 +291,13 @@ void showEMGMenu() {
 }
 
 // ============================================================================
-// MENÚ PPG - Modelo Allen 2007, Elgendi 2012
+// MEN├Ü PPG - Modelo Allen 2007, Elgendi 2012
 // ============================================================================
 void showPPGMenu() {
     Serial.println();
-    Serial.println("╔════════════════════════════════════════════════════╗");
-    Serial.println("║      PPG - CONDICIONES (Allen 2007)                ║");
-    Serial.println("╚════════════════════════════════════════════════════╝");
+    Serial.println("ÔòöÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòù");
+    Serial.println("Ôòæ      PPG - CONDICIONES (Allen 2007)                Ôòæ");
+    Serial.println("ÔòÜÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòØ");
     Serial.println();
     Serial.println("  Seleccione condicion:");
     Serial.println();
@@ -315,7 +315,7 @@ void showPPGMenu() {
 }
 
 // ============================================================================
-// MENÚ DURACIÓN
+// MEN├Ü DURACI├ôN
 // ============================================================================
 void showDurationMenu() {
     Serial.println();
@@ -333,7 +333,7 @@ void showDurationMenu() {
 }
 
 // ============================================================================
-// RANGOS CLÍNICOS ESPERADOS (para validación)
+// RANGOS CL├ìNICOS ESPERADOS (para validaci├│n)
 // ============================================================================
 struct ExpectedRange {
     float hrMin;
@@ -388,7 +388,7 @@ void setupEMGCondition(EMGCondition cond) {
     params.condition = cond;
     params.amplitude = 1.0f;
     params.noiseLevel = 0.05f;
-    params.excitationLevel = 0.0f;  // Usar default de la condición
+    params.excitationLevel = 0.0f;  // Usar default de la condici├│n
     emgModel.setParameters(params);
     
     minVal = 999.0f;
@@ -410,7 +410,7 @@ void setupPPGCondition(PPGCondition cond) {
     
     PPGParameters params;
     params.condition = cond;
-    params.heartRate = 75.0f;  // Default, será modificado por condición
+    params.heartRate = 75.0f;  // Default, ser├í modificado por condici├│n
     params.perfusionIndex = 3.0f;
     params.dicroticNotch = 0.25f;
     params.noiseLevel = 0.02f;
@@ -431,7 +431,7 @@ void setupPPGCondition(PPGCondition cond) {
 // ============================================================================
 void startPlotting() {
     Serial.println();
-    Serial.println("════════════════════════════════════════════════════");
+    Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     
     if (currentSignalType == SignalType::ECG) {
         Serial.printf("  PLOTEANDO: ECG - %s\n", getECGConditionName(currentECGCondition));
@@ -467,7 +467,7 @@ void startPlotting() {
     } else {
         Serial.printf("  Duracion: %lu segundos\n", plotDuration / 1000);
     }
-    Serial.println("════════════════════════════════════════════════════");
+    Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     Serial.println();
     delay(1000);
     
@@ -480,9 +480,9 @@ void startPlotting() {
 // ============================================================================
 void showPlotSummary() {
     Serial.println();
-    Serial.println("════════════════════════════════════════════════════");
+    Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     Serial.println("  RESUMEN DEL PLOTEO");
-    Serial.println("════════════════════════════════════════════════════");
+    Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     
     Serial.printf("  Rango: %.4f a %.4f (amplitud: %.4f)\n", minVal, maxVal, maxVal - minVal);
     
@@ -522,13 +522,13 @@ void showPlotSummary() {
         Serial.printf("  PI: %.1f%%, Latidos: %lu\n", ppgModel.getPerfusionIndex(), ppgModel.getBeatCount());
     }
     
-    Serial.println("════════════════════════════════════════════════════");
+    Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     Serial.println();
     Serial.println("  Presione cualquier tecla para continuar...");
     
     waitForInput();
     
-    // Volver al menú correspondiente
+    // Volver al men├║ correspondiente
     if (currentSignalType == SignalType::ECG) {
         menuState = MenuState::ECG_MENU;
         showECGMenu();
@@ -542,7 +542,7 @@ void showPlotSummary() {
 }
 
 // ============================================================================
-// PROCESAR MENÚ PRINCIPAL
+// PROCESAR MEN├Ü PRINCIPAL
 // ============================================================================
 void processMainMenu(char input) {
     switch (input) {
@@ -580,7 +580,7 @@ void processMainMenu(char input) {
 }
 
 // ============================================================================
-// PROCESAR MENÚ ECG
+// PROCESAR MEN├Ü ECG
 // ============================================================================
 void processECGMenu(char input) {
     ECGCondition selectedCond;
@@ -615,7 +615,7 @@ void processECGMenu(char input) {
 }
 
 // ============================================================================
-// PROCESAR MENÚ DURACIÓN
+// PROCESAR MEN├Ü DURACI├ôN
 // ============================================================================
 void processDurationMenu(char input) {
     continuousMode = false;
@@ -632,7 +632,7 @@ void processDurationMenu(char input) {
             break;
         case 'b':
         case 'B':
-            // Volver al menú correspondiente
+            // Volver al men├║ correspondiente
             if (currentSignalType == SignalType::ECG) {
                 menuState = MenuState::ECG_MENU;
                 showECGMenu();
@@ -654,7 +654,7 @@ void processDurationMenu(char input) {
 }
 
 // ============================================================================
-// PROCESAR MENÚ EMG
+// PROCESAR MEN├Ü EMG
 // ============================================================================
 void processEMGMenu(char input) {
     EMGCondition selectedCond;
@@ -689,7 +689,7 @@ void processEMGMenu(char input) {
 }
 
 // ============================================================================
-// PROCESAR MENÚ PPG
+// PROCESAR MEN├Ü PPG
 // ============================================================================
 void processPPGMenu(char input) {
     PPGCondition selectedCond;
@@ -735,34 +735,34 @@ void setup() {
     #if AUTO_START
     // ========== MODO AUTO-START PARA SERIAL PLOTTER ==========
     Serial.println();
-    Serial.println("═══════════════════════════════════════════════════════");
+    Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     Serial.println("  BIOSIMULATOR PRO - AUTO-START MODE");
-    Serial.println("═══════════════════════════════════════════════════════");
+    Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     
-    // Configurar señal según AUTO_SIGNAL_TYPE
+    // Configurar se├▒al seg├║n AUTO_SIGNAL_TYPE
     #if AUTO_SIGNAL_TYPE == 0  // ECG
         setupECGCondition((ECGCondition)AUTO_ECG_CONDITION);
-        Serial.printf("  Señal: ECG - %s\n", getECGConditionName((ECGCondition)AUTO_ECG_CONDITION));
+        Serial.printf("  Se├▒al: ECG - %s\n", getECGConditionName((ECGCondition)AUTO_ECG_CONDITION));
     #elif AUTO_SIGNAL_TYPE == 1  // EMG
         setupEMGCondition((EMGCondition)AUTO_EMG_CONDITION);
-        Serial.printf("  Señal: EMG - %s\n", getEMGConditionName((EMGCondition)AUTO_EMG_CONDITION));
+        Serial.printf("  Se├▒al: EMG - %s\n", getEMGConditionName((EMGCondition)AUTO_EMG_CONDITION));
     #else  // PPG
         setupPPGCondition((PPGCondition)AUTO_PPG_CONDITION);
-        Serial.printf("  Señal: PPG - %s\n", getPPGConditionName((PPGCondition)AUTO_PPG_CONDITION));
+        Serial.printf("  Se├▒al: PPG - %s\n", getPPGConditionName((PPGCondition)AUTO_PPG_CONDITION));
     #endif
     
     continuousMode = AUTO_CONTINUOUS;
     plotDuration = AUTO_CONTINUOUS ? 0xFFFFFFFF : PLOT_DURATION_MS;
     
     Serial.println("  Modo: CONTINUO (presione 'r' en Serial Monitor para reiniciar)");
-    Serial.println("═══════════════════════════════════════════════════════");
+    Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     Serial.println();
     delay(2000);
     
     plotStartTime = millis();
     menuState = MenuState::PLOTTING;
     #else
-    // Mostrar menú principal (modo interactivo)
+    // Mostrar men├║ principal (modo interactivo)
     showMainMenu();
     #endif
 }
@@ -775,7 +775,7 @@ void loop() {
     static unsigned long lastPlot = 0;
     unsigned long now = millis();
     
-    // ========== MODO MENÚ ==========
+    // ========== MODO MEN├Ü ==========
     if (menuState != MenuState::PLOTTING) {
         if (Serial.available()) {
             char input = Serial.read();
@@ -817,13 +817,13 @@ void loop() {
         }
     }
     
-    // Verificar duración
+    // Verificar duraci├│n
     if (!continuousMode && (now - plotStartTime >= plotDuration)) {
         showPlotSummary();
         return;
     }
     
-    // Generar muestras a 1000 Hz según tipo de señal
+    // Generar muestras a 1000 Hz seg├║n tipo de se├▒al
     if (now - lastSample >= 1) {
         uint8_t dacValue = 128;
         if (currentSignalType == SignalType::ECG) {
@@ -837,7 +837,7 @@ void loop() {
         lastSample = now;
     }
     
-    // Enviar datos según tipo de señal
+    // Enviar datos seg├║n tipo de se├▒al
     if (now - lastPlot >= DEBUG_SAMPLE_INTERVAL) {
         float value = 0.0f;
         
@@ -847,7 +847,7 @@ void loop() {
             if (value > maxVal) maxVal = value;
             
             // Formato Serial Plotter: >nombre:valor
-            // ECG: señal, HR, RR, amplitud R, desviación ST, duración QRS, latidos
+            // ECG: se├▒al, HR, RR, amplitud R, desviaci├│n ST, duraci├│n QRS, latidos
             Serial.print(">ecg:");
             Serial.print(value, 4);
             Serial.print(",hr:");
@@ -869,7 +869,7 @@ void loop() {
             if (value < minVal) minVal = value;
             if (value > maxVal) maxVal = value;
             
-            // EMG: señal, RMS, MUs activas, frecuencia de disparo, % contracción
+            // EMG: se├▒al, RMS, MUs activas, frecuencia de disparo, % contracci├│n
             Serial.print(">emg:");
             Serial.print(value, 4);
             Serial.print(",rms:");
@@ -887,7 +887,7 @@ void loop() {
             if (value < minVal) minVal = value;
             if (value > maxVal) maxVal = value;
             
-            // PPG: señal, HR, RR, PI, SpO2, latidos
+            // PPG: se├▒al, HR, RR, PI, SpO2, latidos
             Serial.print(">ppg:");
             Serial.print(value, 4);
             Serial.print(",hr:");
@@ -906,13 +906,13 @@ void loop() {
         lastPlot = now;
     }
     
-    // ========== ESTADÍSTICAS PERIÓDICAS (cada 3 segundos) ==========
+    // ========== ESTAD├ìSTICAS PERI├ôDICAS (cada 3 segundos) ==========
     static unsigned long lastStats = 0;
     if (now - lastStats >= 3000) {
         Serial.println();
-        Serial.println("────────────────────────────────────────────────────");
+        Serial.println("ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ");
         Serial.printf("  [%lu s] METRICAS EN TIEMPO REAL\n", (now - plotStartTime) / 1000);
-        Serial.println("────────────────────────────────────────────────────");
+        Serial.println("ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ");
         
         if (currentSignalType == SignalType::ECG) {
             float hr = ecgModel.getCurrentBPM();
@@ -932,7 +932,7 @@ void loop() {
             Serial.printf("  Onda R: %.2f mV (tipico: 0.5-1.5 mV)\n", rAmp);
             Serial.printf("  ST: %.3f mV %s\n", stDev, 
                          (fabsf(stDev) < 0.1f) ? "[normal]" : "[elevado/deprimido]");
-            Serial.printf("  Latidos: %lu | Rango señal: [%.3f, %.3f]\n", beats, minVal, maxVal);
+            Serial.printf("  Latidos: %lu | Rango se├▒al: [%.3f, %.3f]\n", beats, minVal, maxVal);
             
         } else if (currentSignalType == SignalType::EMG) {
             float rms = emgModel.getRMSAmplitude();
@@ -948,7 +948,7 @@ void loop() {
                          rms, rmsOK ? "[OK]" : "[!]", range.rmsMin, range.rmsMax);
             Serial.printf("  MUs activas: %d/100 (Henneman: reclutamiento ordenado)\n", mus);
             Serial.printf("  FR media: %.1f Hz (rango fisiol: 6-50 Hz)\n", fr);
-            Serial.printf("  Excitacion: %.0f%% | Rango señal: [%.3f, %.3f] mV\n", 
+            Serial.printf("  Excitacion: %.0f%% | Rango se├▒al: [%.3f, %.3f] mV\n", 
                          excit, minVal, maxVal);
             
         } else if (currentSignalType == SignalType::PPG) {
@@ -967,10 +967,10 @@ void loop() {
             Serial.printf("  RR: %.0f ms\n", rr);
             Serial.printf("  PI: %.2f%% %s (esperado: %.1f-%.1f%%)\n", 
                          pi, piOK ? "[OK]" : "[!]", range.piMin, range.piMax);
-            Serial.printf("  Latidos: %lu | Rango señal: [%.3f, %.3f]\n", beats, minVal, maxVal);
+            Serial.printf("  Latidos: %lu | Rango se├▒al: [%.3f, %.3f]\n", beats, minVal, maxVal);
         }
         
-        Serial.println("────────────────────────────────────────────────────");
+        Serial.println("ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ");
         Serial.println();
         
         lastStats = now;

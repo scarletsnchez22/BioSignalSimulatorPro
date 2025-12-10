@@ -33,7 +33,7 @@ enum class SignalState : uint8_t {
 };
 
 // ============================================================================
-// CONDICIONES ECG (8 condiciones)
+// CONDICIONES ECG (9 condiciones)
 // ============================================================================
 enum class ECGCondition : uint8_t {
     NORMAL = 0,                     // Ritmo sinusal normal
@@ -42,49 +42,47 @@ enum class ECGCondition : uint8_t {
     ATRIAL_FIBRILLATION,            // Fibrilación auricular
     VENTRICULAR_FIBRILLATION,       // Fibrilación ventricular
     PREMATURE_VENTRICULAR,          // Contracciones ventriculares prematuras
-    ST_ELEVATION,                   // Elevación ST (infarto STEMI)
+    BUNDLE_BRANCH_BLOCK,            // Bloqueo de rama
+    ST_ELEVATION,                   // Elevación ST (infarto)
     ST_DEPRESSION,                  // Depresión ST (isquemia)
     
-    COUNT = 8                       // Total de condiciones
+    COUNT = 9                       // Total de condiciones
 };
 
 // ============================================================================
-// CONDICIONES EMG (8 condiciones)
-// Basado en De Luca CJ (2010), Fuglevand AJ (1993)
+// CONDICIONES EMG (10 condiciones)
 // ============================================================================
 enum class EMGCondition : uint8_t {
-    // Niveles de contracción (% MVC - Maximum Voluntary Contraction)
-    REST = 0,                       // 0-10% MVC - Reposo/mínima actividad
-    LOW_CONTRACTION,                // 10-30% MVC - Contracción baja
-    MODERATE_CONTRACTION,           // 30-60% MVC - Contracción moderada
-    HIGH_CONTRACTION,               // 60-100% MVC - Contracción alta/máxima
+    // Niveles de contracción (% MVC)
+    REST = 0,                       // Reposo (0% MVC)
+    MILD_CONTRACTION,               // Leve (20% MVC)
+    MODERATE_CONTRACTION,           // Moderada (50% MVC)
+    STRONG_CONTRACTION,             // Fuerte (80% MVC)
+    MAXIMUM_CONTRACTION,            // Máxima (100% MVC)
     
-    // Patologías - Kimura J. "Electrodiagnosis" 4th ed. 2013
+    // Patologías
     TREMOR,                         // Temblor 4-6 Hz (Parkinson)
-    MYOPATHY,                       // Miopatía (MUAPs pequeños, polifasicos)
-    NEUROPATHY,                     // Neuropatía (MUAPs gigantes, reinervación)
-    FASCICULATION,                  // Fasciculaciones espontáneas
+    MYOPATHY,                       // Miopatía (MUAPs pequeños)
+    NEUROPATHY,                     // Neuropatía (MUAPs gigantes)
+    FASCICULATION,                  // Fasciculaciones
+    FATIGUE,                        // Fatiga muscular
     
-    COUNT = 8                       // Total de condiciones
+    COUNT = 10                      // Total de condiciones
 };
 
 // ============================================================================
-// CONDICIONES PPG (6 condiciones)
-// Basado en Allen J. Physiol Meas. 2007;28(3):R1-R39
-//          Lima A, Bakker J. Intensive Care Med. 2005;31(10):1316-1326
-//          Jubran A. Crit Care. 2015;19:272
-// 
-// PI y SpO2 son valores dinámicos con variabilidad gaussiana natural.
+// CONDICIONES PPG (7 condiciones)
 // ============================================================================
 enum class PPGCondition : uint8_t {
-    NORMAL = 0,                     // PI 2-5%, SpO2 95-100%, muesca dicrótica visible
-    ARRHYTHMIA,                     // PI 1-5%, SpO2 92-100%, RR muy variable (>15%)
-    WEAK_PERFUSION,                 // PI 0.1-0.5%, SpO2 88-98%, taquicardia compensatoria
-    STRONG_PERFUSION,               // PI 5-20%, SpO2 96-100%, vasodilatación
-    VASOCONSTRICTION,               // PI 0.2-0.8%, SpO2 91-100%, onda aplanada, muesca atenuada
-    LOW_SPO2,                       // PI 0.5-3.5%, SpO2 70-90%, hipoxemia causa pulmonar
+    NORMAL = 0,                     // Pulso normal
+    ARRHYTHMIA,                     // Arritmia
+    WEAK_PERFUSION,                 // Perfusión débil
+    STRONG_PERFUSION,               // Perfusión fuerte
+    VASOCONSTRICTION,               // Vasoconstricción
+    MOTION_ARTIFACT,                // Artefacto por movimiento
+    LOW_SPO2,                       // SpO2 bajo
     
-    COUNT = 6                       // Total de condiciones
+    COUNT = 7                       // Total de condiciones
 };
 
 // ============================================================================
@@ -207,6 +205,7 @@ inline const char* ecgConditionToString(ECGCondition cond) {
         case ECGCondition::ATRIAL_FIBRILLATION:     return "Fib. Auricular";
         case ECGCondition::VENTRICULAR_FIBRILLATION:return "Fib. Ventricular";
         case ECGCondition::PREMATURE_VENTRICULAR:   return "PVC";
+        case ECGCondition::BUNDLE_BRANCH_BLOCK:     return "Bloq. Rama";
         case ECGCondition::ST_ELEVATION:            return "ST Elevado";
         case ECGCondition::ST_DEPRESSION:           return "ST Deprimido";
         default: return "Desconocido";
@@ -216,13 +215,15 @@ inline const char* ecgConditionToString(ECGCondition cond) {
 inline const char* emgConditionToString(EMGCondition cond) {
     switch (cond) {
         case EMGCondition::REST:                 return "Reposo";
-        case EMGCondition::LOW_CONTRACTION:      return "Baja";
+        case EMGCondition::MILD_CONTRACTION:     return "Leve";
         case EMGCondition::MODERATE_CONTRACTION: return "Moderada";
-        case EMGCondition::HIGH_CONTRACTION:     return "Alta";
+        case EMGCondition::STRONG_CONTRACTION:   return "Fuerte";
+        case EMGCondition::MAXIMUM_CONTRACTION:  return "Maxima";
         case EMGCondition::TREMOR:               return "Temblor";
         case EMGCondition::MYOPATHY:             return "Miopatia";
         case EMGCondition::NEUROPATHY:           return "Neuropatia";
         case EMGCondition::FASCICULATION:        return "Fasciculacion";
+        case EMGCondition::FATIGUE:              return "Fatiga";
         default: return "Desconocido";
     }
 }
@@ -234,6 +235,7 @@ inline const char* ppgConditionToString(PPGCondition cond) {
         case PPGCondition::WEAK_PERFUSION:   return "Perfusion Baja";
         case PPGCondition::STRONG_PERFUSION: return "Perfusion Alta";
         case PPGCondition::VASOCONSTRICTION: return "Vasoconstriccion";
+        case PPGCondition::MOTION_ARTIFACT:  return "Artefacto Mov.";
         case PPGCondition::LOW_SPO2:         return "SpO2 Bajo";
         default: return "Desconocido";
     }

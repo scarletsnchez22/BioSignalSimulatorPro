@@ -1,4 +1,4 @@
-# BioSignalSimulator Pro
+# BioSimulator Pro
 
 **Simulador de señales biológicas para educación e investigación**
 
@@ -8,44 +8,43 @@
 |-------|-------|
 | **Versión** | 1.1.0 |
 | **Fecha** | Diciembre 2024 |
-| **Autor** | BioSignalSimulator Pro Team |
+| **Autor** | BioSimulator Pro Team |
 | **Licencia** | MIT |
 
 ---
 
 ## Descripción
 
-BioSignalSimulator Pro es un dispositivo portátil que genera señales biológicas realistas (ECG, EMG, PPG) para:
+BioSimulator Pro es un dispositivo portátil que genera señales biológicas realistas (ECG, EMG, PPG) para:
 
-- 🎓 **Educación**: Enseñanza de fisiología y procesamiento de señales
-- 🔬 **Investigación**: Desarrollo y prueba de algoritmos
-- 🏥 **Calibración**: Verificación de equipos médicos
-- 💻 **Desarrollo**: Prototipado de dispositivos wearables
+- **Educación**: Enseñanza de fisiología y procesamiento de señales
+- **Investigación**: Desarrollo y prueba de algoritmos
+- **Calibración**: Verificación de equipos médicos
+- **Desarrollo**: Prototipado de dispositivos wearables
 
 ## Características
 
-- ✅ **3 tipos de señales**: ECG, EMG, PPG
-- ✅ **22 condiciones clínicas** simuladas
-- ✅ **Modelos matemáticos** validados científicamente
-- ✅ **Salida analógica** 0-3.3V (conector BNC)
-- ✅ **Pantalla táctil** 7" 800x480
-- ✅ **Portátil**: Batería Li-ion 4400mAh (~5.5h autonomía)
-- ✅ **Conectividad WiFi** para app web
+- **3 tipos de señales**: ECG, EMG, PPG
+- **22 condiciones clínicas** simuladas
+- **Modelos matemáticos** validados científicamente
+- **Salida analógica** 0-3.3V (conector BNC)
+- **Pantalla táctil** Nextion 3.2" con interfaz intuitiva
+- **Portátil**: Batería Li-ion 2800mAh (~5h autonomía)
 
 ## Arquitectura
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         BIOSIGNALSIMULATOR PRO                              │
+│                            BIOSIMULATOR PRO v1.1                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │   ┌─────────────────┐         UART          ┌─────────────────┐            │
-│   │   ESP32         │◄─────────────────────►│   ELECROW       │            │
-│   │   CEREBRO       │       921600          │   HMI 7"        │            │
+│   │   ESP32         │◄─────────────────────►│   NEXTION       │            │
+│   │   NodeMCU       │       115200          │   NX4024T032    │            │
 │   │                 │                        │                 │            │
-│   │   • Generación  │                        │   • LVGL UI     │            │
-│   │   • DAC output  │                        │   • Touch       │            │
-│   │   • WiFi        │                        │   • Gráficos    │            │
+│   │   • Generación  │                        │   • UI táctil   │            │
+│   │   • DAC output  │                        │   • Waveform    │            │
+│   │   • Modelos     │                        │   • Controles   │            │
 │   └────────┬────────┘                        └─────────────────┘            │
 │            │                                                                │
 │            │ DAC (0-3.3V)                                                   │
@@ -60,21 +59,23 @@ BioSignalSimulator Pro es un dispositivo portátil que genera señales biológic
 ## Estructura del Proyecto
 
 ```
-BioSignalSimulator Pro/
+BioSimulator Pro/
 ├── README.md                   # Este archivo
-├── firmware/
-│   ├── cerebro/                # ESP32 - Generación de señales
-│   │   ├── src/
-│   │   ├── include/
-│   │   └── platformio.ini
-│   └── hmi/                    # ESP32-S3 - Pantalla táctil
-│       ├── src/
-│       ├── include/
-│       └── platformio.ini
-├── webapp/                     # Aplicación web (React)
+├── platformio.ini              # Configuración PlatformIO
+├── src/
+│   ├── main.cpp                # Punto de entrada principal
+│   ├── main_debug.cpp          # Modo debug para Serial Plotter
+│   ├── core/                   # Motor de señales y control
+│   ├── models/                 # Modelos ECG, EMG, PPG
+│   └── comm/                   # Comunicación Nextion y serial
+├── include/
+│   ├── config.h                # Configuración global
+│   ├── core/                   # Headers del core
+│   ├── models/                 # Headers de modelos
+│   └── data/                   # Tipos y límites de parámetros
 ├── docs/
-│   ├── PROJECT_PLAN_v1.1.md    # Plan del proyecto
 │   ├── HARDWARE_ELECTRONICS.md # Diseño electrónico
+│   ├── README_NEXTION_UI.md    # Documentación de interfaz
 │   ├── README_MATHEMATICAL_BASIS.md
 │   └── README_COMPUTATIONAL_BASIS.md
 └── tools/                      # Scripts de validación
@@ -86,11 +87,11 @@ BioSignalSimulator Pro/
 
 | Componente | Modelo | Función |
 |------------|--------|---------|
-| MCU Cerebro | ESP32-WROOM-32 | Generación de señales |
-| Display HMI | ELECROW ESP32-S3 7" | Interfaz táctil |
-| Baterías | 2× 18650 2200mAh (paralelo) | 3.7V, 4400mAh |
-| Cargador | TP4056 con protección | Carga USB |
-| Regulador | MT3608 Boost | 3.7V → 5V |
+| MCU | ESP32-WROOM-32 (NodeMCU) | Generación de señales |
+| Display | Nextion NX4024T032 3.2" | Interfaz táctil |
+| Baterías | 2× Steren 18650 2800mAh (serie) | 7.4V |
+| Regulador | XL4015 Buck | 7.4V → 5V |
+| BMS | HX-2S-D01 | Protección y balanceo |
 | Buffer | MCP6002 | Salida analógica |
 | Conector | BNC hembra | Salida de señal |
 
@@ -107,39 +108,60 @@ Normal, Arritmia, Perfusión débil/fuerte, Vasoconstricción, SpO2 bajo
 
 ## Compilación
 
-### Firmware Cerebro
 ```bash
-cd firmware/cerebro
+# Compilar
 pio run
+
+# Subir al ESP32
 pio run --target upload
+
+# Monitor serial
+pio device monitor --baud 115200
 ```
 
-### Firmware HMI
+## Modo Debug (Serial Plotter)
+
+Para verificar señales con Arduino Serial Plotter, editar `src/main_debug.cpp`:
+
+```cpp
+#define AUTO_START 1
+#define AUTO_SIGNAL_TYPE 0  // 0=ECG, 1=EMG, 2=PPG
+#define AUTO_ECG_CONDITION 0  // Ver opciones en el archivo
+```
+
+Luego compilar con el entorno debug en `platformio.ini`.
+
+## Validación de Señales
+
 ```bash
-cd firmware/hmi
-pio run
-pio run --target upload
+# Validar señal específica
+python tools/signal_validator.py --port COM4 --signal ecg --condition NORMAL
+
+# Ver rangos clínicos
+python tools/signal_validator.py --show-ranges
 ```
 
 ## Documentación
 
-- [Plan del Proyecto](docs/PROJECT_PLAN_v1.1.md)
 - [Diseño Electrónico](docs/HARDWARE_ELECTRONICS.md)
+- [Interfaz Nextion](docs/README_NEXTION_UI.md)
 - [Base Matemática](docs/README_MATHEMATICAL_BASIS.md)
 - [Base Computacional](docs/README_COMPUTATIONAL_BASIS.md)
 
 ## Changelog
 
 ### v1.1.0 (Diciembre 2024)
-- Migración de Nextion a ELECROW HMI 7"
-- Reestructuración del proyecto (firmware/cerebro, firmware/hmi, webapp)
-- Actualización del sistema de alimentación (2P paralelo, TP4056, MT3608)
-- Documentación de hardware electrónico completa
+- Validación completa de rangos clínicos
+- Herramientas de validación Python
+- Modo debug para Serial Plotter
+- Documentación de hardware electrónico
+- Sistema de alimentación 2S (7.4V) con baterías Steren 2800mAh
 
 ### v1.0.0
-- Versión inicial con pantalla Nextion
-- Modelos ECG, EMG, PPG completos
-- Validación clínica de rangos
+- Versión inicial
+- Modelos ECG (McSharry), EMG (Fuglevand), PPG (Allen)
+- Interfaz Nextion completa
+- 22 condiciones clínicas
 
 ## Licencia
 

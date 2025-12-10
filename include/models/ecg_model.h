@@ -48,21 +48,6 @@ struct ECGDisplayMetrics {
 #define ECG_BASELINE        0.04f   // Línea base
 #define VFIB_COMPONENTS     5       // Componentes para modelo VFib alternativo
 
-// ============================================================================
-// CONSTANTES DE ESCALADO PARA WAVEFORM
-// ============================================================================
-// El modelo McSharry produce z(t) en rango [-0.4, +1.2] (amplitud total 1.6)
-// Para ocupar ~200 px de 211 px disponibles, necesitamos ganancia
-
-// Rango teórico del modelo McSharry
-#define ECG_MODEL_MIN      -0.4f   // Mínimo teórico (onda S profunda)
-#define ECG_MODEL_MAX       1.2f   // Máximo teórico (pico R)
-#define ECG_MODEL_RANGE     1.6f   // Rango total (1.2 - (-0.4))
-
-// Ganancia para amplificación del waveform
-// El modelo McSharry produce z(t) en rango [-0.4, +1.2] (1.6 unidades)
-#define ECG_WAVEFORM_GAIN_DEFAULT  1.0f
-
 // Constantes de segmento ST (ángulos en radianes)
 #define ST_SEGMENT_START    0.35f   // ~20 grados después de R
 #define ST_SEGMENT_END      1.40f   // ~80 grados (antes del pico T)
@@ -147,9 +132,6 @@ private:
     bool gaussHasSpare;
     float gaussSpare;
     
-    // Ganancia para waveform (amplificación visual)
-    float waveformGain;
-    
     // Métodos privados - Sistema dinámico McSharry
     void computeDerivatives(const ECGDynamicState& s, ECGDynamicState& ds, float rr);
     void rungeKutta4Step(float dt);
@@ -178,6 +160,7 @@ private:
     void setAFibMorphology();
     void setVFibMorphology();
     void setPVCMorphology();
+    void setBBBMorphology();
     void setSTElevationMorphology();
     void setSTDepressionMorphology();
     
@@ -217,18 +200,8 @@ public:
     /** @brief Desviación ST en mV (normal ~0, STEMI +0.1-0.3) */
     float getSTDeviation_mV() const;
     
-    /** @brief Duración del complejo QRS en ms (normal 80-100, BBB >120) */
-    float getQRSDuration_ms() const;
-    
     /** @brief Valor ECG actual en mV equivalentes */
     float getCurrentValueMV() const;
-    
-    /** @brief Valor ECG escalado 0-255 para waveform (con ganancia fija) */
-    uint8_t getWaveformValue() const;
-    
-    /** @brief Ajusta ganancia del waveform (default 5.0) */
-    void setWaveformGain(float gain) { waveformGain = constrain(gain, 1.0f, 20.0f); }
-    float getWaveformGain() const { return waveformGain; }
     
     /** @brief Nombre de la condición actual (para display) */
     const char* getConditionName() const;

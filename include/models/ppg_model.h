@@ -1,18 +1,9 @@
 /**
  * @file ppg_model.h
- * @brief Modelo PPG con doble gaussiana y 6 condiciones clínicas
- * @version 1.1.0
+ * @brief Modelo PPG con doble gaussiana
+ * @version 1.0.0
  * 
- * Modelo de fotopletismografía con HRV, muesca dicrótica y simulación
- * de condiciones patológicas con parámetros dinámicos (PI, SpO2).
- * 
- * Condiciones soportadas:
- * - NORMAL:           PI 2-5%, SpO2 95-100%, muesca dicrótica visible
- * - ARRHYTHMIA:       PI 1-5%, SpO2 92-100%, RR muy variable (>15%)
- * - WEAK_PERFUSION:   PI 0.1-0.5%, SpO2 88-98%, taquicardia compensatoria
- * - STRONG_PERFUSION: PI 5-20%, SpO2 96-100%, vasodilatación
- * - VASOCONSTRICTION: PI 0.2-0.8%, SpO2 91-100%, onda aplanada, muesca atenuada
- * - LOW_SPO2:         PI 0.5-3.5%, SpO2 70-90%, hipoxemia con perfusión conservada
+ * Modelo de fotopletismografía con HRV y muesca dicrótica.
  * 
  * Referencias científicas:
  * - Allen J. "Photoplethysmography and its application in clinical
@@ -21,9 +12,6 @@
  *   Current Cardiology Reviews, 2012.
  * - Reisner A et al. "Utility of the photoplethysmogram in circulatory
  *   monitoring." Anesthesiology, 2008.
- * - Lima A, Bakker J. "Noninvasive monitoring of peripheral perfusion."
- *   Intensive Care Med, 2005.
- * - Jubran A. "Pulse oximetry." Crit Care, 2015.
  */
 
 #ifndef PPG_MODEL_H
@@ -68,12 +56,6 @@
 #define PPG_PI_MIN          0.1f    // PI mínimo (shock severo)
 #define PPG_PI_MAX          20.0f   // PI máximo (vasodilatación extrema)
 
-// Constantes de escalado para waveform
-#define PPG_MODEL_MIN       0.0f    // Mínimo teórico (normalizado)
-#define PPG_MODEL_MAX       1.0f    // Máximo teórico (normalizado)
-#define PPG_MODEL_RANGE     1.0f    // Rango total
-#define PPG_WAVEFORM_GAIN_DEFAULT  1.5f  // Ganancia default (PPG ya usa buen rango)
-
 // ============================================================================
 // CLASE PPGModel
 // ============================================================================
@@ -107,12 +89,6 @@ private:
     float motionNoise;
     float baselineWander;
     
-    // Último valor generado (para visualización)
-    float lastSampleValue;
-    
-    // Ganancia para waveform
-    float waveformGain;
-    
     // Métodos privados
     float generateNextRR();
     float gaussianRandom(float mean, float std);
@@ -143,20 +119,11 @@ public:
     float getCurrentHeartRate() const;
     float getCurrentRRInterval() const { return currentRR * 1000.0f; } // ms
     uint32_t getBeatCount() const { return beatCount; }
-    float getPerfusionIndex() const;  // PI dinámico con variabilidad gaussiana
-    float getSpO2() const;             // SpO2 dinámico según condición (70-100%)
+    float getPerfusionIndex() const;
     bool isInSystole() const;
     PPGCondition getCondition() const { return params.condition; }
     const char* getConditionName() const;
     float getNoiseLevel() const { return params.noiseLevel; }
-    float getCurrentValueNormalized() const { return lastSampleValue; }  // Valor 0-1
-    uint8_t getWaveformValue() const;  // Valor escalado 0-255 para waveform
-    void setWaveformGain(float gain) { waveformGain = constrain(gain, 1.0f, 10.0f); }
-    float getWaveformGain() const { return waveformGain; }
-    
-private:
-    // Helper para getters const
-    float gaussianRandomConst(float mean, float std) const;
 };
 
 #endif // PPG_MODEL_H

@@ -106,6 +106,14 @@ inline ECGLimits getECGLimits(ECGCondition condition) {
             limits.stShift     = {-0.2f, 0.2f, 0.0f};
             break;
             
+        case ECGCondition::BUNDLE_BRANCH_BLOCK:
+            // Surawicz 2008: BBB tiene QRS >120ms, morfología alterada
+            limits.heartRate   = {40.0f, 100.0f, 70.0f};
+            limits.qrsAmplitude = {0.8f, 1.5f, 1.2f};
+            limits.tAmplitude  = {0.5f, 1.2f, 0.8f};  // T puede ser opuesta
+            limits.stShift     = {-0.15f, 0.15f, 0.0f};
+            break;
+            
         case ECGCondition::ST_ELEVATION:
             // AHA 2018: STEMI requiere elevación ≥1mm (0.1mV)
             limits.heartRate   = {50.0f, 110.0f, 80.0f};
@@ -143,27 +151,28 @@ inline EMGLimits getEMGLimits(EMGCondition condition) {
     
     switch (condition) {
         case EMGCondition::REST:
-            // 0-5% MVC - RMS <0.05 mV
-            limits.excitationLevel = {0.0f, 0.05f, 0.02f};
-            limits.amplitude       = {0.1f, 0.3f, 0.15f};
+            limits.excitationLevel = {0.0f, 0.1f, 0.0f};
+            limits.amplitude       = {0.1f, 0.5f, 0.2f};
             break;
             
-        case EMGCondition::LOW_CONTRACTION:
-            // 5-20% MVC - RMS 0.1-0.4 mV
-            limits.excitationLevel = {0.05f, 0.20f, 0.12f};
-            limits.amplitude       = {0.3f, 0.8f, 0.5f};
+        case EMGCondition::MILD_CONTRACTION:
+            limits.excitationLevel = {0.1f, 0.3f, 0.2f};
+            limits.amplitude       = {0.5f, 1.0f, 0.7f};
             break;
             
         case EMGCondition::MODERATE_CONTRACTION:
-            // 20-50% MVC - RMS 0.5-1.2 mV
-            limits.excitationLevel = {0.20f, 0.50f, 0.35f};
+            limits.excitationLevel = {0.3f, 0.6f, 0.5f};
             limits.amplitude       = {0.8f, 1.5f, 1.0f};
             break;
             
-        case EMGCondition::HIGH_CONTRACTION:
-            // 50-100% MVC - RMS 1.5-5.0 mV
-            limits.excitationLevel = {0.50f, 1.0f, 0.75f};
-            limits.amplitude       = {1.5f, 3.0f, 2.0f};
+        case EMGCondition::STRONG_CONTRACTION:
+            limits.excitationLevel = {0.6f, 0.9f, 0.8f};
+            limits.amplitude       = {1.2f, 2.0f, 1.5f};
+            break;
+            
+        case EMGCondition::MAXIMUM_CONTRACTION:
+            limits.excitationLevel = {0.8f, 1.0f, 1.0f};
+            limits.amplitude       = {1.5f, 2.5f, 2.0f};
             break;
             
         case EMGCondition::TREMOR:
@@ -183,6 +192,11 @@ inline EMGLimits getEMGLimits(EMGCondition condition) {
             
         case EMGCondition::FASCICULATION:
             limits.excitationLevel = {0.0f, 0.3f, 0.1f};
+            limits.amplitude       = {0.5f, 1.5f, 1.0f};
+            break;
+            
+        case EMGCondition::FATIGUE:
+            limits.excitationLevel = {0.2f, 0.8f, 0.6f};
             limits.amplitude       = {0.5f, 1.5f, 1.0f};
             break;
             
@@ -252,6 +266,13 @@ inline PPGLimits getPPGLimits(PPGCondition condition) {
             limits.heartRate       = {70.0f, 110.0f, 85.0f};
             limits.perfusionIndex  = {1.0f, 5.0f, 3.0f};
             limits.dicroticNotch   = {0.1f, 0.25f, 0.15f};  // Reducido
+            break;
+            
+        case PPGCondition::MOTION_ARTIFACT:
+            // Artefactos distorsionan la morfología - notch puede perderse
+            limits.heartRate       = {60.0f, 100.0f, 75.0f};
+            limits.perfusionIndex  = {2.0f, 10.0f, 5.0f};
+            limits.dicroticNotch   = {0.0f, 0.3f, 0.15f};  // Variable/perdido
             break;
             
         case PPGCondition::LOW_SPO2:

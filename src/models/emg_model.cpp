@@ -64,17 +64,9 @@ static const float FORCE_VARIABILITY_AMP = 0.04f;   // ±4% de fluctuación
 // Rango ±5 mV para capturar MUAPs gigantes en neuropatía
 static const float EMG_MAX_MV = 5.0f;
 
-// Parámetros del MUAP trifásico (normal)
+// Parámetros del MUAP trifásico
 static const float MUAP_SIGMA = 2.0f;           // ms (controla ancho)
 static const float MUAP_DURATION = 12.0f;       // ms duración total
-
-// Parámetros para patologías
-static const float MYOPATHY_MUAP_DURATION = 6.0f;    // ms - MUAPs cortos en miopatía
-static const float MYOPATHY_MUAP_SIGMA = 1.0f;       // ms - más estrechos
-static const float NEUROPATHY_MUAP_DURATION = 20.0f; // ms - MUAPs largos en neuropatía
-static const float NEUROPATHY_MUAP_SIGMA = 4.0f;     // ms - más anchos
-static const float TREMOR_FREQUENCY = 5.0f;          // Hz - frecuencia del temblor
-static const float TREMOR_BURST_DUTY = 0.35f;        // 35% del ciclo es burst activo
 
 // ============================================================================
 // CONSTRUCTOR
@@ -95,21 +87,6 @@ void EMGModel::reset() {
     tremorPhase = 0.0f;
     fatigueLevel = 0.0f;
     forceVariabilityPhase = 0.0f;
-    lastSampleValue = 0.0f;
-    waveformGain = EMG_WAVEFORM_GAIN_DEFAULT;  // Ganancia para waveform
-    
-    // Variables para patologías
-    fasciculationTimer = 0.0f;
-    fasciculationBurstEnd = 0.0f;
-    fasciculationActiveMU = -1;
-    
-    // Inicializar duraciones para patologías
-    for (int i = 0; i < MAX_MOTOR_UNITS; i++) {
-        // Miopatía: duraciones cortas con variabilidad (polifasia)
-        myopathyDurations[i] = MYOPATHY_MUAP_DURATION * (0.7f + 0.6f * ((float)(esp_random() % 100) / 100.0f));
-        // Neuropatía: duraciones largas
-        neuropathyDurations[i] = NEUROPATHY_MUAP_DURATION * (0.8f + 0.4f * ((float)(esp_random() % 100) / 100.0f));
-    }
     
     // Inicializar buffer RMS
     rmsBufferIndex = 0;
@@ -235,80 +212,82 @@ void EMGModel::applyConditionModifiers() {
     
     switch (params.condition) {
         case EMGCondition::REST:
-            // Reposo: 0-5% MVC - mínima actividad muscular
-            // RMS <0.05 mV, muy pocas MUs activas
-            currentExcitation = constrain(params.excitationLevel, 0.0f, 0.05f);
-            if (params.excitationLevel == 0.0f) currentExcitation = 0.02f;
+            // Reposo: sin activación muscular voluntaria
+            // Usar excitationLevel del usuario, limitado al rango de reposo
+            currentExcitation = constrain(params.excitationLevel, 0.0f, 0.1f);
             break;
             
-        case EMGCondition::LOW_CONTRACTION:
-            // Contracción baja: 5-20% MVC
-            // RMS 0.1-0.4 mV, picos <1.0 mV
-            currentExcitation = constrain(params.excitationLevel, 0.05f, 0.20f);
-            if (params.excitationLevel == 0.0f) currentExcitation = 0.12f;
+        case EMGCondition::MILD_CONTRACTION:
+            // Contracción leve (~20% MVC)
+            // Ejemplo: sostener un vaso, escribir
+            currentExcitation = constrain(params.excitationLevel, 0.1f, 0.3f);
+            if (params.excitationLevel == 0.0f) currentExcitation = 0.2f;  // Default
             break;
             
         case EMGCondition::MODERATE_CONTRACTION:
-            // Contracción moderada: 20-50% MVC
-            // RMS 0.5-1.2 mV, picos hasta ~2.0 mV
-            currentExcitation = constrain(params.excitationLevel, 0.20f, 0.50f);
-            if (params.excitationLevel == 0.0f) currentExcitation = 0.35f;
+            // Contracción moderada (~50% MVC)
+            // Ejemplo: abrir una puerta, llevar una bolsa
+            currentExcitation = constrain(params.excitationLevel, 0.3f, 0.6f);
+            if (params.excitationLevel == 0.0f) currentExcitation = 0.5f;  // Default
             break;
             
-        case EMGCondition::HIGH_CONTRACTION:
-            // Contracción alta: 50-100% MVC
-            // RMS 1.5-5.0 mV, picos hasta 4-5 mV
-            currentExcitation = constrain(params.excitationLevel, 0.50f, 1.0f);
-            if (params.excitationLevel == 0.0f) currentExcitation = 0.75f;
+        case EMGCondition::STRONG_CONTRACTION:
+            // Contracción fuerte (~80% MVC)
+            // Ejemplo: apretar firmemente, levantar peso moderado
+            currentExcitation = constrain(params.excitationLevel, 0.6f, 0.9f);
+            if (params.excitationLevel == 0.0f) currentExcitation = 0.8f;  // Default
+            break;
+            
+        case EMGCondition::MAXIMUM_CONTRACTION:
+            // Contracción máxima (100% MVC)
+            // Ejemplo: máximo esfuerzo voluntario
+            currentExcitation = constrain(params.excitationLevel, 0.8f, 1.0f);
+            if (params.excitationLevel == 0.0f) currentExcitation = 1.0f;  // Default
             break;
             
         case EMGCondition::TREMOR:
             // Temblor tipo Parkinson (4-6 Hz)
-            // Ref: Deuschl G. Mov Disord. 1998 - Frecuencia típica 4-6 Hz
-            // La excitación se modula en generateSample() para crear bursts
-            currentExcitation = 0.0f;  // Empieza en 0, se modula cíclicamente
+            // Excitación base modulada sinusoidalmente
+            currentExcitation = 0.3f;
             break;
             
         case EMGCondition::MYOPATHY:
-            // Miopatía: daño muscular primario
-            // Ref: Kimura J. Electrodiagnosis 4th ed. 2013
-            // MUAPs pequeños (<500µV), polifásicos, duración corta
-            // Reclutamiento precoz: muchas MUs para poca fuerza
-            currentExcitation = 0.50f;  // Alta excitación para reclutamiento agresivo
+            // Miopatía: daño muscular, MUAPs pequeños y polifásicos
+            // Se reclutan más MUs para compensar debilidad
+            currentExcitation = 0.4f;
+            // Reducir amplitud de todos los MUAPs (40% del normal)
             for (int i = 0; i < MAX_MOTOR_UNITS; i++) {
-                // Amplitudes muy reducidas (30-50% del normal)
-                motorUnits[i].amplitude = motorUnits[i].baseAmplitude * (0.25f + 0.2f * ((float)(i % 10) / 10.0f));
-                // Umbrales más bajos = reclutamiento precoz
-                motorUnits[i].threshold *= 0.6f;
+                motorUnits[i].amplitude = motorUnits[i].baseAmplitude * 0.4f;
             }
             break;
             
         case EMGCondition::NEUROPATHY:
-            // Neuropatía: pérdida de MUs con reinervación colateral
-            // Ref: Kimura J. Electrodiagnosis 4th ed. 2013
-            // MUAPs gigantes (>2mV), duración larga, pocas MUs activas
-            currentExcitation = 0.40f;
+            // Neuropatía: pérdida de MUs con reinervación
+            // MUAPs gigantes en MUs supervivientes
+            currentExcitation = 0.5f;
+            // Desactivar 2/3 de las MUs (pérdida neuronal)
+            // Las supervivientes tienen MUAPs gigantes (reinervación)
             for (int i = 0; i < MAX_MOTOR_UNITS; i++) {
-                if (i % 4 != 0) {
-                    // 75% de MUs perdidas (umbral inalcanzable)
-                    motorUnits[i].threshold = 2.0f;
-                    motorUnits[i].amplitude = 0.0f;
+                if (i % 3 != 0) {
+                    motorUnits[i].threshold = 2.0f;  // Nunca se alcanzará
                 } else {
-                    // 25% sobreviven con reinervación: MUAPs gigantes (3-5x normal)
-                    motorUnits[i].amplitude = motorUnits[i].baseAmplitude * (3.0f + 2.0f * ((float)(i % 5) / 5.0f));
-                    motorUnits[i].threshold *= 0.8f;  // Umbral ligeramente más bajo
+                    // MUAPs gigantes (2.5x normal) por reinervación
+                    motorUnits[i].amplitude = motorUnits[i].baseAmplitude * 2.5f;
                 }
             }
             break;
             
         case EMGCondition::FASCICULATION:
-            // Fasciculaciones: disparos espontáneos aislados en reposo
-            // Ref: Mills KR. J Neurol Neurosurg Psychiatry. 2010
-            // Eventos discretos, 1-3 por segundo, sin patrón periódico
-            currentExcitation = 0.0f;  // Base silenciosa
-            // Programar primera fasciculación
-            fasciculationTimer = accumulatedTime + 0.3f + ((float)(esp_random() % 1000) / 1000.0f);
-            fasciculationActiveMU = -1;
+            // Fasciculaciones: disparos espontáneos aleatorios en reposo
+            // Típico de ELA, síndrome de fasciculación benigna
+            currentExcitation = 0.0f;  // Base en reposo
+            break;
+            
+        case EMGCondition::FATIGUE:
+            // Fatiga muscular: decremento progresivo de frecuencia
+            // y aumento de variabilidad
+            currentExcitation = 0.6f;
+            fatigueLevel = 0.0f;  // Aumentará con el tiempo
             break;
             
         default:
@@ -350,7 +329,11 @@ void EMGModel::updateMotorUnitRecruitment() {
                                                   FIRING_RATE_MIN, 
                                                   FIRING_RATE_MAX);
             
-            // Nota: La condición FATIGUE fue eliminada del modelo
+            // En fatiga, reducir frecuencia máxima progresivamente
+            if (params.condition == EMGCondition::FATIGUE && fatigueLevel > 0) {
+                float fatigueReduction = 1.0f - (fatigueLevel * 0.3f);  // Hasta 30% reducción
+                motorUnits[i].firingRate *= fatigueReduction;
+            }
         } else {
             motorUnits[i].isActive = false;
         }
@@ -404,75 +387,6 @@ float EMGModel::generateMUAP(float timeSinceFiring, float amplitude) {
 }
 
 // ============================================================================
-// GENERACIÓN DE MUAP CON DURACIÓN VARIABLE
-// ============================================================================
-/**
- * @brief Genera un MUAP con duración y sigma personalizados
- * 
- * Usado para neuropatía (MUAPs largos) y miopatía (MUAPs cortos)
- */
-float EMGModel::generateMUAPWithDuration(float timeSinceFiring, float amplitude, 
-                                          float duration, float sigma) {
-    float t_ms = timeSinceFiring * 1000.0f;
-    
-    if (t_ms < 0 || t_ms > duration) {
-        return 0.0f;
-    }
-    
-    float t0 = duration / 2.0f;
-    float t_centered = t_ms - t0;
-    
-    float sigma_sq = sigma * sigma;
-    float t_sq = t_centered * t_centered;
-    
-    float gaussian = expf(-t_sq / (2.0f * sigma_sq));
-    float wavelet = (1.0f - t_sq / sigma_sq) * gaussian;
-    
-    return -amplitude * wavelet * 0.5f;
-}
-
-// ============================================================================
-// GENERACIÓN DE MUAP POLIFÁSICO (MIOPATÍA)
-// ============================================================================
-/**
- * @brief Genera un MUAP polifásico para miopatía
- * 
- * Los MUAPs miopáticos tienen múltiples fases pequeñas debido a:
- * - Pérdida de fibras musculares
- * - Regeneración con fibras inmaduras
- * - Desincronización de la activación
- */
-float EMGModel::generatePolyphasicMUAP(float timeSinceFiring, float amplitude, int phases) {
-    float t_ms = timeSinceFiring * 1000.0f;
-    float duration = MYOPATHY_MUAP_DURATION;
-    
-    if (t_ms < 0 || t_ms > duration) {
-        return 0.0f;
-    }
-    
-    float signal = 0.0f;
-    float phaseSpacing = duration / (float)(phases + 1);
-    float sigma = MYOPATHY_MUAP_SIGMA * 0.7f;  // Más estrecho para cada fase
-    
-    // Generar múltiples picos pequeños
-    for (int p = 0; p < phases; p++) {
-        float t0 = phaseSpacing * (p + 1);
-        float t_centered = t_ms - t0;
-        float sigma_sq = sigma * sigma;
-        float t_sq = t_centered * t_centered;
-        
-        float gaussian = expf(-t_sq / (2.0f * sigma_sq));
-        float wavelet = (1.0f - t_sq / sigma_sq) * gaussian;
-        
-        // Alternar polaridad para crear patrón polifásico
-        float polarity = (p % 2 == 0) ? 1.0f : -1.0f;
-        signal += polarity * amplitude * wavelet * 0.3f;
-    }
-    
-    return signal;
-}
-
-// ============================================================================
 // GENERACIÓN DE MUESTRA
 // ============================================================================
 /**
@@ -519,49 +433,40 @@ float EMGModel::generateSample(float deltaTime) {
     // =========================================================================
     if (params.condition == EMGCondition::TREMOR) {
         // Temblor Parkinsoniano: 4-6 Hz (típico 5 Hz)
-        // Modulación sinusoidal suave de la envolvente
-        // Excitación(t) = base * (0.5 + 0.5 * sin(2π * f * t))
-        tremorPhase += deltaTime * 2.0f * PI * TREMOR_FREQUENCY;
+        // La excitación oscila sinusoidalmente
+        tremorPhase += deltaTime * 2.0f * PI * 5.0f;
         if (tremorPhase > 2.0f * PI) tremorPhase -= 2.0f * PI;
         
-        // Modulación sinusoidal: oscila entre 0 y base (nunca completamente silencioso)
         float tremorModulation = 0.5f + 0.5f * sinf(tremorPhase);
-        // Base ~0.25 para tener 10-40 MUs activas oscilando
-        currentExcitation = 0.25f * tremorModulation;
+        currentExcitation = 0.3f * tremorModulation;
+        
+    } else if (params.condition == EMGCondition::FATIGUE) {
+        // Fatiga: aumento progresivo del nivel y reducción de frecuencia
+        fatigueLevel += deltaTime * 0.01f;  // Fatiga aumenta 1% por segundo
+        fatigueLevel = constrain(fatigueLevel, 0.0f, 0.8f);  // Máximo 80%
+        
+        // En fatiga se reclutan más MUs para mantener fuerza
+        currentExcitation = 0.6f + fatigueLevel * 0.3f;
+        currentExcitation = constrain(currentExcitation, 0.2f, 0.9f);
         
     } else if (params.condition == EMGCondition::FASCICULATION) {
-        // Fasciculaciones: eventos aislados espontáneos
-        // Características: 1-3 eventos/segundo, duración 50-150ms, aleatorios
+        // Fasciculaciones: disparos espontáneos aleatorios
+        // ~2-3 por segundo típicamente
         
-        // Desactivar todas las MUs por defecto
-        currentExcitation = 0.0f;
-        
-        // ¿Es tiempo de una nueva fasciculación?
-        if (accumulatedTime >= fasciculationTimer && fasciculationActiveMU < 0) {
-            // Iniciar nuevo evento de fasciculación
-            fasciculationActiveMU = esp_random() % MAX_MOTOR_UNITS;
-            // Burst corto: 50-150 ms
-            float burstDuration = 0.05f + ((float)(esp_random() % 100) / 1000.0f);
-            fasciculationBurstEnd = accumulatedTime + burstDuration;
-            
-            // Activar la MU seleccionada
-            motorUnits[fasciculationActiveMU].isActive = true;
-            motorUnits[fasciculationActiveMU].nextFiringTime = accumulatedTime;
-            motorUnits[fasciculationActiveMU].firingRate = 25.0f + (float)(esp_random() % 15);  // 25-40 Hz durante burst
+        // Primero, desactivar MUs que ya dispararon (disparo único)
+        for (int i = 0; i < MAX_MOTOR_UNITS; i++) {
+            if (motorUnits[i].isActive && 
+                (accumulatedTime - motorUnits[i].lastFiringTime) > (MUAP_DURATION / 1000.0f)) {
+                motorUnits[i].isActive = false;
+            }
         }
         
-        // ¿Estamos en un burst activo?
-        if (fasciculationActiveMU >= 0) {
-            if (accumulatedTime < fasciculationBurstEnd) {
-                // Mantener la MU activa durante el burst
-                motorUnits[fasciculationActiveMU].isActive = true;
-            } else {
-                // Fin del burst
-                motorUnits[fasciculationActiveMU].isActive = false;
-                fasciculationActiveMU = -1;
-                // Programar próxima fasciculación (intervalo aleatorio 0.3-1.5s)
-                fasciculationTimer = accumulatedTime + 0.3f + ((float)(esp_random() % 1200) / 1000.0f);
-            }
+        // Generar nuevo disparo espontáneo aleatorio
+        if ((esp_random() % 1000) < 3) {  // ~0.3% probabilidad por muestra = ~3/s
+            int randomMU = esp_random() % MAX_MOTOR_UNITS;
+            motorUnits[randomMU].nextFiringTime = accumulatedTime;
+            motorUnits[randomMU].lastFiringTime = accumulatedTime;
+            motorUnits[randomMU].isActive = true;
         }
     }
     
@@ -575,59 +480,26 @@ float EMGModel::generateSample(float deltaTime) {
     // =========================================================================
     float signal = 0.0f;
     
-    // Determinar duración de MUAP según condición
-    float muapDuration = MUAP_DURATION;
-    if (params.condition == EMGCondition::MYOPATHY) {
-        muapDuration = MYOPATHY_MUAP_DURATION;
-    } else if (params.condition == EMGCondition::NEUROPATHY) {
-        muapDuration = NEUROPATHY_MUAP_DURATION;
-    }
-    
     for (int i = 0; i < MAX_MOTOR_UNITS; i++) {
-        // Usar duración apropiada para verificar si hay MUAP en curso
-        float thisMuapDuration = muapDuration;
-        if (params.condition == EMGCondition::MYOPATHY) {
-            thisMuapDuration = myopathyDurations[i];
-        } else if (params.condition == EMGCondition::NEUROPATHY) {
-            thisMuapDuration = neuropathyDurations[i];
-        }
-        
         if (motorUnits[i].isActive || 
-            (accumulatedTime - motorUnits[i].lastFiringTime) < (thisMuapDuration / 1000.0f)) {
+            (accumulatedTime - motorUnits[i].lastFiringTime) < (MUAP_DURATION / 1000.0f)) {
             
             // Verificar si es tiempo de disparar
             if (motorUnits[i].isActive && accumulatedTime >= motorUnits[i].nextFiringTime) {
                 motorUnits[i].lastFiringTime = accumulatedTime;
                 
                 // Calcular próximo disparo con variabilidad ISI
+                // CV típico de 15-25% según literatura
                 float isi = 1.0f / motorUnits[i].firingRate;
                 isi *= (1.0f + gaussianRandom(0.0f, ISI_VARIABILITY_CV));
-                isi = constrain(isi, 0.015f, 0.2f);
+                isi = constrain(isi, 0.015f, 0.2f);  // Entre 5-66 Hz efectivo
                 motorUnits[i].nextFiringTime = accumulatedTime + isi;
             }
             
-            // Añadir contribución del MUAP según condición
+            // Añadir contribución del MUAP si hay uno en curso
             float timeSinceFiring = accumulatedTime - motorUnits[i].lastFiringTime;
-            
-            if (params.condition == EMGCondition::MYOPATHY) {
-                // Miopatía: MUAPs pequeños y polifásicos
-                if (timeSinceFiring >= 0 && timeSinceFiring < (myopathyDurations[i] / 1000.0f)) {
-                    // Usar MUAPs polifásicos (3-5 fases)
-                    int phases = 3 + (i % 3);  // 3, 4 o 5 fases
-                    signal += generatePolyphasicMUAP(timeSinceFiring, motorUnits[i].amplitude, phases);
-                }
-            } else if (params.condition == EMGCondition::NEUROPATHY) {
-                // Neuropatía: MUAPs gigantes y largos
-                if (timeSinceFiring >= 0 && timeSinceFiring < (neuropathyDurations[i] / 1000.0f)) {
-                    float sigma = NEUROPATHY_MUAP_SIGMA * (0.8f + 0.4f * ((float)(i % 5) / 5.0f));
-                    signal += generateMUAPWithDuration(timeSinceFiring, motorUnits[i].amplitude, 
-                                                        neuropathyDurations[i], sigma);
-                }
-            } else {
-                // Normal y otras condiciones
-                if (timeSinceFiring >= 0 && timeSinceFiring < (MUAP_DURATION / 1000.0f)) {
-                    signal += generateMUAP(timeSinceFiring, motorUnits[i].amplitude);
-                }
+            if (timeSinceFiring >= 0 && timeSinceFiring < (MUAP_DURATION / 1000.0f)) {
+                signal += generateMUAP(timeSinceFiring, motorUnits[i].amplitude);
             }
         }
     }
@@ -642,10 +514,9 @@ float EMGModel::generateSample(float deltaTime) {
     signal += gaussianRandom(0.0f, params.noiseLevel * 0.1f);
     
     // =========================================================================
-    // ACTUALIZAR BUFFER RMS Y GUARDAR VALOR
+    // ACTUALIZAR BUFFER RMS
     // =========================================================================
     updateRMSBuffer(signal);
-    lastSampleValue = signal;  // Guardar para getter getCurrentValueMV()
     
     return signal;
 }
@@ -770,14 +641,16 @@ float EMGModel::getContractionLevel() const {
  */
 const char* EMGModel::getConditionName() const {
     switch (params.condition) {
-        case EMGCondition::REST:                 return "Reposo (0-10% MVC)";
-        case EMGCondition::LOW_CONTRACTION:      return "Baja (10-30% MVC)";
-        case EMGCondition::MODERATE_CONTRACTION: return "Moderada (30-60% MVC)";
-        case EMGCondition::HIGH_CONTRACTION:     return "Alta (60-100% MVC)";
-        case EMGCondition::TREMOR:               return "Temblor Parkinson";
+        case EMGCondition::REST:                 return "Reposo";
+        case EMGCondition::MILD_CONTRACTION:     return "Leve";
+        case EMGCondition::MODERATE_CONTRACTION: return "Moderada";
+        case EMGCondition::STRONG_CONTRACTION:   return "Fuerte";
+        case EMGCondition::MAXIMUM_CONTRACTION:  return "Maxima";
+        case EMGCondition::TREMOR:               return "Temblor";
         case EMGCondition::MYOPATHY:             return "Miopatia";
         case EMGCondition::NEUROPATHY:           return "Neuropatia";
         case EMGCondition::FASCICULATION:        return "Fasciculacion";
+        case EMGCondition::FATIGUE:              return "Fatiga";
         default:                                 return "Desconocido";
     }
 }
@@ -828,37 +701,4 @@ uint8_t EMGModel::voltageToDACValue(float voltage) {
     if (dacValue > 255) dacValue = 255;
     
     return (uint8_t)dacValue;
-}
-
-// ============================================================================
-// ESCALADO CON GANANCIA FIJA PARA WAVEFORM
-// ============================================================================
-/**
- * @brief Obtiene valor escalado 0-255 para el waveform Nextion
- * @return Valor amplificado con ganancia fija
- * 
- * EMG es una señal centrada en 0, rango teórico ±5mV
- * Amplificamos para ocupar más del display
- */
-uint8_t EMGModel::getWaveformValue() const {
-    float sample = lastSampleValue;
-    
-    // Amplificar la señal
-    float amplified = sample * waveformGain;
-    
-    // Rango amplificado
-    const float AMP_MIN = EMG_MODEL_MIN * waveformGain;  // -5 * 3 = -15
-    const float AMP_MAX = EMG_MODEL_MAX * waveformGain;  // 5 * 3 = 15
-    const float AMP_RANGE = AMP_MAX - AMP_MIN;           // 30
-    
-    // Mapear al rango 0-1
-    float normalized = (amplified - AMP_MIN) / AMP_RANGE;
-    
-    // Clampeo seguro
-    normalized = constrain(normalized, 0.0f, 1.0f);
-    
-    // Invertir Y para Nextion
-    normalized = 1.0f - normalized;
-    
-    return (uint8_t)(normalized * 255.0f);
 }
