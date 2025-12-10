@@ -679,8 +679,10 @@ $$PI = \frac{AC}{DC} \times 100\%$$
 |----------------|--------|----------------|
 | Normal | 2-5% | Perfusión periférica adecuada |
 | Vasodilatación | 5-20% | Fiebre, sepsis temprana |
-| Vasoconstricción | 0.5-2% | Frío, estrés |
-| Shock | < 0.5% | Hipoperfusión severa |
+| Vasoconstricción marcada | 0.2-0.8% | Frío extremo, vasopresores |
+| Shock / Perfusión débil | 0.1-0.5% | Hipoperfusión severa |
+
+**Nota:** PI y SpO2 son valores dinámicos con variabilidad gaussiana natural en el modelo.
 
 ---
 
@@ -688,15 +690,18 @@ $$PI = \frac{AC}{DC} \times 100\%$$
 
 ### 13.1 Tabla de Condiciones y Parámetros
 
-| Condición | Sistólica | Diastólica | Muesca | HR | Referencia |
-|-----------|-----------|------------|--------|-----|------------|
-| **NORMAL** | 1.0 | 0.4 | user | — | Allen 2007 |
-| **ARRHYTHMIA** | 1.0 | 0.4 | user | — | CV_RR=15% |
-| **WEAK_PERFUSION** | 0.25 | 0.08 | 0.1 | 115 | Reisner 2008 |
-| **STRONG_PERFUSION** | 1.6 | 0.7 | 0.35 | 72 | Reisner 2008 |
-| **VASOCONSTRICTION** | 0.7 | 0.35 | 0.45 | — | Allen 2002 |
-| **MOTION_ARTIFACT** | 1.0 | 0.4 | user | — | Shelley 2007 |
-| **LOW_SPO2** | 0.5 | 0.15 | 0.15 | 105 | Awad 2001 |
+| Condición | Sistólica | Diastólica | Muesca | HR | PI (%) | SpO2 (%) |
+|-----------|-----------|------------|--------|-----|--------|----------|
+| **NORMAL** | 1.0 | 0.4 | user | 75 | 2-5 | 95-100 |
+| **ARRHYTHMIA** | 1.0 | 0.4 | user | 85* | 1-5 | 92-100 |
+| **WEAK_PERFUSION** | 0.25 | 0.08 | 0.1 | 115 | 0.1-0.5 | 88-98 |
+| **STRONG_PERFUSION** | 1.6 | 0.7 | 0.35 | 72 | 5-20 | 96-100 |
+| **VASOCONSTRICTION** | 0.30 | 0.08 | 0.05 | 78 | 0.2-0.8 | 91-100 |
+| **LOW_SPO2** | 0.8 | 0.3 | 0.2 | 110 | 0.5-3.5 | 70-90 |
+
+*ARRHYTHMIA: HR muy variable (CV_RR=15%), base 85 BPM
+
+**Nota:** PI y SpO2 son valores dinámicos con variabilidad gaussiana.
 
 ### 13.2 Perfusión Débil (WEAK_PERFUSION)
 
@@ -724,20 +729,29 @@ Simula vasodilatación por fiebre, sepsis temprana, o ejercicio.
 - Muesca más prominente ($d = 0.35$)
 - PI = 10-20%
 
-### 13.4 Vasoconstricción (VASOCONSTRICTION)
+### 13.4 Vasoconstricción Marcada (VASOCONSTRICTION)
 
-Simula respuesta a frío, estrés, o vasopresores.
+Simula vasoconstricción severa por frío extremo, shock temprano, o vasopresores.
 
-> **Referencia:**
+> **Referencias:**
 > 
 > Allen J, Murray A.  
 > *"Age-related changes in the characteristics of the photoplethysmographic pulse shape at various body sites."*  
 > Physiological Measurement. 2003;24:297-307.
+>
+> Reisner A, et al.  
+> *"Utility of the photoplethysmogram in circulatory monitoring."*  
+> Anesthesiology. 2008;108(5):950-958.
 
 **Cambios morfológicos:**
-- Amplitud reducida 30% ($A_{sist} = 0.7$)
-- Muesca muy prominente ($d = 0.45$) — indica alta resistencia vascular
-- Frecuencia cardíaca normal (no compensación)
+- Amplitud reducida 70% ($A_{sist} = 0.30$) — onda muy débil
+- Componente diastólico casi ausente ($A_{diast} = 0.08$)
+- Muesca dicrótica casi eliminada ($d = 0.05$) — atenuada, no prominente
+- Pico sistólico más estrecho/afilado ($\sigma_{sist} = 0.04$)
+- Diástole acortada ($\sigma_{diast} = 0.06$)
+- PI muy bajo: 0.2-0.8% (típico 0.4%)
+- SpO2 variable: 91-100% (inestable por señal débil)
+- Frecuencia cardíaca normal (78 BPM)
 
 ### 13.5 Arritmia (ARRHYTHMIA)
 
@@ -748,20 +762,30 @@ Simula fibrilación auricular u otra arritmia irregular.
 - 15% de latidos prematuros ($RR_{prematuro} = 0.7 \times RR_{normal}$)
 - Amplitud variable latido a latido
 
-### 13.6 Hipoxemia (LOW_SPO2)
+### 13.6 Hipoxemia con Perfusión Conservada (LOW_SPO2)
 
-Simula SpO2 < 90% por enfermedad pulmonar o altitud.
+Simula SpO2 bajo (70-90%) por causa pulmonar (hipoventilación, shunt), no periférica.
+La señal PPG mantiene buena forma porque la perfusión está conservada.
 
-> **Referencia:**
+> **Referencias:**
 > 
-> Awad AA, Haddadin AS, Tantawy H, et al.  
+> Jubran A.  
+> *"Pulse oximetry."*  
+> Crit Care. 2015;19:272.
+>
+> Awad AA, et al.  
 > *"The relationship between the photoplethysmographic waveform and systemic vascular resistance."*  
 > J Clin Monit Comput. 2007;21:365-372.
 
 **Cambios morfológicos:**
-- Amplitud reducida 50% ($A_{sist} = 0.5$)
-- Muesca aplanada ($d = 0.15$)
-- Taquicardia refleja (HR = 105 BPM)
+- Amplitud reducida 20% ($A_{sist} = 0.8$) — leve, perfusión conservada
+- Muesca visible ($d = 0.2$)
+- Taquicardia refleja (HR = 110 BPM)
+- PI: 0.5-3.5% (ligeramente reducido)
+- SpO2: 70-90% (hipoxemia, clampeado al rango)
+
+**Nota clínica:** Es posible tener buena perfusión periférica y SpO2 bajo
+por causas centrales (pulmonares), no técnicas.
 
 ### 13.7 Artefacto de Movimiento (MOTION_ARTIFACT)
 
