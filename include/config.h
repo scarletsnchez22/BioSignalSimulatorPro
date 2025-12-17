@@ -58,20 +58,15 @@
 // CONFIGURACIÓN DE SEÑALES
 // ============================================================================
 
-/**
- * FRECUENCIA DE MUESTREO UNIFICADA: 1000 Hz
- * 
- * Justificación científica:
- * - ECG: Componente más alto ~150 Hz, 1kHz da excelente resolución
- * - EMG: Contenido 10-500 Hz, 1kHz cumple Nyquist
- * - PPG: Señal lenta <30 Hz, 1kHz captura muesca dicrótica
- */
-#define SAMPLE_RATE_HZ          1000
+// ============================================================================
+// FRECUENCIA DE MUESTREO
+// ============================================================================
+const uint16_t SAMPLE_RATE_HZ = 1000;     // 1000 Hz (1 ms)
 
-// Aliases para compatibilidad
-#define SAMPLE_RATE_ECG         SAMPLE_RATE_HZ
-#define SAMPLE_RATE_EMG         SAMPLE_RATE_HZ
-#define SAMPLE_RATE_PPG         SAMPLE_RATE_HZ
+// Aliases para claridad en el código
+const uint16_t SAMPLE_RATE_ECG = SAMPLE_RATE_HZ;
+const uint16_t SAMPLE_RATE_EMG = SAMPLE_RATE_HZ;
+const uint16_t SAMPLE_RATE_PPG = SAMPLE_RATE_HZ;
 
 // ============================================================================
 // CONFIGURACIÓN DAC

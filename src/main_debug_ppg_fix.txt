@@ -1,0 +1,18 @@
+        } else if (currentSignalType == SignalType::PPG) {
+            value = ppgModel.generateSample(0.001f);  // Versión antigua retorna 0-1 normalizado
+            if (value < minVal) minVal = value;
+            if (value > maxVal) maxVal = value;
+            
+            // PPG: señal, HR, RR, PI, latidos (versión antigua)
+            Serial.print(">ppg:");
+            Serial.print(value, 4);
+            Serial.print(",hr:");
+            Serial.print(ppgModel.getCurrentHeartRate(), 1);
+            Serial.print(",rr:");
+            Serial.print(ppgModel.getCurrentRRInterval(), 0);
+            Serial.print(",pi:");
+            Serial.print(ppgModel.getPerfusionIndex(), 2);
+            Serial.print(",beats:");
+            Serial.print(ppgModel.getBeatCount());
+            Serial.println();
+        }

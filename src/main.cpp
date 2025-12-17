@@ -277,45 +277,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             break;
         
         // Popups (páginas waveform)
-        case UIEvent::BUTTON_VALORES:
-            // Ir a página valores y actualizar valores
-            if (stateMachine.getSelectedSignal() == SignalType::ECG) {
-                nextion->goToPage(NextionPage::VALORES_ECG);
-                ECGModel& ecg = signalEngine->getECGModel();
-                nextion->updateECGValuesPage(
-                    (int)ecg.getCurrentBPM(),
-                    (int)ecg.getCurrentRR_ms(),
-                    (int)(ecg.getRWaveAmplitude_mV() * 100),
-                    (int)(ecg.getSTDeviation_mV() * 100),
-                    ecg.getBeatCount(),
-                    ecg.getConditionName()
-                );
-            } else if (stateMachine.getSelectedSignal() == SignalType::EMG) {
-                nextion->goToPage(NextionPage::VALORES_EMG);
-                EMGModel& emg = signalEngine->getEMGModel();
-                nextion->updateEMGValuesPage(
-                    (int)(emg.getRMSAmplitude() * 100),      // 0.25mV → 25
-                    emg.getActiveMotorUnits(),               // Entero
-                    (int)(emg.getMeanFiringRate() * 10),     // 12.5Hz → 125
-                    (int)emg.getContractionLevel(),          // % entero
-                    emg.getConditionName()
-                );
-            } else if (stateMachine.getSelectedSignal() == SignalType::PPG) {
-                nextion->goToPage(NextionPage::VALORES_PPG);
-                PPGModel& ppg = signalEngine->getPPGModel();
-                int spo2 = 98; // SpO2 simulado basado en PI (simplificado)
-                if (ppg.getPerfusionIndex() < 1.0f) spo2 = 90;
-                else if (ppg.getPerfusionIndex() < 2.0f) spo2 = 95;
-                nextion->updatePPGValuesPage(
-                    (int)ppg.getCurrentHeartRate(),          // BPM
-                    (int)ppg.getCurrentRRInterval(),         // RR en ms
-                    (int)(ppg.getPerfusionIndex() * 10),     // PI × 10 (5.2% → 52)
-                    spo2,                                    // SpO2 %
-                    ppg.getBeatCount(),
-                    ppg.getConditionName()
-                );
-            }
-            break;
+        // NOTA: BUTTON_VALORES eliminado - valores ahora integrados en waveform
             
         case UIEvent::BUTTON_PARAMETROS:
             // Ir a página parametros y configurar sliders
@@ -366,16 +328,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             }
             break;
         
-        case UIEvent::BUTTON_BACK_POPUP:
-            // Volver a waveform desde popup valores (solo cierra, no aplica nada)
-            if (stateMachine.getSelectedSignal() == SignalType::ECG) {
-                nextion->goToPage(NextionPage::WAVEFORM_ECG);
-            } else if (stateMachine.getSelectedSignal() == SignalType::EMG) {
-                nextion->goToPage(NextionPage::WAVEFORM_EMG);
-            } else if (stateMachine.getSelectedSignal() == SignalType::PPG) {
-                nextion->goToPage(NextionPage::WAVEFORM_PPG);
-            }
-            break;
+        // NOTA: BUTTON_BACK_POPUP eliminado - no hay popups de valores separados
         
         case UIEvent::BUTTON_APPLY_PARAMS:
             // bt_act: Aplicar cambios de sliders y cerrar popup
@@ -717,36 +670,54 @@ void updateDisplay() {
         lastWaveform = now;
     }
     
-    // Actualizar métricas a 4 Hz
+    // Actualizar métricas y valores en pantalla a 4 Hz
     if (now - lastUpdate >= METRICS_UPDATE_MS) {
         if (signalEngine->getState() == SignalState::RUNNING) {
-            DisplayMetrics metrics;
             SignalType type = signalEngine->getCurrentType();
             
+            // Actualizar valores integrados en waveforms
             switch (type) {
                 case SignalType::ECG: {
                     ECGModel& ecg = signalEngine->getECGModel();
-                    metrics.heartRate = ecg.getCurrentHeartRate();
-                    metrics.rrInterval = ecg.getCurrentRRInterval();
+                    nextion->updateECGValuesPage(
+                        (int)ecg.getCurrentBPM(),
+                        (int)ecg.getCurrentRR_ms(),
+                        (int)(ecg.getRWaveAmplitude_mV() * 100),
+                        (int)(ecg.getSTDeviation_mV() * 100),
+                        ecg.getBeatCount(),
+                        ecg.getConditionName()
+                    );
                     break;
                 }
                 case SignalType::EMG: {
                     EMGModel& emg = signalEngine->getEMGModel();
-                    metrics.excitationLevel = emg.getCurrentExcitation();
-                    metrics.activeMotorUnits = emg.getActiveMotorUnits();
+                    nextion->updateEMGValuesPage(
+                        (int)(emg.getRMSAmplitude() * 100),      // 0.25mV → 25
+                        emg.getActiveMotorUnits(),               // Entero
+                        (int)(emg.getMeanFiringRate() * 10),     // 12.5Hz → 125
+                        (int)emg.getContractionLevel(),          // % entero
+                        emg.getConditionName()
+                    );
                     break;
                 }
                 case SignalType::PPG: {
                     PPGModel& ppg = signalEngine->getPPGModel();
-                    metrics.heartRate = ppg.getCurrentHeartRate();
-                    metrics.perfusionIndex = ppg.getPerfusionIndex();
+                    int spo2 = 98; // SpO2 simulado basado en PI (simplificado)
+                    if (ppg.getPerfusionIndex() < 1.0f) spo2 = 90;
+                    else if (ppg.getPerfusionIndex() < 2.0f) spo2 = 95;
+                    nextion->updatePPGValuesPage(
+                        (int)ppg.getCurrentHeartRate(),          // BPM
+                        (int)ppg.getCurrentRRInterval(),         // RR en ms
+                        (int)(ppg.getPerfusionIndex() * 10),     // PI × 10 (5.2% → 52)
+                        spo2,                                    // SpO2 %
+                        ppg.getBeatCount(),
+                        ppg.getConditionName()
+                    );
                     break;
                 }
                 default:
                     break;
             }
-            
-            nextion->updateMetrics(metrics, type);
         }
         lastUpdate = now;
     }

@@ -1,293 +1,236 @@
 /**
  * @file ecg_model.cpp
- * @brief Implementación del modelo ECG McSharry con variabilidad natural
- * @version 1.0.0
+ * @brief Implementación del modelo ECGSYN (McSharry, Clifford et al. 2003)
+ * @version 2.0.0
  * 
- * MODELO BASE:
- * McSharry PE, Clifford GD, Tarassenko L, Smith L.
+ * Implementación fiel del modelo ECGSYN de MATLAB en C++ para ESP32.
+ * 
+ * REFERENCIA:
+ * McSharry PE, Clifford GD, Tarassenko L, Smith LA.
  * "A dynamical model for generating synthetic electrocardiogram signals."
  * IEEE Trans Biomed Eng. 2003;50(3):289-294.
  * 
- * EXTENSIONES IMPLEMENTADAS:
- * - Variabilidad latido-a-latido (beat-to-beat variability)
- * - Rangos fisiológicos por condición (basados en literatura clínica)
- * - Modelo alternativo para VFib (superposición espectral caótica)
- * - Implementación correcta de PVC con morfología aberrante
+ * ECUACIONES DEL MODELO:
+ * dx/dt = α·x - ω·y
+ * dy/dt = α·y + ω·x
+ * dz/dt = -Σ(ai·Δθi·exp(-Δθi²/2bi²)) - (z - z0)
  * 
- * Ver docs/README_MATHEMATICAL_BASIS.md para documentación científica completa.
+ * Donde:
+ * - α = 1 - √(x² + y²) : atracción al círculo unitario
+ * - ω = 2π/RR : velocidad angular
+ * - θ = atan2(y, x) : ángulo actual
+ * - Δθi = θ - θi : distancia angular a cada onda
+ * - z0 = 0 : baseline de equilibrio
  */
 
 #include "models/ecg_model.h"
 #include "config.h"
 #include <math.h>
+#include <stdlib.h>
+
+#ifdef ESP32
 #include <esp_random.h>
+#endif
 
 // ============================================================================
-// RANGOS FISIOLÓGICOS POR CONDICIÓN (Basados en literatura clínica)
+// PARÁMETROS DEFAULT DEL MODELO MCSHARRY (del MATLAB original)
 // ============================================================================
-// Estos rangos definen los límites realistas para cada patología.
-// El modelo selecciona valores aleatorios DENTRO de estos rangos.
-// 
-// REFERENCIAS CIENTÍFICAS:
-// [1] Task Force of ESC and NASPE. "Heart Rate Variability: Standards of 
-//     Measurement, Physiological Interpretation, and Clinical Use."
-//     Circulation. 1996;93(5):1043-1065. doi:10.1161/01.CIR.93.5.1043
-//     - Define SDNN normal = 141±39 ms, CV típico 5-8% en reposo
-//     - HF power (0.15-0.4 Hz) representa modulación vagal
-//
-// [2] AHA/ACC Guidelines for Management of Patients with Ventricular
-//     Arrhythmias. Circulation. 2017;138:e272-e391.
-//     - Taquicardia sinusal: >100 BPM
-//     - Bradicardia sinusal: <60 BPM (en atletas puede ser 30-50)
-//
-// [3] January CT, et al. "2014 AHA/ACC/HRS Guideline for Management of
-//     Atrial Fibrillation." J Am Coll Cardiol. 2014;64(21):e1-e76.
-//     - AFib: Ritmo irregularmente irregular, sin ondas P organizadas
-//     - Respuesta ventricular típica 60-180 BPM
-//
-// [4] Link MS, et al. "2015 ACC/AHA/HRS Guideline for Management of
-//     Adult Patients with SVT." Circulation. 2016;133:e506-e574.
-//
-// [5] McSharry PE, et al. IEEE Trans Biomed Eng. 2003;50(3):289-294.
-//     - Parámetros originales del modelo dinámico
+// Orden de extrema: [P, Q, R, S, T]
+static const float DEFAULT_TI_DEG[MCSHARRY_WAVES] = {-70.0f, -15.0f, 0.0f, 15.0f, 100.0f};
+static const float DEFAULT_AI[MCSHARRY_WAVES] = {1.15f, -5.0f, 30.0f, -7.5f, 0.75f};
+static const float DEFAULT_BI[MCSHARRY_WAVES] = {0.25f, 0.1f, 0.1f, 0.1f, 0.4f};
 
-struct ConditionRange {
-    float hrMin;        // BPM mínimo del rango
-    float hrMax;        // BPM máximo del rango
-    float hrStdMin;     // Variabilidad mínima (% del HR)
-    float hrStdMax;     // Variabilidad máxima (% del HR)
-    float stMin;        // ST shift mínimo (unidades modelo)
-    float stMax;        // ST shift máximo
-};
-
-// Tabla de rangos por condición ECG
-static const ConditionRange ECG_RANGES[] = {
-    // NORMAL: 60-100 BPM, variabilidad 3-8%, sin ST shift
-    { 60.0f, 100.0f, 0.03f, 0.08f, 0.0f, 0.0f },
-    
-    // TACHYCARDIA: 100-180 BPM, variabilidad 3-6%
-    { 100.0f, 180.0f, 0.03f, 0.06f, 0.0f, 0.0f },
-    
-    // BRADYCARDIA: 30-59 BPM, variabilidad 2-5%
-    { 30.0f, 59.0f, 0.02f, 0.05f, 0.0f, 0.0f },
-    
-    // ATRIAL_FIBRILLATION: 60-180 BPM, alta variabilidad 15-35%
-    { 60.0f, 180.0f, 0.15f, 0.35f, 0.0f, 0.0f },
-    
-    // VENTRICULAR_FIBRILLATION: No aplica rangos tradicionales (caótico)
-    { 150.0f, 500.0f, 0.0f, 0.0f, 0.0f, 0.0f },
-    
-    // PREMATURE_VENTRICULAR: 50-120 BPM base + PVCs
-    { 50.0f, 120.0f, 0.04f, 0.10f, 0.0f, 0.0f },
-    
-    // BUNDLE_BRANCH_BLOCK: 40-100 BPM
-    { 40.0f, 100.0f, 0.03f, 0.07f, 0.0f, 0.0f },
-    
-    // ST_ELEVATION: 50-110 BPM, ST +0.1 a +0.3 (en unidades modelo: 0.15-0.35)
-    { 50.0f, 110.0f, 0.03f, 0.08f, 0.15f, 0.35f },
-    
-    // ST_DEPRESSION: 50-150 BPM, ST -0.1 a -0.3 (en unidades modelo: -0.35 a -0.15)
-    { 50.0f, 150.0f, 0.03f, 0.08f, -0.35f, -0.15f }
-};
-
-// ============================================================================
-// PARÁMETROS DE VARIABILIDAD NATURAL
-// ============================================================================
-// Estos factores controlan cuánto varía la morfología latido-a-latido.
-//
-// JUSTIFICACIÓN CIENTÍFICA:
-// - La variabilidad de amplitud R por respiración es ~5-15% según:
-//   Pallas-Areny R, Webster JG. "Sensors and Signal Conditioning." 2001.
-//   Efecto de movimiento torácico sobre vector cardíaco.
-//
-// - HRV (variabilidad RR) documentada en Task Force 1996 [1]:
-//   * SDNN normal = 141±39 ms sobre 24h
-//   * RMSSD = 27±12 ms (variabilidad latido-a-latido)
-//   * CV típico en reposo 5-8% del RR medio
-//
-// - Arritmia sinusal respiratoria (RSA): 0.15-0.4 Hz, modulación vagal
-//   Berntson GG, et al. Psychophysiology. 1997;34(6):623-648.
-//
-// NOTA: Los valores de variabilidad morfológica (amplitud, ancho) son
-// estimaciones empíricas conservadoras. No hay estándar publicado para
-// variabilidad de bi/ti en el modelo McSharry.
-
-// Variación de amplitud por latido (±5%)
-// Basado en modulación respiratoria del vector cardíaco (5-15%)
-static const float AMPLITUDE_VARIATION = 0.05f;
-
-// Variación de ancho de onda por latido (±2%)
-// Estimación conservadora - afecta duración aparente de ondas
-static const float WIDTH_VARIATION = 0.02f;
-
-// Variación de posición angular por latido (±0.01 rad ≈ ±0.6°)
-// Pequeña variación en timing relativo de ondas
-static const float POSITION_VARIATION = 0.01f;
-
-// Deriva lenta del baseline (simula respiración)
-// RSA típica: 0.15-0.4 Hz según Task Force 1996 [1]
-static const float BASELINE_DRIFT_FREQ = 0.25f;  // Hz (centro del rango RSA)
-static const float BASELINE_DRIFT_AMP = 0.015f;  // ~15 µV equivalente, sutil
+// Valor inicial de z (del MATLAB: x0 = [1, 0, 0.04])
+static const float Z0_INITIAL = 0.04f;
+static const float Z0_EQUILIBRIUM = 0.0f;  // Baseline de equilibrio
 
 // ============================================================================
 // CONSTRUCTOR
 // ============================================================================
 ECGModel::ECGModel() {
-    hasPendingParams = false;
-    useVFibModel = false;
+    // Inicializar punteros a NULL
+    rrProcess = nullptr;
+    
+    // Valores por defecto
+    hrMean = 60.0f;
+    hrStd = 1.0f;
+    lfhfRatio = 0.5f;
+    noiseLevel = 0.0f;
+    
     currentCondition = ECGCondition::NORMAL;
+    
+    // Reset inicializa todo
     reset();
 }
 
 // ============================================================================
-// RESET - Inicializa el modelo con valores aleatorios del rango
+// DESTRUCTOR
+// ============================================================================
+ECGModel::~ECGModel() {
+    if (rrProcess != nullptr) {
+        free(rrProcess);
+        rrProcess = nullptr;
+    }
+    // calibrationRPeaks es array estático, no requiere free
+}
+
+// ============================================================================
+// RESET - Inicializa el modelo al estado inicial
 // ============================================================================
 void ECGModel::reset() {
-    // Estado inicial del sistema dinámico McSharry
-    // El punto (1, 0, baseline) es el inicio del ciclo cardíaco
+    // Estado inicial del sistema dinámico (idéntico al MATLAB)
+    // x0 = [1, 0, 0.04]
     state.x = 1.0f;
     state.y = 0.0f;
-    state.z = ECG_BASELINE;
+    state.z = Z0_INITIAL;
     
-    // Variables de control temporal
+    // Variables de control
     lastTheta = 0.0f;
-    lastBeatTime = 0;
     beatCount = 0;
-    breathPhase = 0.0f;  // Inicializar fase de respiración
+    sampleCount = 0;
     
-    // Reset generador gaussiano Box-Muller
+    // Inicializar parámetros de onda PQRST
+    initializeWaveParams();
+    
+    // Aplicar corrección hrfact según HR medio
+    applyHRFactCorrection();
+    
+    // Generar primer RR
+    currentRR = 60.0f / hrMean;  // RR = 60/HR en segundos
+    
+    // Calibración por picos R
+    isCalibrated = false;
+    physiologicalGain = 1.0f;  // G = R_objetivo / R_model
+    rModelValue = 0.0f;        // Promedio de picos R crudos
+    baselineZ = Z0_EQUILIBRIUM; // Línea isoeléctrica estimada
+    calibrationPeakCount = 0;
+    calibrationBeatCount = 0;
+    calibrationCycleZMax = -1000.0f;
+    calibrationCycleZMin = 1000.0f;
+    
+    // Inicializar buffer de picos R
+    for (int i = 0; i < MAX_CALIBRATION_PEAKS; i++) {
+        calibrationRPeaks[i] = 0.0f;
+    }
+    
+    // Mediciones del ciclo actual
+    currentCycleZMax = -1000.0f;
+    currentCycleZMin = 1000.0f;
+    currentCycleTime = 0.0f;
+    currentCycleSamples = 0;
+    
+    // Inicializar buffer de muestras del ciclo
+    cycleSamples.reset();
+    
+    // Métricas clínicas iniciales (valores típicos)
+    measuredRR_ms = 1000.0f;  // 60 BPM
+    measuredPR_ms = 160.0f;
+    measuredQRS_ms = 80.0f;
+    measuredQT_ms = 400.0f;
+    measuredQTc_ms = 400.0f;
+    measuredP_mV = 0.15f;
+    measuredQ_mV = -0.1f;
+    measuredR_mV = 1.0f;
+    measuredS_mV = -0.2f;
+    measuredT_mV = 0.3f;
+    measuredST_mV = 0.0f;
+    lastMeasuredST_mV = 0.0f;
+    currentBaseline_mV = 0.0f;
+    
+    // Generador aleatorio
     gaussHasSpare = false;
     gaussSpare = 0.0f;
     
-    // Inicializar con morfología normal
-    useVFibModel = false;
-    setNormalMorphology();
-    
-    // Generar HR inicial aleatorio dentro del rango de la condición
-    initializeFromRange(ECGCondition::NORMAL);
-    
-    // Aplicar corrección de Bazett y generar primer RR
-    applyBazettCorrection();
-    currentRR = generateNextRR();
+    // Liberar proceso RR anterior
+    if (rrProcess != nullptr) {
+        free(rrProcess);
+        rrProcess = nullptr;
+    }
+    rrProcessLength = 0;
+    rrProcessIndex = 0;
 }
 
 // ============================================================================
-// INICIALIZACIÓN DESDE RANGOS CLÍNICOS
+// INICIALIZAR PARÁMETROS DE ONDA (ti, ai, bi)
+// ============================================================================
+void ECGModel::initializeWaveParams() {
+    // Convertir ángulos de grados a radianes
+    for (int i = 0; i < MCSHARRY_WAVES; i++) {
+        baseParams.ti[i] = DEFAULT_TI_DEG[i] * PI / 180.0f;
+        baseParams.ai[i] = DEFAULT_AI[i];
+        baseParams.bi[i] = DEFAULT_BI[i];
+        
+        // Copiar a parámetros actuales
+        waveParams.ti[i] = baseParams.ti[i];
+        waveParams.ai[i] = baseParams.ai[i];
+        waveParams.bi[i] = baseParams.bi[i];
+    }
+    
+    // Sincronizar ventanas angulares con los parámetros
+    initializeAngularWindows();
+}
+
+// ============================================================================
+// CORRECCIÓN HRFACT (del MATLAB original)
 // ============================================================================
 /**
- * @brief Selecciona valores aleatorios dentro del rango clínico de la condición
- * @param condition La condición ECG a inicializar
+ * Ajusta los parámetros bi y ti según la frecuencia cardíaca.
  * 
- * Esta función asegura que cada vez que se inicia una condición,
- * los parámetros sean diferentes pero siempre dentro de rangos realistas.
+ * Del MATLAB:
+ *   hrfact = sqrt(hrmean/60);
+ *   hrfact2 = sqrt(hrfact);
+ *   bi = hrfact * bi;
+ *   ti = [hrfact2 hrfact 1 hrfact hrfact2] .* ti;
  */
-void ECGModel::initializeFromRange(ECGCondition condition) {
-    uint8_t idx = static_cast<uint8_t>(condition);
-    if (idx >= 9) idx = 0;  // Fallback a normal
+void ECGModel::applyHRFactCorrection() {
+    float hrfact = sqrtf(hrMean / 60.0f);
+    float hrfact2 = sqrtf(hrfact);
     
-    const ConditionRange& range = ECG_RANGES[idx];
+    // Factores de corrección para cada onda [P, Q, R, S, T]
+    float tiFactor[MCSHARRY_WAVES] = {hrfact2, hrfact, 1.0f, hrfact, hrfact2};
     
-    // Seleccionar HR aleatorio dentro del rango
-    // Usamos distribución uniforme para cubrir todo el rango
-    float hrRange = range.hrMax - range.hrMin;
-    morphology.hrMean = range.hrMin + randomFloat() * hrRange;
+    for (int i = 0; i < MCSHARRY_WAVES; i++) {
+        waveParams.bi[i] = baseParams.bi[i] * hrfact;
+        waveParams.ti[i] = baseParams.ti[i] * tiFactor[i];
+    }
     
-    // Seleccionar variabilidad aleatoria dentro del rango
-    float stdRange = range.hrStdMax - range.hrStdMin;
-    float stdFactor = range.hrStdMin + randomFloat() * stdRange;
-    morphology.hrStd = morphology.hrMean * stdFactor;
-    
-    // Para ST elevation/depression, seleccionar magnitud del rango
-    if (range.stMin != 0.0f || range.stMax != 0.0f) {
-        float stRange = range.stMax - range.stMin;
-        morphology.stElevation = range.stMin + randomFloat() * stRange;
+    // Sincronizar ventanas angulares con los parámetros ajustados
+    initializeAngularWindows();
+}
+
+// ============================================================================
+// SET PENDING PARAMETERS (para aplicación diferida - compatibilidad)
+// ============================================================================
+void ECGModel::setPendingParameters(const ECGParameters& newParams) {
+    setParameters(newParams);
+}
+
+// ============================================================================
+// SET AMPLITUDE (parámetro Tipo A - inmediato)
+// ============================================================================
+void ECGModel::setAmplitude(float amp) {
+    if (params.qrsAmplitude > 0.01f) {
+        float factor = amp / params.qrsAmplitude;
+        params.qrsAmplitude = amp;
+        for (int i = 0; i < MCSHARRY_WAVES; i++) {
+            waveParams.ai[i] = baseParams.ai[i] * factor;
+        }
+        // Reiniciar calibración
+        isCalibrated = false;
+        calibrationPeakCount = 0;
+        calibrationBeatCount = 0;
     }
 }
 
 // ============================================================================
-// CONFIGURACIÓN DE PARÁMETROS
+// SET PARAMETERS
 // ============================================================================
 void ECGModel::setParameters(const ECGParameters& newParams) {
     params = newParams;
-    currentCondition = params.condition;
+    currentCondition = newParams.condition;
     
-    // Aplicar morfología base de la condición
-    applyMorphologyFromCondition(params.condition);
-    
-    // Si el usuario especifica un HR, usarlo (pero mantener variabilidad)
-    if (params.heartRate > 0) {
-        // Validar que esté dentro del rango de la condición
-        uint8_t idx = static_cast<uint8_t>(params.condition);
-        if (idx < 9) {
-            const ConditionRange& range = ECG_RANGES[idx];
-            morphology.hrMean = constrain(params.heartRate, range.hrMin, range.hrMax);
-        } else {
-            morphology.hrMean = params.heartRate;
-        }
-    }
-    
-    // Aplicar factores de amplitud del usuario (escalado relativo)
-    // Estos modifican las amplitudes base, no las reemplazan
-    if (params.qrsAmplitude > 0.1f && params.qrsAmplitude < 5.0f) {
-        morphology.baseAi[2] = 30.0f * params.qrsAmplitude;
-    }
-    if (params.pWaveAmplitude > 0.1f && params.pWaveAmplitude < 5.0f) {
-        morphology.baseAi[0] = 1.2f * params.pWaveAmplitude;
-    }
-    if (params.tWaveAmplitude > 0.1f && params.tWaveAmplitude < 5.0f) {
-        morphology.baseAi[4] = 0.75f * params.tWaveAmplitude;
-    }
-    
-    // Copiar valores base a los activos
-    for (int i = 0; i < MCSHARRY_WAVES; i++) {
-        morphology.ai[i] = morphology.baseAi[i];
-    }
-    
-    // Aplicar stShift del usuario si lo especifica (override de la condición)
-    if (fabsf(params.stShift) > 0.01f) {
-        morphology.stElevation = params.stShift;
-    }
-    
-    // Aplicar correcciones y generar nuevo RR
-    applyBazettCorrection();
-    currentRR = generateNextRR();
-}
-
-void ECGModel::setPendingParameters(const ECGParameters& newParams) {
-    pendingParams = newParams;
-    hasPendingParams = true;
-}
-
-// ============================================================================
-// CORRECCIÓN DE BAZETT (hrfact del MATLAB original)
-// ============================================================================
-/**
- * @brief Ajusta los anchos y posiciones de las ondas según el HR
- * 
- * La fórmula de Bazett establece que el QT interval es proporcional
- * a la raíz cuadrada del RR interval:
- *   QTc = QT / sqrt(RR)
- * 
- * En el modelo McSharry, esto se implementa escalando los parámetros
- * bi (anchos) y ti (posiciones) por sqrt(RR).
- */
-void ECGModel::applyBazettCorrection() {
-    float rrMean = 60.0f / morphology.hrMean;  // RR en segundos
-    float hrfact = sqrtf(rrMean);
-    
-    for (int i = 0; i < MCSHARRY_WAVES; i++) {
-        morphology.bi[i] = morphology.baseBi[i] * hrfact;
-        morphology.ti[i] = morphology.baseTi[i] * hrfact;
-    }
-}
-
-// ============================================================================
-// MORFOLOGÍA POR CONDICIÓN
-// ============================================================================
-void ECGModel::applyMorphologyFromCondition(ECGCondition condition) {
-    useVFibModel = false;  // Por defecto usar McSharry
-    
-    switch (condition) {
+    // Aplicar morfología según condición
+    switch (currentCondition) {
         case ECGCondition::NORMAL:
             setNormalMorphology();
             break;
@@ -303,11 +246,8 @@ void ECGModel::applyMorphologyFromCondition(ECGCondition condition) {
         case ECGCondition::VENTRICULAR_FIBRILLATION:
             setVFibMorphology();
             break;
-        case ECGCondition::PREMATURE_VENTRICULAR:
-            setPVCMorphology();
-            break;
-        case ECGCondition::BUNDLE_BRANCH_BLOCK:
-            setBBBMorphology();
+        case ECGCondition::AV_BLOCK_1:
+            setAVBlock1Morphology();
             break;
         case ECGCondition::ST_ELEVATION:
             setSTElevationMorphology();
@@ -320,281 +260,762 @@ void ECGModel::applyMorphologyFromCondition(ECGCondition condition) {
             break;
     }
     
-    // Inicializar con valores del rango después de establecer morfología base
-    initializeFromRange(condition);
+    // Si el usuario especifica HR, usarlo
+    if (newParams.heartRate > 0) {
+        hrMean = newParams.heartRate;
+    }
+    
+    // Aplicar nivel de ruido
+    noiseLevel = newParams.noiseLevel;
+    
+    // ✅ CRÍTICO: Solo recalcular hrfact si NO es AVB1
+    //    (AVB1 ya lo hizo internamente con orden correcto)
+    if (currentCondition != ECGCondition::AV_BLOCK_1) {
+        applyHRFactCorrection();
+    }
+    
+    // Recalcular RR
+    currentRR = 60.0f / hrMean;
+    
+    // Reiniciar calibración si cambió la condición (excepto VFib que no usa McSharry)
+    if (currentCondition != ECGCondition::VENTRICULAR_FIBRILLATION) {
+        isCalibrated = false;
+        calibrationPeakCount = 0;
+        calibrationBeatCount = 0;
+        calibrationCycleZMax = -1000.0f;
+        calibrationCycleZMin = 1000.0f;
+    }
+    
+    // =========================================================================
+    // RESETEAR MÉTRICAS AL CAMBIAR CONDICIÓN
+    // =========================================================================
+    // Evita mostrar métricas "fantasma" de la condición anterior
+    resetMetricsForCondition();
 }
 
 // ============================================================================
-// DEFINICIONES DE MORFOLOGÍA
+// MORFOLOGÍA POR CONDICIÓN
 // ============================================================================
 
-/**
- * @brief Configura morfología para ritmo sinusal normal
- * 
- * Los parámetros base provienen del MATLAB original de McSharry:
- * - ti (ángulos): [-70, -15, 0, 15, 100] grados para PQRST
- * - ai (amplitudes): [1.2, -5, 30, -7.5, 0.75]
- * - bi (anchos): [0.25, 0.1, 0.1, 0.1, 0.4]
- */
 void ECGModel::setNormalMorphology() {
-    // Ángulos base PQRST (radianes) - del MATLAB original
-    float angles[5] = {-70.0f, -15.0f, 0.0f, 15.0f, 100.0f};
-    for (int i = 0; i < MCSHARRY_WAVES; i++) {
-        morphology.baseTi[i] = angles[i] * PI / 180.0f;
-    }
-    
-    // Amplitudes PQRST - del MATLAB original
-    // P: pequeña positiva, Q: pequeña negativa, R: grande positiva
-    // S: pequeña negativa, T: moderada positiva
-    float amps[5] = {1.2f, -5.0f, 30.0f, -7.5f, 0.75f};
-    for (int i = 0; i < MCSHARRY_WAVES; i++) {
-        morphology.baseAi[i] = amps[i];
-        morphology.ai[i] = amps[i];
-    }
-    
-    // Anchos de Gaussianas base
-    float widths[5] = {0.25f, 0.1f, 0.1f, 0.1f, 0.4f};
-    for (int i = 0; i < MCSHARRY_WAVES; i++) {
-        morphology.baseBi[i] = widths[i];
-    }
-    
-    // Configuración adicional
-    morphology.pWavePresent = true;
-    morphology.stElevation = 0.0f;
-    morphology.irregularityFactor = 0.0f;
-    morphology.pvcInterval = 0;
-    morphology.isPVCBeat = false;
+    hrMean = 75.0f;
+    hrStd = 1.0f;
+    lfhfRatio = 0.5f;
+    initializeWaveParams();
 }
 
-/**
- * @brief Taquicardia sinusal: ritmo rápido pero regular
- * Rango: 100-180 BPM (típico 100-150)
- */
 void ECGModel::setTachycardiaMorphology() {
-    setNormalMorphology();
-    // HR y variabilidad se establecen en initializeFromRange()
+    hrMean = 120.0f;
+    hrStd = 2.0f;
+    lfhfRatio = 0.5f;
+    initializeWaveParams();
 }
 
-/**
- * @brief Bradicardia sinusal: ritmo lento pero regular
- * Rango: 30-59 BPM (en atletas puede ser 30-50)
- */
 void ECGModel::setBradycardiaMorphology() {
-    setNormalMorphology();
-    // HR y variabilidad se establecen en initializeFromRange()
+    hrMean = 50.0f;
+    hrStd = 1.0f;
+    lfhfRatio = 0.5f;
+    initializeWaveParams();
 }
 
-/**
- * @brief Fibrilación auricular: sin P waves, RR muy irregular
- * Rango: 60-180 BPM con alta variabilidad (15-35%)
- */
 void ECGModel::setAFibMorphology() {
-    setNormalMorphology();
+    hrMean = 100.0f;
+    hrStd = 15.0f;  // Variabilidad RR moderada (15-20%) - reducida para estabilidad
+    lfhfRatio = 0.5f;
+    initializeWaveParams();
     
-    // Sin ondas P (actividad auricular caótica)
-    morphology.pWavePresent = false;
-    morphology.baseAi[0] = 0.0f;
-    morphology.ai[0] = 0.0f;
+    // ✅ Solo modificar waveParams (NO baseParams para no contaminar otras condiciones)
+    // Sin onda P en AFib (ausencia de despolarización auricular organizada)
+    waveParams.ai[0] = 0.0f;
+    // ❌ ELIMINADO: baseParams.ai[0] = 0.0f;  ← Esto contaminaba otras condiciones
     
-    // Alta irregularidad RR (característica principal de AFib)
-    morphology.irregularityFactor = 0.35f;
+    // Reducir ligeramente amplitud de ondas para compensar ausencia de P
+    // Esto estabiliza la señal evitando saltos bruscos
+    for (int i = 1; i < MCSHARRY_WAVES; i++) {
+        waveParams.ai[i] = baseParams.ai[i] * 0.95f;
+    }
+    initializeAngularWindows();
 }
 
-/**
- * @brief Fibrilación ventricular: ritmo caótico sin estructura PQRST
- * 
- * NOTA: McSharry NO puede simular VFib porque el modelo genera
- * ondas PQRST organizadas. VFib es caos eléctrico sin estructura.
- * 
- * Usamos un modelo alternativo basado en superposición de sinusoides
- * con frecuencias en el rango 4-10 Hz (rango espectral de VFib real).
- */
 void ECGModel::setVFibMorphology() {
-    useVFibModel = true;
+    // VFib usa modelo espectral alternativo (no McSharry)
+    // Estos parámetros son fallback si se usa McSharry por error
+    hrMean = 300.0f;
+    hrStd = 50.0f;
+    lfhfRatio = 0.5f;
+    initializeWaveParams();
+    
+    // Inicializar modelo VFIB espectral caótico
     initVFibModel();
     
-    // Valores de referencia (no usados directamente)
-    morphology.hrMean = 300.0f;
-    morphology.hrStd = 100.0f;
-    morphology.pWavePresent = false;
-}
-
-/**
- * @brief Contracciones ventriculares prematuras (PVC/extrasístoles)
- * 
- * Cada N latidos (configurable), se genera un latido ectópico con:
- * - Sin onda P (origen ventricular)
- * - QRS ancho (>120ms)
- * - Morfología aberrante
- * - Pausa compensatoria posterior
- */
-void ECGModel::setPVCMorphology() {
-    setNormalMorphology();
+    // Generar valor inicial para evitar lectura de 0 antes del primer sample
+    float initialVfib = generateVFibSample(0.001f);
+    state.z = initialVfib;  // Para getCurrentValueMV()
+    vfibState.lastValue = initialVfib;  // Ya normalizado, no necesita escalado
     
-    // PVC cada 4-8 latidos (aleatorio para naturalidad)
-    morphology.pvcInterval = 4 + (esp_random() % 5);
+    // VFib no necesita calibración McSharry - marcar como listo
+    isCalibrated = true;
+    currentBaseline_mV = 0.0f;
 }
 
-/**
- * @brief Bloqueo de rama: QRS ancho (>120ms)
- * 
- * Se ensanchan las ondas Q, R, S aumentando sus parámetros bi.
- * El QRS resultante simula la conducción retardada por una rama.
- */
-void ECGModel::setBBBMorphology() {
-    setNormalMorphology();
+void ECGModel::setAVBlock1Morphology() {
+    hrMean = 70.0f;
+    hrStd = 1.0f;
+    lfhfRatio = 0.5f;
     
-    // QRS ancho: aumentar bi para Q, R, S (índices 1, 2, 3)
-    // Esto simula la duración >120ms del QRS
-    morphology.baseBi[1] = 0.15f;  // Q más ancho
-    morphology.baseBi[2] = 0.15f;  // R más ancho
-    morphology.baseBi[3] = 0.15f;  // S más ancho
+    // ✅ 1. Inicializar limpio desde DEFAULT
+    initializeWaveParams();
+    
+    // ✅ 2. Aplicar hrfact PRIMERO (esto modifica waveParams.ti[] y .bi[])
+    applyHRFactCorrection();
+    
+    // =========================================================================
+    // AVB1: PR prolongado > 200 ms (criterio diagnóstico)
+    // =========================================================================
+    // ✅ 3. AHORA aplicar prolongación PR sobre waveParams YA ajustados
+    //    (NO tocar baseParams, solo waveParams)
+    //
+    // A 70 BPM (RR = 857 ms), para PR = 250 ms necesitamos:
+    // delta_angular_total = (250 / 857) × 2π = 1.83 rad
+    float prProlongation = 1.1f;  // ~63° adicionales para PR > 200ms
+    
+    for (int i = 1; i < MCSHARRY_WAVES; i++) {  // Solo Q, R, S, T (no P)
+        waveParams.ti[i] += prProlongation;
+    }
+    
+    // ✅ 4. Sincronizar ventanas angulares con ti modificados
+    initializeAngularWindows();
 }
 
-/**
- * @brief Elevación ST (STEMI/infarto agudo)
- * 
- * El segmento ST se eleva 0.1-0.3 mV sobre la línea base.
- * También se modifica la onda T (hiperaguda en infarto agudo).
- */
 void ECGModel::setSTElevationMorphology() {
-    setNormalMorphology();
-    
-    // La magnitud del ST se establece en initializeFromRange()
-    // T wave hiperaguda (típico de STEMI agudo)
-    morphology.baseAi[4] = 1.2f;
-    morphology.ai[4] = 1.2f;
+    hrMean = 80.0f;
+    hrStd = 2.0f;
+    lfhfRatio = 0.5f;
+    initializeWaveParams();
+    // STEMI: ST ≥ +0.2 mV, T hiperaguda >0.6 mV
+    // Base T = 12.0 → ~0.4 mV, necesitamos ~0.8 mV → × 2.0
+    waveParams.ai[4] = baseParams.ai[4] * 2.0f;   // T hiperaguda >0.6 mV
+    waveParams.bi[4] = baseParams.bi[4] * 1.3f;   // T más ancha (fusión ST-T)
+    waveParams.ti[4] = baseParams.ti[4] * 0.85f;  // T más temprana → eleva ST
+    // Q patológica posible (infarto transmural)
+    waveParams.ai[1] = baseParams.ai[1] * 1.3f;   // Q más profunda
+    initializeAngularWindows();
 }
 
-/**
- * @brief Depresión ST (isquemia subendocárdica)
- * 
- * El segmento ST se deprime 0.1-0.3 mV bajo la línea base.
- */
 void ECGModel::setSTDepressionMorphology() {
-    setNormalMorphology();
-    // La magnitud del ST (negativa) se establece en initializeFromRange()
+    hrMean = 90.0f;
+    hrStd = 2.0f;
+    lfhfRatio = 0.5f;
+    initializeWaveParams();
+    // Isquemia: ST ↓ 0.05-0.2 mV, T invertida -0.1 a -0.3 mV
+    // Base T = 12.0 → ~0.4 mV, necesitamos ~-0.2 mV → × -0.5
+    waveParams.ai[4] = -baseParams.ai[4] * 0.5f;  // T invertida -0.1 a -0.3 mV
+    waveParams.ti[4] = baseParams.ti[4] * 1.1f;   // T retrasada
+    // S más profunda → contribuye a depresión ST
+    waveParams.ai[3] = baseParams.ai[3] * 1.2f;   // S más profunda
+    initializeAngularWindows();
 }
 
 // ============================================================================
-// MODELO VFIB ALTERNATIVO (Superposición espectral caótica)
+// CÁLCULO DE DERIVADAS (ecuaciones del modelo McSharry)
 // ============================================================================
 /**
- * @brief Inicializa el modelo alternativo para fibrilación ventricular
- * 
- * VFib se caracteriza por actividad eléctrica desorganizada con
- * frecuencia dominante de 4-10 Hz. Simulamos esto con múltiples
- * osciladores con parámetros que varían en el tiempo.
+ * Calcula las derivadas del sistema dinámico:
+ * dx/dt = α·x - ω·y
+ * dy/dt = α·y + ω·x  
+ * dz/dt = -Σ(ai·Δθi·exp(-Δθi²/2bi²)) - (z - z0)
  */
-void ECGModel::initVFibModel() {
-    vfibState.time = 0.0f;
-    vfibState.lastUpdateMs = millis();
+void ECGModel::computeDerivatives(const ECGDynamicState& s, ECGDynamicState& ds, float omega) {
+    // Factor de atracción al círculo unitario
+    float alpha = 1.0f - sqrtf(s.x * s.x + s.y * s.y);
     
-    // Inicializar componentes frecuenciales
-    for (int k = 0; k < VFIB_COMPONENTS; k++) {
-        // Frecuencias en rango VFib real: 4-10 Hz
-        // Coarse VFib: 4-6 Hz (mejor pronóstico)
-        // Fine VFib: 6-10 Hz (peor pronóstico)
-        vfibState.frequencies[k] = 4.0f + (float)k * 1.2f + 
-            randomFloat() * 0.8f;
-        
-        // Amplitudes variables
-        vfibState.amplitudes[k] = 0.12f + randomFloat() * 0.15f;
-        
-        // Fases aleatorias
-        vfibState.phases[k] = randomFloat() * 2.0f * PI;
-    }
-}
-
-/**
- * @brief Genera una muestra de VFib usando el modelo espectral
- */
-float ECGModel::generateVFibSample(float deltaTime) {
-    vfibState.time += deltaTime;
+    // Derivadas de posición (movimiento circular)
+    ds.x = alpha * s.x - omega * s.y;
+    ds.y = alpha * s.y + omega * s.x;
     
-    // Actualizar parámetros cada ~80ms para efecto caótico
-    uint32_t now = millis();
-    if (now - vfibState.lastUpdateMs > 80) {
-        updateVFibParameters();
-        vfibState.lastUpdateMs = now;
+    // Ángulo actual en el ciclo cardíaco
+    float theta = atan2f(s.y, s.x);
+    
+    // Derivada de z (forma de onda ECG)
+    float zDot = 0.0f;
+    
+    for (int i = 0; i < MCSHARRY_WAVES; i++) {
+        // Distancia angular a esta onda (normalizar a [-π, π])
+        float dTheta = theta - waveParams.ti[i];
+        while (dTheta > PI) dTheta -= 2.0f * PI;
+        while (dTheta < -PI) dTheta += 2.0f * PI;
+        
+        // Contribución gaussiana de esta onda
+        float bi = waveParams.bi[i];
+        float biSq = bi * bi;
+        zDot -= waveParams.ai[i] * dTheta * expf(-0.5f * dTheta * dTheta / biSq);
     }
     
-    // Suma de componentes sinusoidales
-    float signal = 0.0f;
-    for (int k = 0; k < VFIB_COMPONENTS; k++) {
-        signal += vfibState.amplitudes[k] * 
-                  sinf(2.0f * PI * vfibState.frequencies[k] * vfibState.time + 
-                       vfibState.phases[k]);
-    }
+    // Restauración a línea base (z0 = 0)
+    zDot -= (s.z - Z0_EQUILIBRIUM);
     
-    // Añadir ruido de alta frecuencia
-    signal += gaussianRandom(0.0f, 0.06f);
-    
-    // Escalar al rango del modelo
-    signal = signal * 0.6f + ECG_BASELINE;
-    
-    return signal;
-}
-
-/**
- * @brief Actualiza parámetros de VFib para mantener caos
- */
-void ECGModel::updateVFibParameters() {
-    for (int k = 0; k < VFIB_COMPONENTS; k++) {
-        // Modular amplitudes (simula variación coarse/fine)
-        vfibState.amplitudes[k] += gaussianRandom(0.0f, 0.012f);
-        vfibState.amplitudes[k] = constrain(vfibState.amplitudes[k], 0.04f, 0.30f);
-        
-        // Derivar fases (crea irregularidad)
-        vfibState.phases[k] += gaussianRandom(0.0f, 0.06f);
-        
-        // Variar frecuencias ligeramente
-        vfibState.frequencies[k] += gaussianRandom(0.0f, 0.12f);
-        vfibState.frequencies[k] = constrain(vfibState.frequencies[k], 3.5f, 11.0f);
-    }
+    ds.z = zDot;
 }
 
 // ============================================================================
-// GENERACIÓN DE RR CON HRV NATURAL
+// INTEGRACIÓN RUNGE-KUTTA 4
 // ============================================================================
-/**
- * @brief Genera el próximo intervalo RR con variabilidad natural
- * 
- * La variabilidad del ritmo cardíaco (HRV) es una característica
- * fundamental del ECG real. Incluye:
- * - Variabilidad respiratoria (RSA)
- * - Fluctuaciones de baja frecuencia (barorreflejo)
- * - Ruido aleatorio
- */
+void ECGModel::rungeKutta4Step(float dt, float omega) {
+    // k1
+    computeDerivatives(state, k1, omega);
+    
+    // k2
+    temp.x = state.x + 0.5f * dt * k1.x;
+    temp.y = state.y + 0.5f * dt * k1.y;
+    temp.z = state.z + 0.5f * dt * k1.z;
+    computeDerivatives(temp, k2, omega);
+    
+    // k3
+    temp.x = state.x + 0.5f * dt * k2.x;
+    temp.y = state.y + 0.5f * dt * k2.y;
+    temp.z = state.z + 0.5f * dt * k2.z;
+    computeDerivatives(temp, k3, omega);
+    
+    // k4
+    temp.x = state.x + dt * k3.x;
+    temp.y = state.y + dt * k3.y;
+    temp.z = state.z + dt * k3.z;
+    computeDerivatives(temp, k4, omega);
+    
+    // Actualización final (promedio ponderado)
+    state.x += dt * (k1.x + 2.0f * k2.x + 2.0f * k3.x + k4.x) / 6.0f;
+    state.y += dt * (k1.y + 2.0f * k2.y + 2.0f * k3.y + k4.y) / 6.0f;
+    state.z += dt * (k1.z + 2.0f * k2.z + 2.0f * k3.z + k4.z) / 6.0f;
+}
+
+// ============================================================================
+// DETECCIÓN DE NUEVO LATIDO
+// ============================================================================
+void ECGModel::detectNewBeat() {
+    float theta = atan2f(state.y, state.x);
+    
+    // Detectar cruce por cero (θ pasa de negativo a positivo)
+    if (lastTheta < 0 && theta >= 0) {
+        beatCount++;
+        
+        // =====================================================================
+        // FASE DE CALIBRACIÓN: Almacenar picos R crudos
+        // =====================================================================
+        if (!isCalibrated) {
+            // Guardar pico R crudo del ciclo que acaba de terminar
+            if (calibrationCycleZMax > -500.0f && calibrationPeakCount < MAX_CALIBRATION_PEAKS) {
+                // Pico R = máximo Z menos baseline estimada
+                float rPeakRaw = calibrationCycleZMax - baselineZ;
+                calibrationRPeaks[calibrationPeakCount++] = rPeakRaw;
+            }
+            
+            calibrationBeatCount++;
+            
+            // Intentar calibrar si tenemos suficientes picos
+            if (calibrationPeakCount >= ECG_CALIBRATION_BEATS) {
+                performCalibration();
+            }
+            
+            // Reset tracking de calibración para nuevo ciclo
+            calibrationCycleZMax = -1000.0f;
+            calibrationCycleZMin = 1000.0f;
+        }
+        
+        // =====================================================================
+        // FASE ACTIVA: Medir métricas del ciclo completado por ventanas angulares
+        // =====================================================================
+        if (isCalibrated && cycleSamples.count > 10) {
+            
+            // =================================================================
+            // 0. BASELINE - Medir primero la línea isoeléctrica
+            // =================================================================
+            
+            // Baseline desde segmento TP (fin de T → inicio de P)
+            float TP_start = windows.T_center + windows.T_width * 0.6f;
+            float TP_end   = windows.P_center - windows.P_width;
+            
+            // Ajustar cruce de ciclo
+            if (TP_end < TP_start) {
+                TP_end += 2.0f * PI;
+            }
+            
+            // Baseline real (línea isoeléctrica) del ciclo actual
+            // NOTA: cycleSamples YA tiene corrección de baseline aplicada en generateSample()
+            // Por lo tanto, esta medición debería dar ~0, pero la guardamos para
+            // actualizar la corrección del próximo ciclo
+            float baseline_mV = averageInWindow(TP_start, TP_end);
+            
+            // Actualizar baseline con filtro EMA y límite estricto (±0.05mV max)
+            // Esto evita deriva y mantiene línea isoeléctrica estable
+            float correction = baseline_mV * 0.3f;  // Filtro EMA suave (30%)
+            correction = constrain(correction, -0.05f, 0.05f);  // Límite estricto
+            currentBaseline_mV += correction;
+            
+            // =================================================================
+            // 1. AMPLITUDES (mV) - Medidas DIRECTAS (cycleSamples ya corregido)
+            // =================================================================
+            // IMPORTANTE: NO restar baseline_mV porque cycleSamples ya está
+            // corregido por baseline en generateSample(). Los picos medidos
+            // aquí deben coincidir con min/max de la señal de salida.
+            
+            // P: Máximo en ventana P (despolarización auricular)
+            measuredP_mV = findPeakInWindow(windows.P_center, windows.P_width, true);
+            
+            // Q: Mínimo en ventana Q (inicio QRS) - debe ser < 25% de R
+            measuredQ_mV = findPeakInWindow(windows.Q_center, windows.Q_width, false);
+            
+            // R: Máximo en ventana R (pico QRS)
+            measuredR_mV = findPeakInWindow(windows.R_center, windows.R_width, true);
+            
+            // S: Mínimo en ventana S (final QRS)
+            measuredS_mV = findPeakInWindow(windows.S_center, windows.S_width, false);
+            
+            // T: Máximo en ventana T (repolarización ventricular)
+            measuredT_mV = findPeakInWindow(windows.T_center, windows.T_width, true);
+            
+            // =================================================================
+            // 2. SEGMENTO ST - Desviación respecto a baseline
+            // =================================================================
+            
+            float ST_start = windows.S_center + windows.S_width * 0.6f;
+            float ST_end   = windows.T_center - windows.T_width * 0.6f;
+            
+            if (normalizeAngle(ST_end - ST_start) > 0) {
+                // Medir ST crudo (ya con corrección de baseline aplicada)
+                float stRaw = averageInWindow(ST_start, ST_end);
+                
+                // ✅ FILTRO DE SUPRESIÓN DE DERIVA
+                // Umbral clínico: ST < ±0.05 mV es normal (AHA/ACC Guidelines)
+                bool isNonSTCondition = (currentCondition == ECGCondition::NORMAL ||
+                                         currentCondition == ECGCondition::TACHYCARDIA ||
+                                         currentCondition == ECGCondition::BRADYCARDIA ||
+                                         currentCondition == ECGCondition::ATRIAL_FIBRILLATION ||
+                                         currentCondition == ECGCondition::AV_BLOCK_1);
+                
+                if (isNonSTCondition && fabsf(stRaw) < 0.05f) {
+                    // Deriva residual menor a umbral clínico → forzar a 0
+                    measuredST_mV = 0.0f;
+                } else {
+                    // ST patológico real o desviación significativa
+                    measuredST_mV = stRaw;
+                }
+            } else {
+                measuredST_mV = lastMeasuredST_mV;
+            }
+            
+            lastMeasuredST_mV = measuredST_mV;
+            
+            // =================================================================
+            // 2. INTERVALOS TEMPORALES (ms) - Conversión angular → tiempo
+            // =================================================================
+            
+            // RR: Usar el RR del modelo (currentRR en segundos)
+            // NO usar currentCycleTime porque está afectado por SPEED_MULTIPLIER
+            // currentRR representa el RR nominal fisiológico del paciente
+            measuredRR_ms = currentRR * 1000.0f;
+            
+            // Encontrar ángulos donde ocurren los picos Q, S y T
+            float theta_Q_peak = findAngleAtPeak(windows.Q_center, windows.Q_width, false);
+            float theta_S_peak = findAngleAtPeak(windows.S_center, windows.S_width, false);
+            float theta_T_peak = findAngleAtPeak(windows.T_center, windows.T_width, true);
+            
+            // QRS: Desde pico Q hasta pico S (duración del complejo QRS)
+            float delta_QRS = theta_S_peak - theta_Q_peak;
+            if (delta_QRS < 0) delta_QRS += 2.0f * PI;
+            measuredQRS_ms = (delta_QRS / (2.0f * PI)) * measuredRR_ms;
+            
+            // QT: Desde INICIO de Q (onset) hasta FIN de T (offset)
+            // Usar factor 0.6 (≈1.5σ) en lugar de 1.0 (2.5σ) para onset/offset clínicos
+            // 2.5σ cubre 99% de Gaussian pero extiende más allá del punto clínico
+            // 1.5σ cubre ~87% y corresponde mejor al inicio/fin clínico de las ondas
+            float theta_Q_onset = windows.Q_center - windows.Q_width * 0.6f;
+            float theta_T_offset = windows.T_center + windows.T_width * 0.6f;
+            
+            float delta_QT = theta_T_offset - theta_Q_onset;
+            if (delta_QT < 0) delta_QT += 2.0f * PI;
+            measuredQT_ms = (delta_QT / (2.0f * PI)) * measuredRR_ms;
+            
+            // QTc: QT / √(RR) donde RR en segundos (fórmula de Bazett)
+            float rrSeconds = measuredRR_ms / 1000.0f;
+            if (rrSeconds > 0.3f) {
+                measuredQTc_ms = measuredQT_ms / sqrtf(rrSeconds);
+            } else {
+                measuredQTc_ms = measuredQT_ms;
+            }
+            
+            // =================================================================
+            // PR: Intervalo desde pico P hasta inicio de QRS (pico Q)
+            // =================================================================
+            // En AFib (ai[0]=0), no hay onda P → PR no medible
+            if (waveParams.ai[0] != 0.0f) {
+                float theta_P = findAngleAtPeak(windows.P_center, windows.P_width, true);
+                
+                // Calcular distancia angular P→Q (siempre positiva, P viene antes que Q)
+                float delta_PR = normalizeAngle(theta_Q_peak - theta_P);
+                if (delta_PR < 0) delta_PR += 2.0f * PI;
+                
+                // Convertir a milisegundos
+                measuredPR_ms = (delta_PR / (2.0f * PI)) * measuredRR_ms;
+                
+                // Validar rango fisiológico (120-220 ms típico, hasta 300 ms en bloqueos)
+                if (measuredPR_ms < 100.0f || measuredPR_ms > 400.0f) {
+                    measuredPR_ms = 160.0f;  // Fallback a valor normal si es absurdo
+                }
+            } else {
+                // AFib: Sin onda P, PR no aplicable
+                measuredPR_ms = 0.0f;
+                measuredP_mV = 0.0f;
+            }
+        }
+        
+        // =================================================================
+        // RESET para nuevo ciclo
+        // =================================================================
+        cycleSamples.reset();
+        currentCycleZMax = -1000.0f;
+        currentCycleZMin = 1000.0f;
+        currentCycleTime = 0.0f;
+        currentCycleSamples = 0;
+        
+        // Generar nuevo RR con variabilidad
+        currentRR = generateNextRR();
+    }
+    
+    lastTheta = theta;
+}
+
+// ============================================================================
+// GENERACIÓN DE PRÓXIMO RR (con variabilidad HRV)
+// ============================================================================
 float ECGModel::generateNextRR() {
     // RR base en segundos
-    float rrMean = 60.0f / morphology.hrMean;
+    float rrMean = 60.0f / hrMean;
+    float rrStd = (hrStd / hrMean) * rrMean;
     
-    // Desviación estándar proporcional al HR
-    float rrStd = (morphology.hrStd / morphology.hrMean) * rrMean;
-    
-    // Componente aleatorio Gaussiano
+    // Variabilidad gaussiana
     float rr = rrMean + gaussianRandom(0.0f, rrStd);
     
-    // Añadir irregularidad adicional para AFib
-    if (morphology.irregularityFactor > 0) {
-        float irregularity = gaussianRandom(0.0f, morphology.irregularityFactor * 0.25f);
-        rr *= (1.0f + irregularity);
+    // Limitar a rango fisiológico
+    float minRR = 60.0f / 200.0f;  // 200 BPM máximo
+    float maxRR = 60.0f / 30.0f;   // 30 BPM mínimo
+    
+    return fmaxf(minRR, fminf(maxRR, rr));
+}
+
+// ============================================================================
+// CALIBRACIÓN POR PICOS R (¡NO min-max!)
+// ============================================================================
+/**
+ * Calibración fisiológica:
+ * 1. Durante calibración se detectan picos R crudos
+ * 2. Se calcula R_model = promedio de picos R
+ * 3. Se calcula G = R_objetivo / R_model
+ * 4. El escalado es simplemente: z_mV = G * (z - baseline)
+ */
+void ECGModel::performCalibration() {
+    if (calibrationPeakCount < ECG_CALIBRATION_BEATS) {
+        return;  // No hay suficientes picos R
     }
     
-    // Limitar a rangos fisiológicos extremos
-    // RR mínimo ~0.2s = 300 BPM, RR máximo ~2.5s = 24 BPM
-    rr = constrain(rr, 0.2f, 2.5f);
+    // Calcular R_model como promedio de picos R crudos detectados
+    float sum = 0.0f;
+    for (int i = 0; i < calibrationPeakCount; i++) {
+        sum += calibrationRPeaks[i];
+    }
+    rModelValue = sum / (float)calibrationPeakCount;
     
-    return rr;
+    // Evitar división por cero
+    if (rModelValue < 0.001f) {
+        rModelValue = 0.5f;  // Valor por defecto si algo sale mal
+    }
+    
+    // Calcular ganancia fisiológica: G = R_objetivo / R_model
+    physiologicalGain = ECG_R_TARGET_MV / rModelValue;
+    
+    // Validar que la ganancia es razonable (evitar valores extremos)
+    if (physiologicalGain < 0.1f) physiologicalGain = 0.1f;
+    if (physiologicalGain > 100.0f) physiologicalGain = 100.0f;
+    
+    isCalibrated = true;
+    
+    // Las amplitudes se medirán dinámicamente en detectNewBeat()
+    // NO se hardcodean aquí
 }
 
 /**
- * @brief Genera número aleatorio Gaussiano usando Box-Muller
- * 
- * Usa variables de instancia en lugar de static para permitir
- * reset limpio del modelo y evitar problemas de thread-safety.
+ * Actualiza el tracking durante calibración
+ * Solo rastrea max/min del ciclo actual, NO almacena en buffer
  */
+void ECGModel::updateCalibrationBuffer(float zValue) {
+    // Durante calibración, solo rastrear max/min del ciclo
+    if (!isCalibrated) {
+        if (zValue > calibrationCycleZMax) calibrationCycleZMax = zValue;
+        if (zValue < calibrationCycleZMin) calibrationCycleZMin = zValue;
+        
+        // Actualizar estimación de baseline (usar valor de equilibrio)
+        // La baseline se estabiliza cerca de Z0_EQUILIBRIUM
+        baselineZ = Z0_EQUILIBRIUM;
+    }
+}
+
+// ============================================================================
+// ESCALADO A mV (lineal simple por ganancia G)
+// ============================================================================
+/**
+ * Escalado fisiológico simple:
+ * z_mV = G * (zRaw - baseline)
+ * 
+ * Donde:
+ * - G = R_objetivo / R_model (calculado durante calibración)
+ * - baseline = Z0_EQUILIBRIUM (línea isoeléctrica del modelo)
+ * 
+ * El rango [-0.5, 1.5] mV es CONSECUENCIA, no condición.
+ * El clamp se aplica solo para visualización (DAC), no aquí.
+ */
+float ECGModel::applyScaling(float zRaw) const {
+    if (!isCalibrated) {
+        return 0.0f;  // Retornar línea isoeléctrica hasta calibrar
+    }
+    
+    // Escalado lineal simple: z_mV = G * (z - baseline)
+    float scaled = physiologicalGain * (zRaw - baselineZ);
+    
+    return scaled;
+}
+
+// ============================================================================
+// GENERACIÓN DE MUESTRA
+// ============================================================================
+float ECGModel::generateSample(float deltaTime) {
+    sampleCount++;
+    
+    // =========================================================================
+    // VFIB: Usar modelo espectral alternativo (no McSharry)
+    // =========================================================================
+    if (currentCondition == ECGCondition::VENTRICULAR_FIBRILLATION) {
+        // Generar muestra con modelo espectral caótico normalizado
+        float vfibMV = generateVFibSample(deltaTime);
+        
+        // Actualizar state.z para que getCurrentValueMV() funcione
+        state.z = vfibMV;
+        
+        // generateVFibSample() ya retorna valor normalizado en rango clínico
+        // No necesita escalado adicional
+        float ecgMV = vfibMV;
+        
+        // Añadir ruido si está configurado
+        if (noiseLevel > 0.0f) {
+            ecgMV += gaussianRandom(0.0f, noiseLevel);
+        }
+        
+        // Guardar para getCurrentValueMV()
+        vfibState.lastValue = ecgMV;
+        
+        // Actualizar métricas - solo incrementar beatCount periódicamente
+        // (cada ~200ms = ~300 BPM, no en cada muestra)
+        static uint32_t lastVFibBeatMs = 0;
+        uint32_t now = millis();
+        if (now - lastVFibBeatMs > 200) {
+            beatCount++;
+            lastVFibBeatMs = now;
+        }
+        measuredRR_ms = 200.0f;
+        
+        return ecgMV;
+    }
+    
+    // =========================================================================
+    // Modelo McSharry normal para otras condiciones
+    // =========================================================================
+    
+    // Velocidad angular ω = 2π/RR
+    float omega = 2.0f * PI / currentRR;
+    
+    // Integrar ecuaciones con RK4
+    rungeKutta4Step(deltaTime, omega);
+    
+    // Calcular theta actual (posición angular en el ciclo)
+    float theta = atan2f(state.y, state.x);
+    
+    // Actualizar tracking del ciclo actual (valores crudos para calibración)
+    if (state.z > currentCycleZMax) currentCycleZMax = state.z;
+    if (state.z < currentCycleZMin) currentCycleZMin = state.z;
+    currentCycleTime += deltaTime;  // Acumular tiempo real del modelo
+    currentCycleSamples++;
+    
+    // Actualizar buffer de calibración si aún no está calibrado
+    if (!isCalibrated) {
+        updateCalibrationBuffer(state.z);
+    }
+    
+    // Aplicar escalado a mV
+    float ecgMV = applyScaling(state.z);
+    
+    // Corregir señal para que baseline = 0 (consistencia con métricas)
+    // Solo después de calibración cuando tenemos baseline válida
+    if (isCalibrated) {
+        ecgMV -= currentBaseline_mV;
+    }
+    
+    // Almacenar muestra del ciclo actual (theta + valor CORREGIDO en mV)
+    // Esto asegura que R/S medidos coincidan con min/max de la señal real
+    if (isCalibrated) {
+        cycleSamples.add(theta, ecgMV);
+    }
+    
+    // Detectar nuevo latido (después de almacenar la muestra)
+    detectNewBeat();
+    
+    // Añadir ruido si está configurado
+    if (noiseLevel > 0.0f) {
+        ecgMV += gaussianRandom(0.0f, noiseLevel);
+    }
+    
+    return ecgMV;
+}
+
+// ============================================================================
+// VALOR DAC (0-255)
+// ============================================================================
+uint8_t ECGModel::getDACValue(float deltaTime) {
+    float mV = generateSample(deltaTime);
+    
+    // Mapear [-0.5, 1.5] mV → [0, 255]
+    float normalized = (mV - ECG_DISPLAY_MIN_MV) / ECG_DISPLAY_RANGE_MV;
+    normalized = fmaxf(0.0f, fminf(1.0f, normalized));
+    
+    return (uint8_t)(normalized * 255.0f);
+}
+
+// ============================================================================
+// GETTERS
+// ============================================================================
+
+float ECGModel::getCurrentBPM() const {
+    if (measuredRR_ms > 0) {
+        return 60000.0f / measuredRR_ms;
+    }
+    return hrMean;
+}
+
+float ECGModel::getCurrentRR_ms() const {
+    return measuredRR_ms;
+}
+
+float ECGModel::getCurrentValueMV() const {
+    if (!isCalibrated) {
+        return 0.0f;
+    }
+    
+    // VFib usa modelo alternativo - retornar último valor generado
+    if (currentCondition == ECGCondition::VENTRICULAR_FIBRILLATION) {
+        return vfibState.lastValue;
+    }
+    
+    // Aplicar corrección de baseline para consistencia con generateSample()
+    return applyScaling(state.z) - currentBaseline_mV;
+}
+
+bool ECGModel::isInBeat() const {
+    float theta = atan2f(state.y, state.x);
+    return (theta > -0.15f && theta < 0.15f);
+}
+
+const char* ECGModel::getConditionName() const {
+    switch (currentCondition) {
+        case ECGCondition::NORMAL:                return "Normal";
+        case ECGCondition::TACHYCARDIA:           return "Taquicardia";
+        case ECGCondition::BRADYCARDIA:           return "Bradicardia";
+        case ECGCondition::ATRIAL_FIBRILLATION:   return "FA";
+        case ECGCondition::VENTRICULAR_FIBRILLATION: return "FV";
+        case ECGCondition::AV_BLOCK_1:            return "BAV1";
+        case ECGCondition::ST_ELEVATION:          return "STEMI";
+        case ECGCondition::ST_DEPRESSION:         return "Isquemia";
+        default:                                  return "Desconocido";
+    }
+}
+
+void ECGModel::getHRRange(float& minHR, float& maxHR) const {
+    switch (currentCondition) {
+        case ECGCondition::NORMAL:
+            minHR = 60.0f; maxHR = 100.0f;
+            break;
+        case ECGCondition::TACHYCARDIA:
+            minHR = 100.0f; maxHR = 180.0f;
+            break;
+        case ECGCondition::BRADYCARDIA:
+            minHR = 30.0f; maxHR = 60.0f;
+            break;
+        case ECGCondition::ATRIAL_FIBRILLATION:
+            minHR = 60.0f; maxHR = 180.0f;
+            break;
+        case ECGCondition::VENTRICULAR_FIBRILLATION:
+            minHR = 150.0f; maxHR = 500.0f;
+            break;
+        default:
+            minHR = 40.0f; maxHR = 150.0f;
+            break;
+    }
+}
+
+void ECGModel::getOutputRange(float* minMV, float* maxMV) const {
+    *minMV = ECG_DISPLAY_MIN_MV;
+    *maxMV = ECG_DISPLAY_MAX_MV;
+}
+
+ECGDisplayMetrics ECGModel::getDisplayMetrics() const {
+    ECGDisplayMetrics metrics;
+    
+    // =========================================================================
+    // CASO ESPECIAL: VENTRICULAR FIBRILLATION
+    // =========================================================================
+    if (currentCondition == ECGCondition::VENTRICULAR_FIBRILLATION) {
+        // VFib NO tiene ondas organizadas, NO hay intervalos ni complejos
+        metrics.bpm = 0.0f;                    // Sin latidos organizados
+        metrics.rrInterval_ms = 0.0f;          // Sin intervalos RR
+        metrics.prInterval_ms = 0.0f;          // Sin onda P
+        metrics.qrsDuration_ms = 0.0f;         // Sin complejo QRS
+        metrics.qtInterval_ms = 0.0f;          // Sin intervalo QT
+        metrics.qtcInterval_ms = 0.0f;         // Sin QTc
+        
+        // Amplitudes de ondas = N/A (no existen)
+        metrics.pAmplitude_mV = 0.0f;
+        metrics.qAmplitude_mV = 0.0f;
+        metrics.rAmplitude_mV = vfibState.lastValue;  // Valor instantáneo caótico
+        metrics.sAmplitude_mV = 0.0f;
+        metrics.tAmplitude_mV = 0.0f;
+        metrics.stDeviation_mV = 0.0f;
+        
+        metrics.beatCount = beatCount;         // Mantener contador por estadística
+        metrics.conditionName = "Ventricular Fibrillation";
+        
+        return metrics;  // Salir temprano
+    }
+    
+    // =========================================================================
+    // RESTO DE CONDICIONES (McSharry)
+    // =========================================================================
+    metrics.bpm = getCurrentBPM();
+    metrics.rrInterval_ms = measuredRR_ms;
+    metrics.prInterval_ms = measuredPR_ms;
+    metrics.qrsDuration_ms = measuredQRS_ms;
+    metrics.qtInterval_ms = measuredQT_ms;
+    metrics.qtcInterval_ms = measuredQTc_ms;
+    metrics.pAmplitude_mV = measuredP_mV;
+    metrics.qAmplitude_mV = measuredQ_mV;
+    metrics.rAmplitude_mV = measuredR_mV;
+    metrics.sAmplitude_mV = measuredS_mV;
+    metrics.tAmplitude_mV = measuredT_mV;
+    metrics.stDeviation_mV = measuredST_mV;
+    metrics.beatCount = beatCount;
+    metrics.conditionName = getConditionName();
+    
+    return metrics;
+}
+
+// ============================================================================
+// GENERADOR ALEATORIO GAUSSIANO (Box-Muller)
+// ============================================================================
 float ECGModel::gaussianRandom(float mean, float std) {
     if (gaussHasSpare) {
         gaussHasSpare = false;
@@ -615,464 +1036,357 @@ float ECGModel::gaussianRandom(float mean, float std) {
     return mean + std * u * s;
 }
 
-/**
- * @brief Genera número aleatorio uniforme [0, 1)
- */
 float ECGModel::randomFloat() {
+#ifdef ESP32
     return (float)(esp_random()) / (float)UINT32_MAX;
+#else
+    return (float)rand() / (float)RAND_MAX;
+#endif
 }
 
 // ============================================================================
-// VARIABILIDAD LATIDO-A-LATIDO
+// MODELO VFIB ALTERNATIVO (Superposición espectral caótica)
 // ============================================================================
 /**
- * @brief Aplica variaciones sutiles a la morfología del latido actual
+ * @brief Inicializa el modelo alternativo para fibrilación ventricular
  * 
- * En un ECG real, cada latido es ligeramente diferente debido a:
- * - Variaciones en la conducción
- * - Cambios en la posición del corazón (respiración)
- * - Actividad del sistema nervioso autónomo
- * 
- * Esta función modifica sutilmente ai, bi, ti para cada latido.
+ * VFib se caracteriza por actividad eléctrica desorganizada con
+ * frecuencia dominante de 4-10 Hz. Simulamos esto con múltiples
+ * osciladores con parámetros que varían en el tiempo.
  */
-void ECGModel::applyBeatToBeatVariation() {
-    for (int i = 0; i < MCSHARRY_WAVES; i++) {
-        // Variación de amplitud (±5%)
-        float ampVar = 1.0f + gaussianRandom(0.0f, AMPLITUDE_VARIATION);
-        morphology.ai[i] = morphology.baseAi[i] * ampVar;
-        
-        // Variación de ancho (±3%)
-        float widthVar = 1.0f + gaussianRandom(0.0f, WIDTH_VARIATION);
-        morphology.bi[i] = morphology.baseBi[i] * widthVar;
-        
-        // Variación de posición angular (±0.02 rad ≈ ±1°)
-        float posVar = gaussianRandom(0.0f, POSITION_VARIATION);
-        morphology.ti[i] = morphology.baseTi[i] + posVar;
-    }
+void ECGModel::initVFibModel() {
+    vfibState.time = 0.0f;
+    vfibState.lastUpdateMs = millis();
+    vfibState.lastValue = 0.0f;
     
-    // Re-aplicar Bazett después de variaciones
-    float rrMean = 60.0f / morphology.hrMean;
-    float hrfact = sqrtf(rrMean);
-    for (int i = 0; i < MCSHARRY_WAVES; i++) {
-        morphology.bi[i] *= hrfact;
-        morphology.ti[i] *= hrfact;
+    // Inicializar componentes frecuenciales
+    for (int k = 0; k < VFIB_COMPONENTS; k++) {
+        // Frecuencias en rango VFib real: 4-10 Hz
+        // Coarse VFib: 4-6 Hz (mejor pronóstico)
+        // Fine VFib: 6-10 Hz (peor pronóstico)
+        vfibState.frequencies[k] = 4.0f + (float)k * 1.2f + randomFloat() * 0.8f;
+        
+        // Amplitudes más altas para visualización clara
+        vfibState.amplitudes[k] = 0.18f + randomFloat() * 0.22f;
+        
+        // Fases aleatorias
+        vfibState.phases[k] = randomFloat() * 2.0f * PI;
     }
 }
 
-// ============================================================================
-// PVC - PREPARACIÓN DE LATIDO ECTÓPICO
-// ============================================================================
 /**
- * @brief Configura morfología para un latido PVC
+ * @brief Genera una muestra de VFib usando el modelo espectral
  * 
- * Características del PVC:
- * - Sin onda P (origen ventricular, no auricular)
- * - QRS ancho y aberrante
- * - Onda T generalmente invertida (discordante con QRS)
+ * Implementa superposición espectral caótica según Clayton et al. 1993
+ * con normalización fisiológica según Strohmenger 1997 (coarse VFib).
  */
-void ECGModel::preparePVCBeat() {
-    morphology.isPVCBeat = true;
+float ECGModel::generateVFibSample(float deltaTime) {
+    // Actualizar tiempo acumulado
+    vfibState.time += deltaTime;
     
-    // Sin onda P
-    morphology.ai[0] = 0.0f;
-    
-    // QRS ancho y diferente
-    morphology.bi[1] = 0.18f;
-    morphology.bi[2] = 0.18f;
-    morphology.bi[3] = 0.18f;
-    
-    // Morfología aberrante: puede ser positivo o negativo
-    // Aquí simulamos un PVC con R prominente pero diferente
-    morphology.ai[2] = morphology.baseAi[2] * (0.7f + randomFloat() * 0.4f);
-    if (randomFloat() > 0.5f) {
-        morphology.ai[2] = -morphology.ai[2];  // 50% chance de ser negativo
+    // Actualizar parámetros caóticos cada 200ms
+    if (millis() - vfibState.lastUpdateMs > 200) {
+        updateVFibParameters();
+        vfibState.lastUpdateMs = millis();
     }
     
-    // S más profunda
-    morphology.ai[3] = morphology.baseAi[3] * 1.4f;
+    // =========================================================================
+    // SUPERPOSICIÓN ESPECTRAL (Clayton et al. 1993)
+    // =========================================================================
+    // VFib = suma de múltiples osciladores en rango 4-10 Hz con fases caóticas
+    float rawValue = 0.0f;
     
-    // T invertida (discordante)
-    morphology.ai[4] = -fabsf(morphology.baseAi[4]) * 0.7f;
+    for (int i = 0; i < VFIB_COMPONENTS; i++) {
+        float phase = 2.0f * PI * vfibState.frequencies[i] * vfibState.time 
+                      + vfibState.phases[i];
+        rawValue += vfibState.amplitudes[i] * sinf(phase);
+    }
+    
+    // =========================================================================
+    // NORMALIZACIÓN FISIOLÓGICA AGRESIVA
+    // =========================================================================
+    // Problema: rawValue puede estar en [-4.0, +4.0] mV (suma de 5×0.8 mV)
+    // Solución: Escalar a rango clínico de coarse VFib: [-0.5, +0.5] mV
+    float normalizedValue = rawValue * VFIB_SCALE_FACTOR;  // × 0.125
+    
+    // =========================================================================
+    // CLAMP ESTRICTO AL RANGO CLÍNICO
+    // =========================================================================
+    // Garantizar que NUNCA exceda [-0.6, +0.6] mV
+    if (normalizedValue > VFIB_SAFETY_CLAMP) {
+        normalizedValue = VFIB_SAFETY_CLAMP;
+    }
+    if (normalizedValue < -VFIB_SAFETY_CLAMP) {
+        normalizedValue = -VFIB_SAFETY_CLAMP;
+    }
+    
+    // Almacenar para display
+    vfibState.lastValue = normalizedValue;
+    
+    return normalizedValue;
 }
 
 /**
- * @brief Restaura morfología normal después de un PVC
+ * @brief Actualiza parámetros de VFib para mantener caos
+ * 
+ * Modelo espectral caótico basado en Clayton 1993 + Strohmenger 1997.
+ * VFib tiene componentes espectrales en 4-10 Hz con amplitudes variables.
  */
-void ECGModel::prepareNormalBeat() {
-    morphology.isPVCBeat = false;
-    
-    // Restaurar valores base
-    for (int i = 0; i < MCSHARRY_WAVES; i++) {
-        morphology.ai[i] = morphology.baseAi[i];
+void ECGModel::updateVFibParameters() {
+    for (int i = 0; i < VFIB_COMPONENTS; i++) {
+        // Frecuencias en rango fisiológico de VFib (4-10 Hz)
+        vfibState.frequencies[i] = 4.0f + randomFloat() * 6.0f;  // 4-10 Hz
+        
+        // =====================================================================
+        // AMPLITUDES INDIVIDUALES - AJUSTE CRÍTICO
+        // =====================================================================
+        // Antes: 0.1-0.5 mV → suma hasta 2.5 mV ❌
+        // Ahora: 0.2-0.8 mV → suma hasta 4.0 mV, pero se normaliza después ✅
+        //
+        // ¿Por qué aumentamos los valores crudos?
+        // - El VFIB_SCALE_FACTOR (0.24) reducirá todo después
+        // - Queremos mantener la variabilidad caótica entre componentes
+        // - Amplitudes más altas = mejor contraste entre componentes
+        vfibState.amplitudes[i] = 0.2f + randomFloat() * 0.6f;  // 0.2-0.8 mV
+        
+        // Fases aleatorias para desorganización temporal
+        vfibState.phases[i] = randomFloat() * 2.0f * PI;
     }
     
-    // Re-aplicar corrección de Bazett
-    applyBazettCorrection();
+    vfibState.lastUpdateMs = millis();
 }
 
 // ============================================================================
-// SISTEMA DINÁMICO MCSHARRY - ECUACIONES DIFERENCIALES
+// FUNCIONES DE ANÁLISIS POR VENTANAS ANGULARES
 // ============================================================================
+
 /**
- * @brief Calcula las derivadas del sistema dinámico McSharry
- * 
- * El modelo usa 3 ODEs acopladas:
- * dx/dt = αx - ωy
- * dy/dt = αy + ωx
- * dz/dt = -Σ(ai * Δθi * exp(-Δθi²/2bi²)) - (z - z0)
- * 
- * Donde:
- * - α = 1 - sqrt(x² + y²) : atracción al círculo unitario
- * - ω = 2π/RR : velocidad angular
- * - θ = atan2(y, x) : ángulo actual
- * - Δθi = θ - θi : distancia angular a cada onda
+ * Inicializa las ventanas angulares basándose en los parámetros ti y bi.
+ * Debe llamarse después de modificar waveParams (en initializeWaveParams y applyHRFactCorrection).
  */
-void ECGModel::computeDerivatives(const ECGDynamicState& s, ECGDynamicState& ds, float rr) {
-    // Velocidad angular (determina la frecuencia cardíaca)
-    float omega = 2.0f * PI / rr;
+void ECGModel::initializeAngularWindows() {
+    // Centros = ángulos ti de cada onda (se adaptan con hrfact)
+    windows.P_center = waveParams.ti[0];  // ~-1.22 rad (-70°)
+    windows.Q_center = waveParams.ti[1];  // ~-0.26 rad (-15°)
+    windows.R_center = waveParams.ti[2];  // 0 rad (0°)
+    windows.S_center = waveParams.ti[3];  // ~0.26 rad (15°)
+    windows.T_center = waveParams.ti[4];  // ~1.75 rad (100°)
     
-    // Ángulo actual en el ciclo cardíaco
-    float theta = atan2f(s.y, s.x);
+    // Anchos = 2.5 × bi (cubrir la gaussiana completa de cada onda)
+    windows.P_width = waveParams.bi[0] * 2.5f;
+    windows.Q_width = waveParams.bi[1] * 2.5f;
+    windows.R_width = waveParams.bi[2] * 2.5f;
+    windows.S_width = waveParams.bi[3] * 2.5f;
+    windows.T_width = waveParams.bi[4] * 2.5f;
+}
+
+/**
+ * Normaliza un ángulo al rango [-π, π]
+ */
+float ECGModel::normalizeAngle(float theta) {
+    while (theta > PI) theta -= 2.0f * PI;
+    while (theta < -PI) theta += 2.0f * PI;
+    return theta;
+}
+
+/**
+ * Busca el pico (máximo o mínimo) dentro de una ventana angular.
+ * @param centerAngle Centro de la ventana (radianes)
+ * @param widthAngle Ancho de la ventana (radianes, se busca en ±width)
+ * @param findMax Si true busca máximo, si false busca mínimo
+ * @return Valor en mV del pico encontrado
+ */
+float ECGModel::findPeakInWindow(float centerAngle, float widthAngle, bool findMax) {
+    float extremeValue = findMax ? -1000.0f : 1000.0f;
     
-    // Factor de atracción al círculo unitario
-    float alpha = 1.0f - sqrtf(s.x * s.x + s.y * s.y);
-    
-    // Derivadas de posición (movimiento circular)
-    ds.x = alpha * s.x - omega * s.y;
-    ds.y = alpha * s.y + omega * s.x;
-    
-    // Derivada de z (forma de onda ECG)
-    // Suma de contribuciones Gaussianas de cada onda PQRST
-    float zDot = 0.0f;
-    for (int i = 0; i < MCSHARRY_WAVES; i++) {
-        // Saltar P wave si no está presente (AFib, PVC)
-        if (!morphology.pWavePresent && i == 0) continue;
+    for (int i = 0; i < cycleSamples.count; i++) {
+        float theta = normalizeAngle(cycleSamples.theta[i]);
+        float distance = fabsf(normalizeAngle(theta - centerAngle));
         
-        // Distancia angular a esta onda (wrap a [-π, π])
-        float dTheta = fmodf(theta - morphology.ti[i] + PI, 2.0f * PI) - PI;
-        
-        // Contribución Gaussiana de esta onda
-        float biSq = morphology.bi[i] * morphology.bi[i];
-        zDot -= morphology.ai[i] * dTheta * expf(-0.5f * dTheta * dTheta / biSq);
-    }
-    
-    // Restauración a línea base (constante de tiempo ~1)
-    zDot -= (s.z - ECG_BASELINE);
-    
-    // Elevación/depresión ST en el segmento correcto
-    // ST segment: entre S wave (~20°) y T wave (~80°)
-    if (fabsf(morphology.stElevation) > 0.001f) {
-        if (theta > ST_SEGMENT_START && theta < ST_SEGMENT_END) {
-            // Posición normalizada en segmento ST
-            float stPosition = (theta - ST_SEGMENT_START) / (ST_SEGMENT_END - ST_SEGMENT_START);
+        // ¿Está dentro de la ventana?
+        if (distance <= widthAngle) {
+            float value = cycleSamples.z_mV[i];
             
-            // Envolvente suave sin²(x*π) para transiciones naturales
-            float envelope = sinf(stPosition * PI);
-            envelope = envelope * envelope;
-            
-            zDot += morphology.stElevation * envelope * 0.5f;
-        }
-    }
-    
-    // Deriva del baseline (simula respiración)
-    // Nota: breathPhase se actualiza en generateSample para usar deltaTime correcto
-    zDot += BASELINE_DRIFT_AMP * cosf(breathPhase) * 0.1f;
-    
-    ds.z = zDot;
-}
-
-// ============================================================================
-// INTEGRACIÓN RK4
-// ============================================================================
-/**
- * @brief Integración Runge-Kutta de 4to orden
- * 
- * RK4 es más preciso que Euler y suficientemente eficiente para ESP32.
- * Error de truncamiento O(h⁵) vs O(h²) de Euler.
- */
-void ECGModel::rungeKutta4Step(float dt) {
-    // k1
-    computeDerivatives(state, k1, currentRR);
-    
-    // k2
-    temp.x = state.x + 0.5f * dt * k1.x;
-    temp.y = state.y + 0.5f * dt * k1.y;
-    temp.z = state.z + 0.5f * dt * k1.z;
-    computeDerivatives(temp, k2, currentRR);
-    
-    // k3
-    temp.x = state.x + 0.5f * dt * k2.x;
-    temp.y = state.y + 0.5f * dt * k2.y;
-    temp.z = state.z + 0.5f * dt * k2.z;
-    computeDerivatives(temp, k3, currentRR);
-    
-    // k4
-    temp.x = state.x + dt * k3.x;
-    temp.y = state.y + dt * k3.y;
-    temp.z = state.z + dt * k3.z;
-    computeDerivatives(temp, k4, currentRR);
-    
-    // Actualización final (promedio ponderado)
-    state.x += dt * (k1.x + 2.0f * k2.x + 2.0f * k3.x + k4.x) / 6.0f;
-    state.y += dt * (k1.y + 2.0f * k2.y + 2.0f * k3.y + k4.y) / 6.0f;
-    state.z += dt * (k1.z + 2.0f * k2.z + 2.0f * k3.z + k4.z) / 6.0f;
-}
-
-// ============================================================================
-// DETECCIÓN DE LATIDO Y MANEJO DE CICLO
-// ============================================================================
-/**
- * @brief Detecta inicio de nuevo latido y aplica cambios pendientes
- * 
- * Un nuevo latido ocurre cuando θ cruza de negativo a positivo
- * (el punto pasa por x=1, y=0 en el círculo unitario).
- */
-void ECGModel::detectBeatAndApplyPending() {
-    float theta = atan2f(state.y, state.x);
-    
-    // Detectar cruce por cero (nuevo latido)
-    if (lastTheta < 0 && theta >= 0) {
-        beatCount++;
-        lastBeatTime = millis();
-        
-        // Aplicar variabilidad latido-a-latido
-        applyBeatToBeatVariation();
-        
-        // Aplicar parámetros pendientes si hay
-        if (hasPendingParams) {
-            setParameters(pendingParams);
-            hasPendingParams = false;
-        }
-        
-        // Manejar PVCs
-        if (morphology.pvcInterval > 0 && (beatCount % morphology.pvcInterval) == 0) {
-            preparePVCBeat();
-            // PVC es prematuro: RR más corto
-            currentRR = currentRR * (0.65f + randomFloat() * 0.15f);
-        } else {
-            if (morphology.isPVCBeat) {
-                // Pausa compensatoria después del PVC
-                prepareNormalBeat();
-                currentRR = generateNextRR() * (1.2f + randomFloat() * 0.2f);
+            if (findMax) {
+                if (value > extremeValue) extremeValue = value;
             } else {
-                // Latido normal: generar nuevo RR
-                currentRR = generateNextRR();
+                if (value < extremeValue) extremeValue = value;
             }
         }
     }
     
-    lastTheta = theta;
-}
-
-// ============================================================================
-// GENERACIÓN DE MUESTRA
-// ============================================================================
-/**
- * @brief Genera una muestra de ECG
- * @param deltaTime Tiempo desde última muestra (típicamente 1ms)
- * @return Valor de ECG en unidades del modelo
- */
-float ECGModel::generateSample(float deltaTime) {
-    // VFib usa modelo alternativo
-    if (useVFibModel) {
-        return generateVFibSample(deltaTime);
+    // Si no se encontró nada en la ventana, retornar 0
+    if ((findMax && extremeValue < -999.0f) || (!findMax && extremeValue > 999.0f)) {
+        return 0.0f;
     }
     
-    // Actualizar fase de respiración para drift del baseline
-    breathPhase += BASELINE_DRIFT_FREQ * 2.0f * PI * deltaTime;
-    if (breathPhase > 2.0f * PI) breathPhase -= 2.0f * PI;
+    return extremeValue;
+}
+
+/**
+ * Calcula el promedio de valores dentro de una ventana angular (para segmento ST).
+ * @param startAngle Ángulo inicial (radianes)
+ * @param endAngle Ángulo final (radianes)
+ * @return Promedio en mV de las muestras en la ventana
+ */
+float ECGModel::averageInWindow(float startAngle, float endAngle) {
+    float sum = 0.0f;
+    int count = 0;
     
-    // Modelo McSharry estándar
-    rungeKutta4Step(deltaTime);
-    detectBeatAndApplyPending();
-    
-    // Añadir ruido según parámetro del usuario
-    float noise = gaussianRandom(0.0f, params.noiseLevel * 0.04f);
-    
-    return state.z + noise;
-}
-
-/**
- * @brief Genera valor DAC para salida analógica
- */
-uint8_t ECGModel::getDACValue(float deltaTime) {
-    float voltage = generateSample(deltaTime);
-    return voltageToDACValue(voltage);
-}
-
-// ============================================================================
-// SISTEMA DE ESCALADO Y CONVERSIÓN
-// ============================================================================
-// 
-// DEFINICIÓN DE ESCALA:
-// El modelo McSharry produce z(t) en unidades adimensionales. Para uso
-// educativo y clínico, definimos una escala equivalente a milivolts (mV):
-//
-//   1.0 unidad del modelo ≈ 1.0 mV
-//
-// Esto es consistente con ECG Lead II típico donde:
-//   - Onda R: 0.5-1.5 mV (típico ~1.0 mV)
-//   - Onda P: 0.1-0.25 mV
-//   - Onda T: 0.1-0.5 mV
-//   - Ondas Q, S: -0.1 a -0.5 mV
-//   - Baseline (isoeléctrica): 0 mV
-//
-// Con parámetros McSharry estándar (ai=[1.2,-5,30,-7.5,0.75]) el rango
-// típico de z(t) es aproximadamente [-0.4, 1.2], lo cual es razonable
-// para un ECG en mV.
-//
-// CONVERSIÓN DAC:
-// ESP32 DAC tiene 8 bits (0-255) con salida 0-3.3V.
-// Definimos el mapeo:
-//   - z = -0.5 mV → DAC = 0   → 0.0 V
-//   - z = +1.5 mV → DAC = 255 → 3.3 V
-//   - z = 0.0 mV  → DAC = 64  → 0.83 V (baseline)
-//   - z = 1.0 mV  → DAC = 191 → 2.47 V (R wave típica)
-//
-// Factor de escala para osciloscopio:
-//   1 mV modelo = (3.3V / 2.0mV) = 1.65 V/mV en salida DAC
-//
-// ============================================================================
-
-// Rango del modelo en mV equivalentes
-static const float ECG_MV_MIN = -0.5f;   // mV mínimo (margen para Q/S profundas)
-static const float ECG_MV_MAX = 1.5f;    // mV máximo (margen para R alta)
-static const float ECG_MV_RANGE = ECG_MV_MAX - ECG_MV_MIN;  // 2.0 mV total
-
-/**
- * @brief Convierte valor del modelo (mV equivalente) a valor DAC 8-bit
- * @param mV Valor de ECG en milivolts equivalentes
- * @return Valor DAC 0-255 para salida analógica
- * 
- * Mapeo lineal:
- *   mV = -0.5 → DAC = 0
- *   mV = +1.5 → DAC = 255
- */
-uint8_t ECGModel::voltageToDACValue(float mV) {
-    float normalized = (mV - ECG_MV_MIN) / ECG_MV_RANGE;
-    normalized = constrain(normalized, 0.0f, 1.0f);
-    return (uint8_t)(normalized * 255.0f);
-}
-
-/**
- * @brief Obtiene el valor actual en mV equivalentes
- * @return Valor ECG actual en milivolts
- */
-float ECGModel::getCurrentValueMV() const {
-    return state.z;  // El modelo ya está en escala mV
-}
-
-// ============================================================================
-// GETTERS PARA VISUALIZACIÓN EDUCATIVA
-// ============================================================================
-// Estas funciones proveen métricas en tiempo real para mostrar en la
-// pantalla Nextion. Los valores están en unidades clínicamente relevantes.
-
-/**
- * @brief Indica si estamos en la fase QRS del ciclo
- */
-bool ECGModel::isInBeat() const {
-    if (useVFibModel) return false;
-    float theta = atan2f(state.y, state.x);
-    return (theta > -0.15f && theta < 0.15f);
-}
-
-/**
- * @brief Obtiene BPM instantáneo basado en el RR actual
- * @return Frecuencia cardíaca en latidos por minuto
- */
-float ECGModel::getCurrentBPM() const {
-    if (useVFibModel) {
-        return 0.0f;  // VFib no tiene BPM definible
+    for (int i = 0; i < cycleSamples.count; i++) {
+        float theta = normalizeAngle(cycleSamples.theta[i]);
+        
+        // Verificar si está en el rango [startAngle, endAngle]
+        bool inWindow;
+        if (startAngle <= endAngle) {
+            inWindow = (theta >= startAngle && theta <= endAngle);
+        } else {
+            // Rango que cruza -π/π
+            inWindow = (theta >= startAngle || theta <= endAngle);
+        }
+        
+        if (inWindow) {
+            sum += cycleSamples.z_mV[i];
+            count++;
+        }
     }
-    if (currentRR <= 0.0f) return 0.0f;
-    return 60.0f / currentRR;
+    
+    return (count > 0) ? (sum / (float)count) : 0.0f;
 }
 
 /**
- * @brief Obtiene intervalo RR actual
- * @return Intervalo RR en milisegundos
+ * Encuentra el ángulo donde ocurre el pico (para cálculo de QRS y QT).
+ * @param centerAngle Centro de la ventana (radianes)
+ * @param widthAngle Ancho de la ventana (radianes)
+ * @param findMax Si true busca máximo, si false busca mínimo
+ * @return Ángulo (radianes) donde se encuentra el pico
  */
-float ECGModel::getCurrentRR_ms() const {
-    return currentRR * 1000.0f;
+float ECGModel::findAngleAtPeak(float centerAngle, float widthAngle, bool findMax) {
+    float extremeValue = findMax ? -1000.0f : 1000.0f;
+    float extremeAngle = centerAngle;
+    
+    for (int i = 0; i < cycleSamples.count; i++) {
+        float theta = normalizeAngle(cycleSamples.theta[i]);
+        float distance = fabsf(normalizeAngle(theta - centerAngle));
+        
+        if (distance <= widthAngle) {
+            float value = cycleSamples.z_mV[i];
+            
+            if ((findMax && value > extremeValue) || 
+                (!findMax && value < extremeValue)) {
+                extremeValue = value;
+                extremeAngle = theta;
+            }
+        }
+    }
+    
+    return extremeAngle;
 }
 
 /**
- * @brief Obtiene amplitud de onda R actual
- * @return Amplitud R en mV (escala del modelo)
+ * @brief Resetea métricas clínicas a valores iniciales de la condición actual
  * 
- * Valor típico normal: 0.5-1.5 mV en Lead II
- * Valores altos pueden indicar hipertrofia ventricular
- */
-float ECGModel::getRWaveAmplitude_mV() const {
-    // ai[2] es el parámetro de amplitud R en el modelo
-    // Convertir de unidades internas a mV aproximados
-    // Con ai=30 (valor base), el pico R es ~1.0 mV
-    return fabsf(morphology.ai[2]) / 30.0f;  // Normalizado a ~1.0 mV base
-}
-
-/**
- * @brief Obtiene nivel de elevación/depresión ST
- * @return Desviación ST en mV
+ * Esto evita mostrar métricas "fantasma" de la condición anterior durante
+ * los primeros segundos después de cambiar de condición.
  * 
- * Normal: ±0.1 mV (≈isoeléctrico)
- * STEMI: +0.1 a +0.3 mV
- * Isquemia: -0.1 a -0.3 mV
+ * Valores reseteados son:
+ * - Estimaciones fisiológicamente correctas para la condición
+ * - Se actualizarán con mediciones reales después del primer ciclo completo
  */
-float ECGModel::getSTDeviation_mV() const {
-    return morphology.stElevation;
-}
-
-/**
- * @brief Obtiene nombre de la condición actual
- * @return String con nombre de la condición
- */
-const char* ECGModel::getConditionName() const {
+void ECGModel::resetMetricsForCondition() {
+    // =========================================================================
+    // CASO ESPECIAL: VENTRICULAR FIBRILLATION
+    // =========================================================================
+    if (currentCondition == ECGCondition::VENTRICULAR_FIBRILLATION) {
+        // VFib NO tiene ondas organizadas
+        measuredRR_ms = 0.0f;
+        measuredPR_ms = 0.0f;
+        measuredQRS_ms = 0.0f;
+        measuredQT_ms = 0.0f;
+        measuredQTc_ms = 0.0f;
+        measuredP_mV = 0.0f;
+        measuredQ_mV = 0.0f;
+        measuredR_mV = 0.0f;  // Se actualizará con vfibState.lastValue
+        measuredS_mV = 0.0f;
+        measuredT_mV = 0.0f;
+        measuredST_mV = 0.0f;
+        return;  // Salir temprano
+    }
+    
+    // =========================================================================
+    // RESTO DE CONDICIONES (McSharry)
+    // =========================================================================
+    // Calcular RR esperado para esta condición
+    float expectedRR_ms = (60.0f / hrMean) * 1000.0f;
+    
+    // Resetear con valores esperados
+    measuredRR_ms = expectedRR_ms;
+    
+    // Intervalos estándar (estimación inicial, se medirán en primer ciclo)
+    measuredPR_ms = 160.0f;   // Normal: 120-200 ms
+    measuredQRS_ms = 80.0f;   // Normal: 60-100 ms
+    measuredQT_ms = 400.0f;   // Aproximado, se corregirá con QTc
+    
+    // QTc Bazett: QTc = QT / sqrt(RR_seconds)
+    float rrSeconds = expectedRR_ms / 1000.0f;
+    if (rrSeconds > 0.0f) {
+        measuredQTc_ms = measuredQT_ms / sqrtf(rrSeconds);
+    } else {
+        measuredQTc_ms = measuredQT_ms;
+    }
+    
+    // Amplitudes por defecto (se medirán en primer ciclo real)
+    measuredP_mV = 0.15f;
+    measuredQ_mV = -0.10f;
+    measuredR_mV = 1.0f;   // Valor objetivo de calibración
+    measuredS_mV = -0.20f;
+    measuredT_mV = 0.30f;
+    measuredST_mV = 0.0f;
+    
+    // =========================================================================
+    // AJUSTES ESPECÍFICOS POR CONDICIÓN
+    // =========================================================================
     switch (currentCondition) {
-        case ECGCondition::NORMAL:                return "Normal";
-        case ECGCondition::TACHYCARDIA:           return "Taquicardia";
-        case ECGCondition::BRADYCARDIA:           return "Bradicardia";
-        case ECGCondition::ATRIAL_FIBRILLATION:   return "FA";
-        case ECGCondition::VENTRICULAR_FIBRILLATION: return "FV";
-        case ECGCondition::PREMATURE_VENTRICULAR: return "PVC";
-        case ECGCondition::BUNDLE_BRANCH_BLOCK:   return "BRD/BRI";
-        case ECGCondition::ST_ELEVATION:          return "STEMI";
-        case ECGCondition::ST_DEPRESSION:         return "Isquemia";
-        default:                                  return "Desconocido";
+        case ECGCondition::TACHYCARDIA:
+            // Tachy: QRS puede ser ligeramente más ancho
+            measuredQRS_ms = 90.0f;
+            // T puede ser más pequeña por repolarización rápida
+            measuredT_mV = 0.20f;
+            break;
+            
+        case ECGCondition::BRADYCARDIA:
+            // Brady: intervalos más largos
+            measuredPR_ms = 180.0f;
+            measuredQT_ms = 450.0f;
+            if (rrSeconds > 0.0f) {
+                measuredQTc_ms = 450.0f / sqrtf(rrSeconds);
+            }
+            break;
+            
+        case ECGCondition::ATRIAL_FIBRILLATION:
+            // AFib: sin onda P consistente
+            measuredP_mV = 0.0f;   // P desorganizada
+            measuredPR_ms = 0.0f;  // Sin PR definido
+            break;
+            
+        case ECGCondition::AV_BLOCK_1:
+            // AVB1: PR prolongado
+            measuredPR_ms = 250.0f;  // >200 ms (diagnóstico de AVB1)
+            break;
+            
+        case ECGCondition::ST_ELEVATION:
+            // STEMI: elevación ST significativa
+            measuredST_mV = 0.3f;   // Elevación de 3mm (criterio STEMI)
+            break;
+            
+        case ECGCondition::ST_DEPRESSION:
+            // NSTEMI: depresión ST
+            measuredST_mV = -0.2f;  // Depresión de 2mm
+            break;
+            
+        case ECGCondition::NORMAL:
+        default:
+            // Normal: valores ya seteados arriba son correctos
+            break;
     }
-}
-
-/**
- * @brief Obtiene contador de latidos
- * @return Número de latidos desde reset
- */
-uint32_t ECGModel::getBeatCount() const {
-    return beatCount;
-}
-
-/**
- * @brief Estructura con todas las métricas para display
- */
-ECGDisplayMetrics ECGModel::getDisplayMetrics() const {
-    ECGDisplayMetrics metrics;
-    metrics.bpm = getCurrentBPM();
-    metrics.rrInterval_ms = getCurrentRR_ms();
-    metrics.rAmplitude_mV = getRWaveAmplitude_mV();
-    metrics.stDeviation_mV = getSTDeviation_mV();
-    metrics.beatCount = beatCount;
-    metrics.conditionName = getConditionName();
-    return metrics;
-}
-
-/**
- * @brief Obtiene los rangos de HR para la patología actual
- * @param minHR Valor mínimo de HR para la patología
- * @param maxHR Valor máximo de HR para la patología
- */
-void ECGModel::getHRRange(float& minHR, float& maxHR) const {
-    uint8_t idx = static_cast<uint8_t>(currentCondition);
-    if (idx >= 9) idx = 0;
-    
-    minHR = ECG_RANGES[idx].hrMin;
-    maxHR = ECG_RANGES[idx].hrMax;
 }

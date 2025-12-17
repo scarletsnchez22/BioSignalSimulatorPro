@@ -80,12 +80,14 @@ void PPGModel::applyConditionModifiers() {
         case PPGCondition::NORMAL:
             // Valores por defecto - pulso normal con muesca dicrótica visible
             // Allen 2007: Sujeto sano, buena perfusión periférica
+            dicroticDepth = 0.01f;  // Aumentar profundidad muesca para visibilidad
             break;
             
         case PPGCondition::ARRHYTHMIA:
             // Fibrilación auricular: Alta variabilidad RR (>15%)
             // Se maneja en generateNextRR() con rrStd = 0.15
             // Shelley 2007: Amplitud variable latido a latido
+            dicroticDepth = 0.01f;
             break;
             
         case PPGCondition::WEAK_PERFUSION:
@@ -94,8 +96,18 @@ void PPGModel::applyConditionModifiers() {
             // Awad 2001: Taquicardia compensatoria típica 100-120 BPM
             systolicAmplitude = 0.25f;          // Reducción ~75%
             diastolicAmplitude = 0.08f;         // Ratio preservado pero muy bajo
-            dicroticDepth = 0.1f;               // Muesca casi invisible
+            dicroticDepth = 0.01f;              // Estandarizado
             params.heartRate = 115.0f;          // Taquicardia compensatoria
+            break;
+            
+        case PPGCondition::VASODILATION:
+            // Vasodilatación moderada (fiebre leve, calor, ejercicio leve)
+            // Reisner 2008: PI 5-10%
+            // Shelley 2007: Amplitud aumentada, muesca visible
+            systolicAmplitude = 1.3f;           // Aumento ~30%
+            diastolicAmplitude = 0.5f;          // Ratio aumentado (reflexión)
+            dicroticDepth = 0.01f;              // Estandarizado
+            params.heartRate = 75.0f;           // Frecuencia normal
             break;
             
         case PPGCondition::STRONG_PERFUSION:
@@ -104,7 +116,7 @@ void PPGModel::applyConditionModifiers() {
             // Shelley 2007: Amplitud aumentada, muesca prominente
             systolicAmplitude = 1.6f;           // Aumento ~60%
             diastolicAmplitude = 0.7f;          // Ratio aumentado (reflexión fuerte)
-            dicroticDepth = 0.35f;              // Muesca más visible
+            dicroticDepth = 0.01f;              // Estandarizado
             params.heartRate = 72.0f;           // Frecuencia normal-baja
             break;
             
@@ -114,31 +126,14 @@ void PPGModel::applyConditionModifiers() {
             // Millasseau 2006: Aumento de índice de rigidez (stiffness index)
             systolicAmplitude = 0.7f;           // Reducción ~30%
             diastolicAmplitude = 0.35f;         // Ratio ligeramente aumentado
-            dicroticDepth = 0.45f;              // Muesca prominente (alta resistencia)
+            dicroticDepth = 0.01f;              // Estandarizado
             // HR no se modifica (puede ser normal)
-            break;
-            
-        case PPGCondition::MOTION_ARTIFACT:
-            // Movimiento del paciente durante medición
-            // Shelley 2007: Artefactos de alta frecuencia, baseline errático
-            motionNoise = 0.4f;                 // Ruido significativo
-            // Morfología subyacente normal
-            break;
-            
-        case PPGCondition::LOW_SPO2:
-            // Hipoxemia (SpO2 < 90%)
-            // Awad 2001: Amplitud reducida, taquicardia refleja
-            // Reisner 2008: PI reducido en hipoxia tisular
-            systolicAmplitude = 0.5f;           // Reducción ~50%
-            diastolicAmplitude = 0.15f;         // Ratio reducido
-            dicroticDepth = 0.15f;              // Muesca menos visible
-            params.heartRate = 105.0f;          // Taquicardia refleja
             break;
     }
     
     // Ajustar por perfusion index del usuario (PI normal ~2-5%, rango 0.1-20%)
     // Lima & Bakker 2005: PI correlaciona con flujo periférico
-    float piScale = params.perfusionIndex / PPG_PI_REFERENCE;
+    float piScale = params.perfusionIndex / 3.0f;  // PI normal = 3%
     piScale = constrain(piScale, 0.1f, 2.0f);  // Limitar a rango fisiológico
     systolicAmplitude *= piScale;
     diastolicAmplitude *= piScale;
@@ -234,8 +229,8 @@ float PPGModel::generateSample(float deltaTime) {
     }
     
     // Calcular forma del pulso: DC + AC escalado
-    // PPG_AC_SCALE (0.3) representa ratio típico AC/DC en tejido sano
-    float signal = PPG_DC_LEVEL + computePulseShape(phaseInCycle) * PPG_AC_SCALE;
+    // 0.3 representa ratio típico AC/DC en tejido sano
+    float signal = 1.0f + computePulseShape(phaseInCycle) * 0.3f;
     
     // Añadir baseline wander lento (~0.05 Hz respiratorio)
     // Mantener fase cíclica para evitar overflow
@@ -264,8 +259,10 @@ uint8_t PPGModel::getDACValue(float deltaTime) {
 }
 
 uint8_t PPGModel::voltageToDACValue(float voltage) {
-    // Escalar PPG (típico 0-1) a 0-255
-    float normalized = constrain(voltage, 0.0f, 1.0f);
+    // QUITAR ESTA LÍNEA: voltage = 1.0f - voltage;
+    
+    float normalized = constrain(voltage, 0.0f, 1.5f);
+    normalized = normalized / 1.5f;  // Escalar 0-1.5 a 0-1
     return (uint8_t)(normalized * 255.0f);
 }
 
@@ -347,8 +344,60 @@ const char* PPGModel::getConditionName() const {
         case PPGCondition::WEAK_PERFUSION: return "Perfusión Débil";
         case PPGCondition::STRONG_PERFUSION: return "Perfusión Fuerte";
         case PPGCondition::VASOCONSTRICTION: return "Vasoconstricción";
-        case PPGCondition::MOTION_ARTIFACT: return "Artefacto Movim.";
-        case PPGCondition::LOW_SPO2: return "SpO2 Bajo";
         default: return "Desconocido";
     }
+}
+
+// ============================================================================
+// MÉTRICAS MEDIBLES (según tabla de rangos clínicos PPG)
+// ============================================================================
+
+/**
+ * @brief Obtiene la amplitud AC en mV
+ * 
+ * AC amplitude = DC × (PI/100)
+ * Usa DC teórico de 1000 mV hasta resolver escalado
+ * 
+ * @return AC en mV (teórico)
+ */
+float PPGModel::getACAmplitude() const {
+    const float DC_BASELINE_MV = 1000.0f;  // Valor teórico de referencia
+    return DC_BASELINE_MV * (params.perfusionIndex / 100.0f);
+}
+
+/**
+ * @brief Obtiene el DC baseline en mV
+ * 
+ * Baseline constante según tabla de rangos clínicos
+ * 
+ * @return DC en mV (teórico, siempre 1000 mV)
+ */
+float PPGModel::getDCBaseline() const {
+    return 1000.0f;  // Valor teórico de referencia
+}
+
+/**
+ * @brief Obtiene la duración de la sístole en ms
+ * 
+ * Sístole: desde inicio del latido hasta final del pico sistólico
+ * Aproximadamente 25-30% del ciclo RR según literatura
+ * 
+ * @return Duración de sístole en ms
+ */
+float PPGModel::getSystoleTime() const {
+    // Sístole: ~30% del ciclo RR (Elgendi 2012, Allen 2007)
+    return currentRR * 1000.0f * 0.30f;
+}
+
+/**
+ * @brief Obtiene la duración de la diástole en ms
+ * 
+ * Diástole: desde final de sístole hasta inicio del próximo latido
+ * Aproximadamente 70% del ciclo RR
+ * 
+ * @return Duración de diástole en ms
+ */
+float PPGModel::getDiastoleTime() const {
+    // Diástole: ~70% del ciclo RR (resto del ciclo)
+    return currentRR * 1000.0f * 0.70f;
 }

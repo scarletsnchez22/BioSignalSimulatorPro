@@ -66,7 +66,9 @@ inline ECGLimits getECGLimits(ECGCondition condition) {
         case ECGCondition::NORMAL:
             // AHA: ritmo sinusal normal 60-100 BPM
             limits.heartRate   = {60.0f, 100.0f, 75.0f};
-            limits.stShift     = {-0.05f, 0.05f, 0.0f};  // <0.5mm es normal
+            limits.pAmplitude  = {0.1f, 0.3f, 0.2f};     // P: 0.1-0.3 mV
+            limits.tAmplitude  = {0.2f, 0.6f, 0.4f};     // T: 0.2-0.6 mV
+            limits.stShift     = {-0.05f, 0.05f, 0.0f};  // ST isoeléctrico
             break;
             
         case ECGCondition::TACHYCARDIA:
@@ -89,7 +91,8 @@ inline ECGLimits getECGLimits(ECGCondition condition) {
             break;
             
         case ECGCondition::VENTRICULAR_FIBRILLATION:
-            // Goldberger 2017: VFib 150-500, caótico, sin ondas definidas
+            // Pseudo-frecuencia VFib 150-500 (Clayton 1993)
+            // Ref: Clayton RH et al. "Frequency analysis of VF." IEEE Trans Biomed Eng. 1993
             limits.heartRate   = {150.0f, 500.0f, 300.0f};
             limits.pAmplitude  = {0.0f, 0.0f, 0.0f};
             limits.qrsAmplitude = {0.0f, 0.0f, 0.0f};  // No hay QRS identificable
@@ -97,35 +100,33 @@ inline ECGLimits getECGLimits(ECGCondition condition) {
             limits.stShift     = {-2.0f, 2.0f, 0.0f};  // Caótico
             break;
             
-        case ECGCondition::PREMATURE_VENTRICULAR:
-            // Surawicz 2008: PVCs tienen QRS ancho y grande, sin P precedente
-            limits.heartRate   = {50.0f, 120.0f, 75.0f};
-            limits.pAmplitude  = {0.0f, 0.0f, 0.0f};  // Sin P en el PVC
-            limits.qrsAmplitude = {1.2f, 2.5f, 1.8f}; // QRS aumentado
-            limits.tAmplitude  = {0.8f, 1.5f, 1.2f};  // T opuesta al QRS
-            limits.stShift     = {-0.2f, 0.2f, 0.0f};
-            break;
-            
-        case ECGCondition::BUNDLE_BRANCH_BLOCK:
-            // Surawicz 2008: BBB tiene QRS >120ms, morfología alterada
-            limits.heartRate   = {40.0f, 100.0f, 70.0f};
-            limits.qrsAmplitude = {0.8f, 1.5f, 1.2f};
-            limits.tAmplitude  = {0.5f, 1.2f, 0.8f};  // T puede ser opuesta
-            limits.stShift     = {-0.15f, 0.15f, 0.0f};
+        case ECGCondition::AV_BLOCK_1:
+            // Bloqueo AV 1º grado: morfología normal, solo PR > 200 ms
+            // Ref: AHA/ACC/HRS 2018 Bradycardia Guidelines
+            limits.heartRate   = {60.0f, 100.0f, 75.0f};
+            limits.pAmplitude  = {0.15f, 0.25f, 0.2f};  // P normal
+            limits.qrsAmplitude = {0.8f, 1.5f, 1.0f};   // QRS normal
+            limits.tAmplitude  = {0.3f, 0.5f, 0.4f};    // T normal
+            limits.stShift     = {-0.05f, 0.05f, 0.0f}; // ST isoeléctrico
             break;
             
         case ECGCondition::ST_ELEVATION:
-            // AHA 2018: STEMI requiere elevación ≥1mm (0.1mV)
+            // STEMI: 50-110 BPM (bradicardia relativa o taquicardia)
+            // Ref: Antman EM et al. ACC/AHA STEMI Guidelines. Circulation 2004
+            // + Thygesen 2018: Fourth Universal Definition of MI
             limits.heartRate   = {50.0f, 110.0f, 80.0f};
-            limits.stShift     = {0.1f, 0.4f, 0.25f};  // ELEVACIÓN: 1-4mm
-            limits.tAmplitude  = {1.0f, 2.0f, 1.5f};   // T hiperaguda
+            limits.pAmplitude  = {0.1f, 0.3f, 0.2f};     // P normal
+            limits.stShift     = {0.2f, 0.5f, 0.3f};     // ELEVACIÓN: ≥0.2 mV
+            limits.tAmplitude  = {0.6f, 1.2f, 0.8f};     // T hiperaguda >0.6 mV
             break;
             
         case ECGCondition::ST_DEPRESSION:
-            // AHA 2018: depresión ST ≥0.5mm sugiere isquemia
+            // Isquemia: 50-150 BPM (puede coexistir con taquicardia por dolor/estrés)
+            // Ref: Goldberger 2017 + ECGwaves - ST depression in ischemia
             limits.heartRate   = {50.0f, 150.0f, 90.0f};
-            limits.stShift     = {-0.3f, -0.05f, -0.15f};  // DEPRESIÓN: 0.5-3mm
-            limits.tAmplitude  = {0.3f, 0.8f, 0.5f};   // T invertida o aplanada
+            limits.pAmplitude  = {0.1f, 0.3f, 0.2f};     // P normal
+            limits.stShift     = {-0.2f, -0.05f, -0.1f}; // DEPRESIÓN: 0.05-0.2 mV
+            limits.tAmplitude  = {-0.3f, -0.1f, -0.2f};  // T invertida: -0.1 a -0.3 mV
             break;
             
         default:
@@ -155,48 +156,28 @@ inline EMGLimits getEMGLimits(EMGCondition condition) {
             limits.amplitude       = {0.1f, 0.5f, 0.2f};
             break;
             
-        case EMGCondition::MILD_CONTRACTION:
-            limits.excitationLevel = {0.1f, 0.3f, 0.2f};
+        case EMGCondition::LOW_CONTRACTION:
+            limits.excitationLevel = {0.05f, 0.20f, 0.12f};
             limits.amplitude       = {0.5f, 1.0f, 0.7f};
             break;
             
         case EMGCondition::MODERATE_CONTRACTION:
-            limits.excitationLevel = {0.3f, 0.6f, 0.5f};
+            limits.excitationLevel = {0.20f, 0.50f, 0.35f};
             limits.amplitude       = {0.8f, 1.5f, 1.0f};
             break;
             
-        case EMGCondition::STRONG_CONTRACTION:
-            limits.excitationLevel = {0.6f, 0.9f, 0.8f};
-            limits.amplitude       = {1.2f, 2.0f, 1.5f};
-            break;
-            
-        case EMGCondition::MAXIMUM_CONTRACTION:
-            limits.excitationLevel = {0.8f, 1.0f, 1.0f};
-            limits.amplitude       = {1.5f, 2.5f, 2.0f};
+        case EMGCondition::HIGH_CONTRACTION:
+            limits.excitationLevel = {0.50f, 1.0f, 0.75f};
+            limits.amplitude       = {1.2f, 2.5f, 1.8f};
             break;
             
         case EMGCondition::TREMOR:
-            limits.excitationLevel = {0.1f, 0.5f, 0.3f};
-            limits.amplitude       = {0.5f, 1.5f, 1.0f};
-            break;
-            
-        case EMGCondition::MYOPATHY:
-            limits.excitationLevel = {0.1f, 0.4f, 0.3f};
-            limits.amplitude       = {0.2f, 0.6f, 0.4f};  // Reducida
-            break;
-            
-        case EMGCondition::NEUROPATHY:
-            limits.excitationLevel = {0.3f, 1.0f, 0.5f};
-            limits.amplitude       = {1.5f, 3.0f, 2.0f};  // Aumentada (MUAPs gigantes)
-            break;
-            
-        case EMGCondition::FASCICULATION:
-            limits.excitationLevel = {0.0f, 0.3f, 0.1f};
+            limits.excitationLevel = {0.0f, 0.0f, 0.0f};  // No parametrizable
             limits.amplitude       = {0.5f, 1.5f, 1.0f};
             break;
             
         case EMGCondition::FATIGUE:
-            limits.excitationLevel = {0.2f, 0.8f, 0.6f};
+            limits.excitationLevel = {0.0f, 0.0f, 0.0f};  // No parametrizable (protocolo fijo 50% MVC)
             limits.amplitude       = {0.5f, 1.5f, 1.0f};
             break;
             
@@ -261,25 +242,18 @@ inline PPGLimits getPPGLimits(PPGCondition condition) {
             limits.dicroticNotch   = {0.4f, 0.7f, 0.55f};  // Prominente
             break;
             
+        case PPGCondition::VASODILATION:
+            // BPL 2023: vasodilatación aumenta PI (5-10%)
+            limits.heartRate       = {60.0f, 90.0f, 75.0f};
+            limits.perfusionIndex  = {5.0f, 10.0f, 7.5f};
+            limits.dicroticNotch   = {0.3f, 0.5f, 0.4f};   // Marcado
+            break;
+            
         case PPGCondition::VASOCONSTRICTION:
             // Shelley 2007: vasoconstricción reduce amplitud y notch
             limits.heartRate       = {70.0f, 110.0f, 85.0f};
-            limits.perfusionIndex  = {1.0f, 5.0f, 3.0f};
-            limits.dicroticNotch   = {0.1f, 0.25f, 0.15f};  // Reducido
-            break;
-            
-        case PPGCondition::MOTION_ARTIFACT:
-            // Artefactos distorsionan la morfología - notch puede perderse
-            limits.heartRate       = {60.0f, 100.0f, 75.0f};
-            limits.perfusionIndex  = {2.0f, 10.0f, 5.0f};
-            limits.dicroticNotch   = {0.0f, 0.3f, 0.15f};  // Variable/perdido
-            break;
-            
-        case PPGCondition::LOW_SPO2:
-            // Reisner 2008: hipoxia reduce perfusión periférica
-            limits.heartRate       = {80.0f, 130.0f, 100.0f};
-            limits.perfusionIndex  = {0.5f, 3.0f, 1.5f};
-            limits.dicroticNotch   = {0.1f, 0.3f, 0.2f};   // Reducido
+            limits.perfusionIndex  = {0.2f, 0.8f, 0.5f};
+            limits.dicroticNotch   = {0.05f, 0.15f, 0.1f};  // Muy reducido
             break;
             
         default:
@@ -293,20 +267,84 @@ inline PPGLimits getPPGLimits(PPGCondition condition) {
 }
 
 // ============================================================================
-// LÍMITES GLOBALES [RESERVED - Para validación de entrada serial/UI]
+// LÍMITES DE VARIABILIDAD HR (HRV) POR CONDICIÓN
+// Referencias:
+//   - Task Force ESC/NASPE 1996: HRV Standards
+//   - CV% = (hrStd / hrMean) × 100
+//   - Ritmo regular: CV% < 10%
+//   - AFib "irregularmente irregular": CV% > 15%
+// ============================================================================
+struct HRVRange {
+    float minVar;      // % mínimo de variabilidad
+    float maxVar;      // % máximo de variabilidad
+    float defaultVar;  // % por defecto
+};
+
+inline HRVRange getHRVLimits(ECGCondition condition) {
+    switch (condition) {
+        case ECGCondition::NORMAL:
+            // Ritmo sinusal regular: baja variabilidad
+            return {1.0f, 10.0f, 3.0f};
+            
+        case ECGCondition::TACHYCARDIA:
+            // Taquicardia sinusal: variabilidad reducida
+            return {1.0f, 8.0f, 2.0f};
+            
+        case ECGCondition::BRADYCARDIA:
+            // Bradicardia sinusal: variabilidad baja
+            return {1.0f, 8.0f, 2.0f};
+            
+        case ECGCondition::ATRIAL_FIBRILLATION:
+            // AFib: DEBE ser irregular (≥15%)
+            return {15.0f, 35.0f, 20.0f};
+            
+        case ECGCondition::VENTRICULAR_FIBRILLATION:
+            // VFib: caótico, no aplica slider
+            return {30.0f, 50.0f, 40.0f};
+            
+        case ECGCondition::AV_BLOCK_1:
+            // BAV1: ritmo regular
+            return {1.0f, 10.0f, 2.0f};
+            
+        case ECGCondition::ST_ELEVATION:
+            // STEMI: puede tener algo de variabilidad
+            return {1.0f, 12.0f, 3.0f};
+            
+        case ECGCondition::ST_DEPRESSION:
+            // Isquemia: puede haber taquicardia reactiva
+            return {1.0f, 12.0f, 3.0f};
+            
+        default:
+            return {1.0f, 10.0f, 3.0f};
+    }
+}
+
+// ============================================================================
+// LÍMITES GLOBALES [Para validación de entrada serial/UI]
 // Constantes absolutas para validación independiente de condición
 // ============================================================================
 struct GlobalLimits {
     static constexpr float NOISE_MIN = 0.0f;
-    static constexpr float NOISE_MAX = 1.0f;
-    static constexpr float NOISE_DEFAULT = 0.05f;
+    static constexpr float NOISE_MAX = 0.10f;   // 10% máximo (cosmético)
+    static constexpr float NOISE_DEFAULT = 0.02f;
     
-    static constexpr float AMPLITUDE_MIN = 0.1f;
-    static constexpr float AMPLITUDE_MAX = 2.0f;
-    static constexpr float AMPLITUDE_DEFAULT = 1.0f;
+    static constexpr float ZOOM_MIN = 0.5f;     // Zoom visual mínimo
+    static constexpr float ZOOM_MAX = 2.0f;     // Zoom visual máximo
+    static constexpr float ZOOM_DEFAULT = 1.0f;
     
     static constexpr float HR_ABSOLUTE_MIN = 30.0f;
     static constexpr float HR_ABSOLUTE_MAX = 200.0f;
 };
+
+// ============================================================================
+// RESUMEN: 4 SLIDERS PARA NEXTION UI
+// ============================================================================
+// | Slider      | Parámetro    | Rango           | Fuente de límites      |
+// |-------------|--------------|-----------------|------------------------|
+// | 1. HR       | heartRate    | Dinámico        | getECGLimits()         |
+// | 2. Ruido    | noiseLevel   | 0-10%           | GlobalLimits::NOISE_*  |
+// | 3. Zoom     | visualGain   | 0.5x-2.0x       | GlobalLimits::ZOOM_*   |
+// | 4. Var HR%  | hrVariability| Dinámico        | getHRVLimits()         |
+// ============================================================================
 
 #endif // PARAM_LIMITS_H

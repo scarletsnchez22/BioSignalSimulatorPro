@@ -1,5 +1,28 @@
 /**
  * @file ppg_model.h
+ * @brief Modelo PPG con doble gaussiana y 6 condiciones clínicas
+ * @version 1.1.0
+ * 
+ * Modelo de fotopletismografía con HRV, muesca dicrótica y simulación
+ * de condiciones patológicas con parámetros dinámicos (PI, SpO2).
+ * 
+ * Condiciones soportadas (valores en mV físicos reales):
+ * - NORMAL:           PI 1-5%, DC=1000mV, AC=15-50mV, morfología estándar
+ * - ARRHYTHMIA:       PI 1-5%, DC=1000mV, AC=15-50mV, RR irregular ±15%
+ * - WEAK_PERFUSION:   PI 0.02-0.4%, DC=1000mV, AC=0.2-5mV, señal muy débil
+ * - VASODILATION:     PI 5-10%, DC=1000mV, AC=50-100mV, muesca marcada
+ * - STRONG_PERFUSION: PI 10-20%, DC=1000mV, AC=100-200mV, señal muy robusta
+ * - VASOCONSTRICTION: PI 0.2-0.8%, DC=1000mV, AC=2-10mV, onda afilada
+ * 
+ * Referencias científicas:
+ * - BPL Medical Technologies (2023): Understanding Perfusion Index
+ * - Allen J. Physiol Meas. 2007;28(3):R1-R39: Morfología PPG y PI
+ * - ProQuest: AC/DC típico 1-2% del componente continuo
+ * - De La Peña Sanabria I., et al. Rev. Physiol. Meas., 2007: PI clínico
+ * - Lima A, Bakker J. Intensive Care Med, 2005: Monitoreo perfusión periférica
+ * - Reisner A et al. Anesthesiology, 2008: Utilidad clínica PPG
+/**
+ * @file ppg_model.h
  * @brief Modelo PPG con doble gaussiana
  * @version 1.0.0
  * 
@@ -124,6 +147,12 @@ public:
     PPGCondition getCondition() const { return params.condition; }
     const char* getConditionName() const;
     float getNoiseLevel() const { return params.noiseLevel; }
+    
+    // Métricas medibles (según tabla de rangos clínicos)
+    float getACAmplitude() const;      // AC en mV
+    float getDCBaseline() const;       // DC en mV (siempre 1000)
+    float getSystoleTime() const;      // Duración sístole en ms
+    float getDiastoleTime() const;     // Duración diástole en ms
 };
 
 #endif // PPG_MODEL_H

@@ -109,9 +109,9 @@ class SignalValidator:
     
     def parse_ecg_line(self, line: str) -> Optional[Dict]:
         """Parsea una línea de datos ECG."""
-        # Formato: >ecg:VALUE,hr:VALUE,rr:VALUE,ramp:VALUE,st:VALUE,qrs:VALUE,beats:VALUE
+        # Formato: >ecg:VALUE,hr:VALUE,rr:VALUE,R_mV:VALUE,qrs:VALUE,st:VALUE,beats:VALUE
         match = re.match(
-            r'>ecg:([-\d.]+),hr:([\d.]+),rr:([\d.]+),ramp:([\d.]+),st:([-\d.]+),qrs:([\d.]+),beats:(\d+)',
+            r'>ecg:([-\d.]+),hr:([\d.]+),rr:([\d.]+),R_mV:([\d.]+),qrs:([\d.]+),st:([-\d.]+),beats:(\d+)',
             line
         )
         if match:
@@ -119,9 +119,9 @@ class SignalValidator:
                 'ecg': float(match.group(1)),
                 'hr': float(match.group(2)),
                 'rr': float(match.group(3)),
-                'ramp': float(match.group(4)),
-                'st': float(match.group(5)),
-                'qrs': float(match.group(6)),
+                'r_amp': float(match.group(4)),
+                'qrs': float(match.group(5)),
+                'st': float(match.group(6)),
                 'beats': int(match.group(7))
             }
         return None
@@ -169,7 +169,7 @@ class SignalValidator:
                 self.condition,
                 hr=data['hr'],
                 rr_ms=data['rr'],
-                r_amp_mV=data.get('ramp', 1.0),
+                r_amp_mV=data.get('r_amp', 1.0),
                 st_dev_mV=data.get('st', 0.0),
                 qrs_ms=data.get('qrs', None)
             )

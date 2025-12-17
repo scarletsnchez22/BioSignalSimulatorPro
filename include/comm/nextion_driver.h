@@ -19,18 +19,15 @@
 enum class NextionPage : uint8_t {
     PORTADA = 0,        // Splash/bienvenida
     MENU = 1,           // Selección de señal (ECG/EMG/PPG)
-    ECG_SIM = 2,        // Selección condición ECG
-    EMG_SIM = 3,        // Selección condición EMG
-    PPG_SIM = 4,        // Selección condición PPG
-    WAVEFORM_ECG = 5,   // Waveform ECG
-    VALORES_ECG = 6,    // Popup valores ECG
-    PARAMETROS_ECG = 7, // Popup parámetros ECG
-    WAVEFORM_EMG = 8,   // Waveform EMG
-    VALORES_EMG = 9,    // Popup valores EMG
-    PARAMETROS_EMG = 10,// Popup parámetros EMG
-    WAVEFORM_PPG = 11,  // Waveform PPG
-    VALORES_PPG = 12,   // Popup valores PPG
-    PARAMETROS_PPG = 13 // Popup parámetros PPG
+    ECG_SIM = 2,        // Selección condición ECG (8 condiciones)
+    EMG_SIM = 3,        // Selección condición EMG (10 condiciones)
+    PPG_SIM = 4,        // Selección condición PPG (6 condiciones)
+    WAVEFORM_ECG = 5,   // Waveform ECG + valores integrados (281x240)
+    PARAMETROS_ECG = 6, // Popup parámetros ECG
+    WAVEFORM_EMG = 7,   // Waveform EMG + valores integrados (281x240)
+    PARAMETROS_EMG = 8, // Popup parámetros EMG
+    WAVEFORM_PPG = 9,   // Waveform PPG + valores integrados (281x240)
+    PARAMETROS_PPG = 10 // Popup parámetros PPG
 };
 
 // ============================================================================
@@ -56,9 +53,7 @@ enum class UIEvent : uint8_t {
     BUTTON_ATRAS,           // Regresar
     
     // Popups waveform
-    BUTTON_VALORES,         // Mostrar popup valores actuales
     BUTTON_PARAMETROS,      // Mostrar popup parámetros
-    BUTTON_BACK_POPUP,      // Volver desde popup valores (solo cierra)
     BUTTON_APPLY_PARAMS,    // bt_act: Aplicar parámetros y cerrar
     BUTTON_CANCEL_PARAMS,   // bt_ex: Cancelar sin guardar
     BUTTON_RESET_PARAMS,    // bt_reset: Resetear a valores por defecto

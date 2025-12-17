@@ -33,56 +33,73 @@ enum class SignalState : uint8_t {
 };
 
 // ============================================================================
-// CONDICIONES ECG (9 condiciones)
+// CONDICIONES ECG (8 condiciones)
 // ============================================================================
 enum class ECGCondition : uint8_t {
-    NORMAL = 0,                     // Ritmo sinusal normal
+    NORMAL = 0,                     // Ritmo sinusal normal (60-100 BPM, <10% var)
     TACHYCARDIA,                    // Taquicardia sinusal (>100 BPM)
     BRADYCARDIA,                    // Bradicardia sinusal (<60 BPM)
-    ATRIAL_FIBRILLATION,            // Fibrilación auricular
-    VENTRICULAR_FIBRILLATION,       // Fibrilación ventricular
-    PREMATURE_VENTRICULAR,          // Contracciones ventriculares prematuras
-    BUNDLE_BRANCH_BLOCK,            // Bloqueo de rama
-    ST_ELEVATION,                   // Elevación ST (infarto)
+    ATRIAL_FIBRILLATION,            // Fibrilación auricular (RR irregular, sin P)
+    VENTRICULAR_FIBRILLATION,       // Fibrilación ventricular (caótico)
+    AV_BLOCK_1,                     // Bloqueo AV 1º grado (PR > 200 ms)
+    ST_ELEVATION,                   // Elevación ST (STEMI)
     ST_DEPRESSION,                  // Depresión ST (isquemia)
     
-    COUNT = 9                       // Total de condiciones
+    COUNT = 8                       // Total de condiciones
 };
 
 // ============================================================================
-// CONDICIONES EMG (10 condiciones)
+// CONDICIONES EMG (6 condiciones - solo sEMG)
 // ============================================================================
+/**
+ * REFACTORIZACIÓN v2.0: Eliminadas patologías de aguja (MYOPATHY, NEUROPATHY, FASCICULATION)
+ * 
+ * JUSTIFICACIÓN:
+ * - sEMG (surface EMG) tiene atenuación ~50-70% vs needle EMG
+ * - Patologías de aguja requieren amplitudes >5 mV (fuera de rango sEMG)
+ * - Se mantienen solo condiciones observables en superficie
+ * 
+ * RANGOS sEMG:
+ * - REST:     0-5% MVC   (RMS 0.02-0.05 mV)
+ * - LOW:      5-20% MVC  (RMS 0.1-0.2 mV)
+ * - MODERATE: 20-50% MVC (RMS 0.3-0.8 mV)
+ * - HIGH:     50-100% MVC (RMS 1-5 mV)
+ * - TREMOR:   Modulación 5 Hz (RMS 0.1-0.5 mV)
+ * - FATIGUE:  50% MVC sostenido, RMS decay 1.5→0.4 mV, MDF 120→80 Hz
+ * 
+ * Refs: De Luca 1997, Cifrek 2009, Sun 2022
+ */
 enum class EMGCondition : uint8_t {
     // Niveles de contracción (% MVC)
-    REST = 0,                       // Reposo (0% MVC)
-    MILD_CONTRACTION,               // Leve (20% MVC)
-    MODERATE_CONTRACTION,           // Moderada (50% MVC)
-    STRONG_CONTRACTION,             // Fuerte (80% MVC)
-    MAXIMUM_CONTRACTION,            // Máxima (100% MVC)
+    REST = 0,                       // Reposo (0-5% MVC)
+    LOW_CONTRACTION,                // Baja (5-20% MVC)
+    MODERATE_CONTRACTION,           // Moderada (20-50% MVC)
+    HIGH_CONTRACTION,               // Alta (50-100% MVC)
     
-    // Patologías
-    TREMOR,                         // Temblor 4-6 Hz (Parkinson)
-    MYOPATHY,                       // Miopatía (MUAPs pequeños)
-    NEUROPATHY,                     // Neuropatía (MUAPs gigantes)
-    FASCICULATION,                  // Fasciculaciones
-    FATIGUE,                        // Fatiga muscular
+    // Condiciones especiales sEMG
+    TREMOR,                         // Temblor Parkinsoniano 4-6 Hz
+    FATIGUE,                        // Fatiga muscular (protocolo 50% MVC sostenido)
     
-    COUNT = 10                      // Total de condiciones
+    COUNT = 6                       // Total de condiciones
 };
 
 // ============================================================================
-// CONDICIONES PPG (7 condiciones)
+// CONDICIONES PPG (6 condiciones)
+// Basado en Allen J. Physiol Meas. 2007;28(3):R1-R39
+//          Lima A, Bakker J. Intensive Care Med. 2005;31(10):1316-1326
+//          Jubran A. Crit Care. 2015;19:272
+// 
+// PI y SpO2 son valores dinámicos con variabilidad gaussiana natural.
 // ============================================================================
 enum class PPGCondition : uint8_t {
-    NORMAL = 0,                     // Pulso normal
-    ARRHYTHMIA,                     // Arritmia
-    WEAK_PERFUSION,                 // Perfusión débil
-    STRONG_PERFUSION,               // Perfusión fuerte
-    VASOCONSTRICTION,               // Vasoconstricción
-    MOTION_ARTIFACT,                // Artefacto por movimiento
-    LOW_SPO2,                       // SpO2 bajo
+    NORMAL = 0,                     // PI 1-5%, morfología estándar con muesca dicrótica
+    ARRHYTHMIA,                     // PI 1-5%, RR muy variable (±15%), morfología similar a normal
+    WEAK_PERFUSION,                 // PI 0.02-0.4%, señal muy débil, muesca desaparecida
+    VASODILATION,                   // PI 5-10%, pico alto, muesca marcada, diástole bien definida
+    STRONG_PERFUSION,               // PI 10-20%, señal muy robusta, muesca prominente
+    VASOCONSTRICTION,               // PI 0.2-0.8%, pico pequeño, muesca apenas perceptible, onda afilada
     
-    COUNT = 7                       // Total de condiciones
+    COUNT = 6                       // Total de condiciones
 };
 
 // ============================================================================
@@ -127,6 +144,44 @@ struct EMGParameters {
         noiseLevel(0.05f),
         condition(EMGCondition::REST)
     {}
+};
+
+// ============================================================================
+// SISTEMA DE SECUENCIAS DINÁMICAS EMG
+// ============================================================================
+
+/**
+ * @brief Evento de una secuencia EMG (cambio de estado)
+ */
+struct EMGSequenceEvent {
+    float timeStart;        // Tiempo de inicio (segundos)
+    float duration;         // Duración del evento (segundos)
+    EMGCondition condition; // Condición durante el evento
+    float excitationLevel;  // Nivel de excitación (0-1), 0 = usar default de condición
+};
+
+/**
+ * @brief Tipo de secuencia predefinida
+ */
+enum class EMGSequenceType : uint8_t {
+    STATIC = 0,              // Condición fija (modo actual)
+    REST_TO_LOW,             // Reposo → Contracción leve → Reposo
+    REST_TO_MODERATE,        // Reposo → Contracción moderada → Reposo
+    REST_TO_HIGH,            // Reposo → Contracción alta → Reposo
+    PROGRESSIVE,             // Reposo → Leve → Moderada → Alta → Reposo
+    TREMOR_CONTINUOUS,       // Temblor continuo con modulación
+    FATIGUE_PROTOCOL,        // Protocolo de fatiga (contracción sostenida)
+    CUSTOM                   // Secuencia personalizada
+};
+
+/**
+ * @brief Definición completa de secuencia (máximo 10 eventos)
+ */
+struct EMGSequence {
+    EMGSequenceType type;
+    int numEvents;
+    EMGSequenceEvent events[10];
+    bool loop;                     // ¿Repetir al terminar?
 };
 
 // ============================================================================
@@ -204,8 +259,7 @@ inline const char* ecgConditionToString(ECGCondition cond) {
         case ECGCondition::BRADYCARDIA:             return "Bradicardia";
         case ECGCondition::ATRIAL_FIBRILLATION:     return "Fib. Auricular";
         case ECGCondition::VENTRICULAR_FIBRILLATION:return "Fib. Ventricular";
-        case ECGCondition::PREMATURE_VENTRICULAR:   return "PVC";
-        case ECGCondition::BUNDLE_BRANCH_BLOCK:     return "Bloq. Rama";
+        case ECGCondition::AV_BLOCK_1:              return "BAV1";
         case ECGCondition::ST_ELEVATION:            return "ST Elevado";
         case ECGCondition::ST_DEPRESSION:           return "ST Deprimido";
         default: return "Desconocido";
@@ -215,14 +269,10 @@ inline const char* ecgConditionToString(ECGCondition cond) {
 inline const char* emgConditionToString(EMGCondition cond) {
     switch (cond) {
         case EMGCondition::REST:                 return "Reposo";
-        case EMGCondition::MILD_CONTRACTION:     return "Leve";
+        case EMGCondition::LOW_CONTRACTION:      return "Baja";
         case EMGCondition::MODERATE_CONTRACTION: return "Moderada";
-        case EMGCondition::STRONG_CONTRACTION:   return "Fuerte";
-        case EMGCondition::MAXIMUM_CONTRACTION:  return "Maxima";
+        case EMGCondition::HIGH_CONTRACTION:     return "Alta";
         case EMGCondition::TREMOR:               return "Temblor";
-        case EMGCondition::MYOPATHY:             return "Miopatia";
-        case EMGCondition::NEUROPATHY:           return "Neuropatia";
-        case EMGCondition::FASCICULATION:        return "Fasciculacion";
         case EMGCondition::FATIGUE:              return "Fatiga";
         default: return "Desconocido";
     }
@@ -232,11 +282,10 @@ inline const char* ppgConditionToString(PPGCondition cond) {
     switch (cond) {
         case PPGCondition::NORMAL:           return "Normal";
         case PPGCondition::ARRHYTHMIA:       return "Arritmia";
-        case PPGCondition::WEAK_PERFUSION:   return "Perfusion Baja";
-        case PPGCondition::STRONG_PERFUSION: return "Perfusion Alta";
+        case PPGCondition::WEAK_PERFUSION:   return "Perfusion Debil";
+        case PPGCondition::VASODILATION:     return "Vasodilatacion";
+        case PPGCondition::STRONG_PERFUSION: return "Perfusion Fuerte";
         case PPGCondition::VASOCONSTRICTION: return "Vasoconstriccion";
-        case PPGCondition::MOTION_ARTIFACT:  return "Artefacto Mov.";
-        case PPGCondition::LOW_SPO2:         return "SpO2 Bajo";
         default: return "Desconocido";
     }
 }

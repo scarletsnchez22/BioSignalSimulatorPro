@@ -109,9 +109,9 @@ void NextionDriver::parseEvent() {
                 // ID 1: bt_atras (hotspot) → volver a menu
                 // ID 2: bt_ir (hotspot) → ir a ecg_wave
                 // ID 3: sel_ecg (number) - variable, no genera evento
-                // ID 4-12: botones de condición (dual-state)
+                // ID 4-11: botones de condición (dual-state)
                 //   4=Normal(0), 5=Taquicardia(1), 6=Bradicardia(2),
-                //   7=FA(3), 8=FV(4), 9=PVC(5), 10=BRB(6), 11=STup(7), 12=STdn(8)
+                //   7=FA(3), 8=FV(4), 9=PVC(5), 10=STup(6), 11=STdn(7)
                 switch (component) {
                     case 1: 
                         uiEvent = UIEvent::BUTTON_ATRAS; 
@@ -120,9 +120,9 @@ void NextionDriver::parseEvent() {
                         uiEvent = UIEvent::BUTTON_IR; 
                         break;
                     case 4: case 5: case 6: case 7: case 8: 
-                    case 9: case 10: case 11: case 12:
+                    case 9: case 10: case 11:
                         uiEvent = UIEvent::BUTTON_CONDITION;
-                        param = component - 4;  // ID 4 → condición 0, ID 12 → condición 8
+                        param = component - 4;  // ID 4 → condición 0, ID 11 → condición 7
                         break;
                 }
                 break;
@@ -151,73 +151,59 @@ void NextionDriver::parseEvent() {
                 break;
                 
             case 4:  // PPG_SIM
-                // Estructura real de ppg_sim (según capturas):
-                // ID 1-7: botones de condición en orden
+                // Estructura de ppg_sim:
+                // ID 1-6: botones de condición
                 //   1=Normal(0), 2=Arritmia(1), 3=SPO2 bajo(2), 4=Perfusión débil(3),
-                //   5=Perfusión fuerte(4), 6=Vasoconstricción(5), 7=Ruido/Movimiento(6)
-                // ID 8: bt_atras (hotspot) → volver a menu
-                // ID 9: bt_ir (hotspot) → ir a ppg_wave
+                //   5=Perfusión fuerte(4), 6=Vasoconstricción(5)
+                // ID 7: bt_atras (hotspot) → volver a menu
+                // ID 8: bt_ir (hotspot) → ir a ppg_wave
                 // sel_ppg es un number independiente (no genera evento)
                 switch (component) {
-                    case 8: 
+                    case 7: 
                         uiEvent = UIEvent::BUTTON_ATRAS; 
                         break;
-                    case 9: 
+                    case 8: 
                         uiEvent = UIEvent::BUTTON_IR; 
                         break;
-                    case 1: case 2: case 3: case 4: case 5: case 6: case 7:
+                    case 1: case 2: case 3: case 4: case 5: case 6:
                         uiEvent = UIEvent::BUTTON_CONDITION;
-                        param = component - 1;  // ID 1 → condición 0, ID 7 → condición 6
+                        param = component - 1;  // ID 1 → condición 0, ID 6 → condición 5
                         break;
                 }
                 break;
                 
             case 5:  // WAVEFORM_ECG
-                // Estructura de waveform_ecg:
-                // ID 1: ecg (waveform) 399x211 - no genera evento de touch
-                // ID 2: v_actual (hotspot) → ir a valores_ecg (página 6)
-                // ID 3: parametros (hotspot) → ir a parametros_ecg (página 7)
-                // ID 4: play (hotspot) → iniciar/reanudar señal
-                // ID 5: pause (hotspot) → pausar señal
-                // ID 6: stop (hotspot) → detener y volver a menú
+                // Estructura de waveform_ecg (281x240):
+                // ID 1: ecg (waveform) - no genera evento
+                // ID 2: parametros (hotspot) → ir a parametros_ecg (página 6)
+                // ID 3: play (hotspot) → iniciar/reanudar señal
+                // ID 4: pause (hotspot) → pausar señal
+                // ID 5: stop (hotspot) → detener y volver a menú
+                // ID 6: t_patol (text) - nombre patología
+                // ID 7: t_bpm (text) - etiqueta
+                // ID 8: t_rr (text) - etiqueta
+                // ID 9: t_ramp (text) - etiqueta
+                // ID 10: t_st (text) - etiqueta
+                // ID 11: t_beats (text) - etiqueta
+                // ID 12-16: n_bpm, n_rr, n_ramp, n_st, n_beats (xfloat/number)
                 switch (component) {
                     case 2: 
-                        uiEvent = UIEvent::BUTTON_VALORES; 
-                        break;
-                    case 3: 
                         uiEvent = UIEvent::BUTTON_PARAMETROS; 
                         break;
-                    case 4: 
+                    case 3: 
                         uiEvent = UIEvent::BUTTON_START; 
                         break;
-                    case 5: 
+                    case 4: 
                         uiEvent = UIEvent::BUTTON_PAUSE; 
                         break;
-                    case 6: 
+                    case 5: 
                         uiEvent = UIEvent::BUTTON_STOP; 
                         break;
                 }
                 break;
                 
-            case 6:  // VALORES_ECG
-                // Estructura de valores_ecg:
-                // ID 0: p0 (picture) - background
-                // ID 1: valores (picture) - popup frame
-                // ID 2: bt_act (button) → volver a waveform_ecg (página 5)
-                // ID 3-6: t_bpm, t_rr, t_ramp, t_st (text) - etiquetas
-                // ID 7-10: n_bpm, n_rr, n_ramp, n_st (xfloat) - valores
-                // ID 11: n_beats (number) - contador
-                // ID 12: t_beats (text) - etiqueta
-                // ID 13: t_patol (text) - patología actual
-                switch (component) {
-                    case 2:
-                        uiEvent = UIEvent::BUTTON_BACK_POPUP;
-                        break;
-                }
-                break;
-                
-            case 7:  // PARAMETROS_ECG
-                // Estructura de parametros_ecg:
+            case 6:  // PARAMETROS_ECG
+                // Estructura de parametros_ecg (página 6):
                 // ID 0: p0 (picture) - background
                 // ID 1: parametros (picture) - popup frame
                 // ID 2-5: t_hr, t_amp, t_noise, t_hrv (text) - etiquetas
@@ -255,50 +241,37 @@ void NextionDriver::parseEvent() {
                 }
                 break;
                 
-            case 8:  // WAVEFORM_EMG
-                // Estructura de waveform_emg:
-                // ID 1: emg (waveform) 399x211 - no genera evento de touch
-                // ID 2: v_actual (hotspot) → mostrar popup valores actuales
-                // ID 3: parametros (hotspot) → mostrar popup parámetros
-                // ID 4: play (hotspot) → iniciar/reanudar señal
-                // ID 5: pause (hotspot) → pausar señal
-                // ID 6: stop (hotspot) → detener y volver a menú
+            case 7:  // WAVEFORM_EMG
+                // Estructura de waveform_emg (281x240):
+                // ID 1: emg (waveform) - no genera evento
+                // ID 2: parametros (hotspot) → ir a parametros_emg (página 8)
+                // ID 3: play (hotspot) → iniciar/reanudar señal
+                // ID 4: pause (hotspot) → pausar señal
+                // ID 5: stop (hotspot) → detener y volver a menú
+                // ID 6: t_patol (text) - nombre condición
+                // ID 7: t_rms (text) - etiqueta amplitud
+                // ID 8: t_mu (text) - etiqueta unidades motoras
+                // ID 9: t_freq (text) - etiqueta disparo
+                // ID 10: t_cont (text) - etiqueta contracción
+                // ID 11-14: n_rms, n_mu, n_freq, n_cont (xfloat/number)
                 switch (component) {
                     case 2: 
-                        uiEvent = UIEvent::BUTTON_VALORES; 
-                        break;
-                    case 3: 
                         uiEvent = UIEvent::BUTTON_PARAMETROS; 
                         break;
-                    case 4: 
+                    case 3: 
                         uiEvent = UIEvent::BUTTON_START; 
                         break;
-                    case 5: 
+                    case 4: 
                         uiEvent = UIEvent::BUTTON_PAUSE; 
                         break;
-                    case 6: 
+                    case 5: 
                         uiEvent = UIEvent::BUTTON_STOP; 
                         break;
                 }
                 break;
                 
-            case 9:  // VALORES_EMG
-                // Estructura de valores_emg:
-                // ID 0: p0 (picture) - background
-                // ID 1: valores (picture) - popup frame
-                // ID 2: bt_act (button) → volver a waveform_emg (página 8)
-                // ID 3-6: t_rms, t_mu, t_freq, t_cont (text) - etiquetas
-                // ID 7-10: n_rms, n_mu, n_freq, n_cont (xfloat/number) - valores
-                // ID 11: t_patol (text) - nombre condición
-                switch (component) {
-                    case 2:
-                        uiEvent = UIEvent::BUTTON_BACK_POPUP;
-                        break;
-                }
-                break;
-                
-            case 10:  // PARAMETROS_EMG
-                // Estructura de parametros_emg:
+            case 8:  // PARAMETROS_EMG
+                // Estructura de parametros_emg (página 8):
                 // ID 0: p0 (picture) - background
                 // ID 1: parametros (picture) - popup frame
                 // ID 2-4: t_exc, t_amp, t_noise (text) - etiquetas
@@ -332,52 +305,38 @@ void NextionDriver::parseEvent() {
                 }
                 break;
                 
-            case 11:  // WAVEFORM_PPG
-                // Estructura de waveform_ppg:
-                // ID 1: ppg (waveform) 399x211 - no genera evento de touch
-                // ID 2: v_actual (hotspot) → mostrar popup valores actuales
-                // ID 3: parametros (hotspot) → mostrar popup parámetros
-                // ID 4: play (hotspot) → iniciar/reanudar señal
-                // ID 5: pause (hotspot) → pausar señal
-                // ID 6: stop (hotspot) → detener y volver a menú
+            case 9:  // WAVEFORM_PPG
+                // Estructura de waveform_ppg (281x240):
+                // ID 1: ppg (waveform) - no genera evento
+                // ID 2: parametros (hotspot) → ir a parametros_ppg (página 10)
+                // ID 3: play (hotspot) → iniciar/reanudar señal
+                // ID 4: pause (hotspot) → pausar señal
+                // ID 5: stop (hotspot) → detener y volver a menú
+                // ID 6: t_patol (text) - nombre condición
+                // ID 7: t_hr (text) - etiqueta HR
+                // ID 8: t_rr (text) - etiqueta RR
+                // ID 9: t_pi (text) - etiqueta PI
+                // ID 10: t_spo2 (text) - etiqueta SpO2
+                // ID 11: t_beats (text) - etiqueta beats
+                // ID 12-16: n_hr, n_rr, n_pi, n_spo2, n_beats (xfloat/number)
                 switch (component) {
                     case 2: 
-                        uiEvent = UIEvent::BUTTON_VALORES; 
-                        break;
-                    case 3: 
                         uiEvent = UIEvent::BUTTON_PARAMETROS; 
                         break;
-                    case 4: 
+                    case 3: 
                         uiEvent = UIEvent::BUTTON_START; 
                         break;
-                    case 5: 
+                    case 4: 
                         uiEvent = UIEvent::BUTTON_PAUSE; 
                         break;
-                    case 6: 
+                    case 5: 
                         uiEvent = UIEvent::BUTTON_STOP; 
                         break;
                 }
                 break;
                 
-            case 12:  // VALORES_PPG
-                // Estructura de valores_ppg:
-                // ID 0: p0 (picture) - background
-                // ID 1: valores (picture) - popup frame
-                // ID 2: bt_act (button) → volver a waveform_ppg (página 11)
-                // ID 3-6: t_hr, t_rr, t_pi, t_spo2 (text) - etiquetas
-                // ID 7-10: n_hr, n_rr, n_pi, n_spo2 (xfloat) - valores
-                // ID 11: t_beats (text) - etiqueta
-                // ID 12: n_beats (number) - contador
-                // ID 13: t_patol (text) - nombre condición
-                switch (component) {
-                    case 2:
-                        uiEvent = UIEvent::BUTTON_BACK_POPUP;
-                        break;
-                }
-                break;
-                
-            case 13:  // PARAMETROS_PPG
-                // Estructura de parametros_ppg:
+            case 10:  // PARAMETROS_PPG
+                // Estructura de parametros_ppg (página 10):
                 // ID 0: p0 (picture) - background
                 // ID 1: parametros (picture) - popup frame
                 // ID 2-4: t_hr, t_pi, t_noise (text) - etiquetas
@@ -462,9 +421,9 @@ void NextionDriver::updateMenuButtons(SignalType selected) {
 void NextionDriver::updateECGConditionButtons(int selectedCondition) {
     Serial.printf("[ECG] updateConditionButtons: cond=%d\n", selectedCondition);
     
-    // Limpiar primero por IDs genéricos (b4..b12) para evitar conflictos de nombre
+    // Limpiar primero por IDs genéricos (b4..b11) para evitar conflictos de nombre
     char cmd[32];
-    for (int id = 4; id <= 12; id++) {
+    for (int id = 4; id <= 11; id++) {
         sprintf(cmd, "b%d.val=0", id);
         sendCommand(cmd);
     }
@@ -477,7 +436,6 @@ void NextionDriver::updateECGConditionButtons(int selectedCondition) {
     sendCommand("bt_fa.val=0");
     sendCommand("bt_fv.val=0");
     sendCommand("bt_pvc.val=0");
-    sendCommand("bt_brb.val=0");
     sendCommand("bt_stup.val=0");
     sendCommand("bt_stdn.val=0");
 
@@ -492,13 +450,12 @@ void NextionDriver::updateECGConditionButtons(int selectedCondition) {
         case 3: sendCommand("bt_fa.val=1");  sendCommand("b7.val=1"); break;
         case 4: sendCommand("bt_fv.val=1");  sendCommand("b8.val=1"); break;
         case 5: sendCommand("bt_pvc.val=1"); sendCommand("b9.val=1"); break;
-        case 6: sendCommand("bt_brb.val=1"); sendCommand("b10.val=1"); break;
-        case 7: sendCommand("bt_stup.val=1");sendCommand("b11.val=1"); break;
-        case 8: sendCommand("bt_stdn.val=1");sendCommand("b12.val=1"); break;
+        case 6: sendCommand("bt_stup.val=1");sendCommand("b10.val=1"); break;
+        case 7: sendCommand("bt_stdn.val=1");sendCommand("b11.val=1"); break;
         default: break;
     }
 
-    int ecgSel = (selectedCondition >= 0 && selectedCondition <= 8) ? selectedCondition : -1;
+    int ecgSel = (selectedCondition >= 0 && selectedCondition <= 7) ? selectedCondition : -1;
     sprintf(cmd, "sel_ecg.val=%d", ecgSel);
     sendCommand(cmd);
 }
@@ -547,9 +504,9 @@ void NextionDriver::updateEMGConditionButtons(int selectedCondition) {
 void NextionDriver::updatePPGConditionButtons(int selectedCondition) {
     Serial.printf("[PPG] updateConditionButtons: cond=%d\n", selectedCondition);
     
-    // Limpiar primero por IDs genéricos (b1..b7) para evitar conflictos de nombre
+    // Limpiar primero por IDs genéricos (b1..b6) para evitar conflictos de nombre
     char cmd[32];
-    for (int id = 1; id <= 7; id++) {
+    for (int id = 1; id <= 6; id++) {
         sprintf(cmd, "b%d.val=0", id);
         sendCommand(cmd);
     }
@@ -562,7 +519,6 @@ void NextionDriver::updatePPGConditionButtons(int selectedCondition) {
     sendCommand("bt_lowp.val=0");
     sendCommand("bt_highp.val=0");
     sendCommand("bt_vasc.val=0");
-    sendCommand("bt_art.val=0");
 
     switch (selectedCondition) {
         case 0: 
@@ -575,11 +531,10 @@ void NextionDriver::updatePPGConditionButtons(int selectedCondition) {
         case 3: sendCommand("bt_lowp.val=1"); sendCommand("b4.val=1"); break;
         case 4: sendCommand("bt_highp.val=1");sendCommand("b5.val=1"); break;
         case 5: sendCommand("bt_vasc.val=1"); sendCommand("b6.val=1"); break;
-        case 6: sendCommand("bt_art.val=1");  sendCommand("b7.val=1"); break;
         default: break;
     }
 
-    int ppgSel = (selectedCondition >= 0 && selectedCondition <= 6) ? selectedCondition : -1;
+    int ppgSel = (selectedCondition >= 0 && selectedCondition <= 5) ? selectedCondition : -1;
     sprintf(cmd, "sel_ppg.val=%d", ppgSel);
     sendCommand(cmd);
 }
@@ -743,15 +698,15 @@ void NextionDriver::setEventCallback(UIEventCallback callback) {
 // ============================================================================
 void NextionDriver::updateECGValuesPage(int bpm, int rr_ms, int rAmp_x100, int st_x100,
                                          uint32_t beats, const char* patologia) {
-    // Actualizar números (xfloat en Nextion)
-    setNumber("n_bpm", bpm);           // ID 3: Frecuencia cardíaca
-    setNumber("n_rr", rr_ms);          // ID 4: Intervalo RR en ms
-    setNumber("n_ramp", rAmp_x100);    // ID 5: Amplitud R × 100 (1.25mV → 125)
-    setNumber("n_st", st_x100);        // ID 6: Desviación ST × 100 (-0.15mV → -15)
-    setNumber("n_beats", (int)beats);  // ID 11: Contador de latidos
+    // Actualizar números en waveform_ecg (página 5)
+    setNumber("n_bpm", bpm);           // ID 12: Frecuencia cardíaca
+    setNumber("n_rr", rr_ms);          // ID 13: Intervalo RR en ms
+    setNumber("n_ramp", rAmp_x100);    // ID 14: Amplitud R × 100 (1.25mV → 125)
+    setNumber("n_st", st_x100);        // ID 15: Desviación ST × 100 (-0.15mV → -15)
+    setNumber("n_beats", (int)beats);  // ID 16: Contador de latidos
     
     // Actualizar texto de patología
-    setText("t_patol", patologia);      // ID 13: Nombre de patología
+    setText("t_patol", patologia);      // ID 6: Nombre de patología
 }
 
 // ============================================================================
@@ -759,14 +714,14 @@ void NextionDriver::updateECGValuesPage(int bpm, int rr_ms, int rAmp_x100, int s
 // ============================================================================
 void NextionDriver::updateEMGValuesPage(int rms_x100, int activeUnits, int freq_x10, int contraction,
                                          const char* condicion) {
-    // Actualizar números (xfloat/number en Nextion)
-    setNumber("n_rms", rms_x100);         // ID 7: Amplitud RMS × 100 (0.25mV → 25, vvs0=2)
-    setNumber("n_mu", activeUnits);       // ID 8: Unidades motoras activas (entero)
-    setNumber("n_freq", freq_x10);        // ID 9: Frecuencia × 10 (12.5Hz → 125, vvs0=1)
-    setNumber("n_cont", contraction);     // ID 10: Contracción % (entero, vvs0=0)
+    // Actualizar números en waveform_emg (página 7)
+    setNumber("n_rms", rms_x100);         // ID 11: Amplitud RMS × 100 (0.25mV → 25, vvs0=2)
+    setNumber("n_mu", activeUnits);       // ID 12: Unidades motoras activas (entero)
+    setNumber("n_freq", freq_x10);        // ID 13: Frecuencia × 10 (12.5Hz → 125, vvs0=1)
+    setNumber("n_cont", contraction);     // ID 14: Contracción % (entero, vvs0=0)
     
     // Actualizar texto de condición
-    setText("t_patol", condicion);        // ID 11: Nombre de condición
+    setText("t_patol", condicion);        // ID 6: Nombre de condición
 }
 
 // ============================================================================
@@ -774,15 +729,15 @@ void NextionDriver::updateEMGValuesPage(int rms_x100, int activeUnits, int freq_
 // ============================================================================
 void NextionDriver::updatePPGValuesPage(int hr, int rr_ms, int pi_x10, int spo2,
                                          uint32_t beats, const char* condicion) {
-    // Actualizar números (xfloat/number en Nextion)
-    setNumber("n_hr", hr);                // ID 7: Frecuencia cardíaca (entero, vvs0=0)
-    setNumber("n_rr", rr_ms);             // ID 8: Intervalo RR en ms (entero, vvs0=0)
-    setNumber("n_pi", pi_x10);            // ID 9: Índice perfusión × 10 (5.2% → 52, vvs0=1)
-    setNumber("n_spo2", spo2);            // ID 10: SpO2 % (entero, vvs0=0)
-    setNumber("n_beats", (int)beats);     // ID 12: Contador de latidos
+    // Actualizar números en waveform_ppg (página 9)
+    setNumber("n_hr", hr);                // ID 12: Frecuencia cardíaca (entero, vvs0=0)
+    setNumber("n_rr", rr_ms);             // ID 13: Intervalo RR en ms (entero, vvs0=0)
+    setNumber("n_pi", pi_x10);            // ID 14: Índice perfusión × 10 (5.2% → 52, vvs0=1)
+    setNumber("n_spo2", spo2);            // ID 15: SpO2 % (entero, vvs0=0)
+    setNumber("n_beats", (int)beats);     // ID 16: Contador de latidos
     
     // Actualizar texto de condición
-    setText("t_patol", condicion);        // ID 13: Nombre de condición
+    setText("t_patol", condicion);        // ID 6: Nombre de condición
 }
 
 // ============================================================================

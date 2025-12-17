@@ -20,43 +20,80 @@
 #include <Arduino.h>
 #include "config.h"
 #include "data/signal_types.h"
+#include "data/emg_sequences.h"
 #include "models/ecg_model.h"
 #include "models/emg_model.h"
 #include "models/ppg_model.h"
 
 // ============================================================================
-// CONFIGURACI├ôN
+// CONFIGURACION DE MUESTREO
 // ============================================================================
-#define DEBUG_SAMPLE_RATE_HZ    100
-#define DEBUG_SAMPLE_INTERVAL   (1000 / DEBUG_SAMPLE_RATE_HZ)
-#define PLOT_DURATION_MS        10000   // 10 segundos por defecto
+// Señal se genera cada 1 ms con aceleración para visualización
+// Serial Plotter recibe datos cada 1 ms (1000 puntos/segundo)
+#define PLOT_UPDATE_INTERVAL_MS     1    // Enviar a Serial Plotter cada 1 ms (1000 Hz)
+#define SIGNAL_SPEED_MULTIPLIER     5.0f // 5x más rápido para ver varios latidos en pantalla
 
 // ============================================================================
-// CONFIGURACI├ôN AUTO-START (Para Serial Plotter)
+// CONFIGURACION AUTO-START (Para Serial Plotter)
 // ============================================================================
-// Cambiar estos valores para seleccionar se├▒al y patolog├¡a
-#define AUTO_START              1       // 1 = inicio autom├ítico, 0 = men├║ interactivo
+// Cambiar estos valores para seleccionar senal y patologia
 
-// Tipo de se├▒al: 0=ECG, 1=EMG, 2=PPG
+#define AUTO_START              1       // 1 = inicio automatico, 0 = menu interactivo
+
+// --------------------------------------------------------------------------
+// TIPO DE SENAL: 0=ECG, 1=EMG, 2=PPG
+// --------------------------------------------------------------------------
 #define AUTO_SIGNAL_TYPE        2
 
-// Condiciones ECG (solo si AUTO_SIGNAL_TYPE==0):
-// 0=NORMAL, 1=TACHYCARDIA, 2=BRADYCARDIA, 3=ATRIAL_FIBRILLATION
-// 4=VENTRICULAR_FIBRILLATION, 5=PREMATURE_VENTRICULAR
-// 6=ST_ELEVATION, 7=ST_DEPRESSION
+// --------------------------------------------------------------------------
+// CONDICIONES ECG (solo si AUTO_SIGNAL_TYPE==0):
+// --------------------------------------------------------------------------
+// 0 = NORMAL           - Ritmo sinusal 60-100 BPM, <10% variabilidad
+// 1 = TACHYCARDIA      - >100 BPM, ritmo regular
+// 2 = BRADYCARDIA      - <60 BPM, ritmo regular
+// 3 = ATRIAL_FIBRILLATION - RR irregular, sin ondas P
+// 4 = VENTRICULAR_FIBRILLATION - Ondas caoticas (emergencia)
+// 5 = AV_BLOCK_1       - Bloqueo AV 1er grado, PR > 200 ms
+// 6 = ST_ELEVATION     - STEMI (infarto agudo)
+// 7 = ST_DEPRESSION    - Isquemia subendocardica
 #define AUTO_ECG_CONDITION      0
 
-// Condiciones EMG (solo si AUTO_SIGNAL_TYPE==1):
-// 0=REST, 1=LOW_CONTRACTION, 2=MODERATE_CONTRACTION, 3=HIGH_CONTRACTION
-// 4=TREMOR, 5=MYOPATHY, 6=NEUROPATHY, 7=FASCICULATION
-#define AUTO_EMG_CONDITION      0
+// --------------------------------------------------------------------------
+// CONDICIONES EMG (solo si AUTO_SIGNAL_TYPE==1):
+// --------------------------------------------------------------------------
+// 0 = REST             - Reposo, 0-5% MVC
+// 1 = LOW_CONTRACTION  - Baja, 5-20% MVC
+// 2 = MODERATE_CONTRACTION - Moderada, 20-50% MVC
+// 3 = HIGH_CONTRACTION - Alta, 50-100% MVC
+// 4 = TREMOR           - Parkinson 4-6 Hz
+// 5 = FATIGUE          - Fatiga muscular (50% MVC sostenido)
+#define AUTO_EMG_CONDITION      5
 
-// Condiciones PPG (solo si AUTO_SIGNAL_TYPE==2):
-// 0=NORMAL, 1=ARRHYTHMIA, 2=WEAK_PERFUSION, 3=STRONG_PERFUSION
-// 4=VASOCONSTRICTION, 5=LOW_SPO2
-#define AUTO_PPG_CONDITION      4
+// --------------------------------------------------------------------------
+// CONDICIONES PPG (solo si AUTO_SIGNAL_TYPE==2):
+// --------------------------------------------------------------------------
+// 0 = NORMAL           - PI 2-5%, SpO2 95-100%
+// 1 = ARRHYTHMIA       - RR irregular
+// 2 = WEAK_PERFUSION   - PI 0.02-0.4%, shock/hipotermia
+// 3 = VASODILATION     - PI 5-10%, vasodilatacion
+// 4 = STRONG_PERFUSION - PI 10-20%, perfusion muy fuerte
+// 5 = VASOCONSTRICTION - PI 0.2-0.8%, frio/estres
+#define AUTO_PPG_CONDITION      5
 
-#define AUTO_CONTINUOUS         1       // 1 = continuo, 0 = usar PLOT_DURATION_MS
+// --------------------------------------------------------------------------
+// MODO DE EJECUCION
+// --------------------------------------------------------------------------
+// AUTO_CONTINUOUS = 1: Corre indefinidamente (presiona 'r' para reiniciar)
+// AUTO_CONTINUOUS = 0: Corre por PLOT_DURATION_SAMPLES y luego para
+//
+// ¿Que es una MUESTRA (sample)?
+// - 1 muestra = 1 punto de datos (1 valor de voltaje)
+// - A 1000 Hz: 1000 muestras = 1 segundo
+// - 1 latido a 70 BPM = ~857 muestras
+// - 10 latidos a 70 BPM = ~8570 muestras
+//
+#define AUTO_CONTINUOUS             1       // 1=continuo, 0=duracion fija
+#define PLOT_DURATION_MS            10000   // Duracion en milisegundos (10 segundos por defecto)
 
 // ============================================================================
 // ESTADOS DEL MEN├Ü
@@ -117,7 +154,7 @@ const char* getECGConditionName(ECGCondition cond) {
         case ECGCondition::BRADYCARDIA:             return "Bradicardia (<60 BPM)";
         case ECGCondition::ATRIAL_FIBRILLATION:     return "Fibrilacion Auricular";
         case ECGCondition::VENTRICULAR_FIBRILLATION: return "Fibrilacion Ventricular";
-        case ECGCondition::PREMATURE_VENTRICULAR:   return "Contraccion Ventricular Prematura";
+        case ECGCondition::AV_BLOCK_1:              return "Bloqueo AV 1er Grado";
         case ECGCondition::ST_ELEVATION:            return "Elevacion ST (Infarto)";
         case ECGCondition::ST_DEPRESSION:           return "Depresion ST (Isquemia)";
         default:                                    return "Desconocido";
@@ -131,7 +168,7 @@ const char* getECGConditionShortName(ECGCondition cond) {
         case ECGCondition::BRADYCARDIA:             return "BRADY";
         case ECGCondition::ATRIAL_FIBRILLATION:     return "AFIB";
         case ECGCondition::VENTRICULAR_FIBRILLATION: return "VFIB";
-        case ECGCondition::PREMATURE_VENTRICULAR:   return "PVC";
+        case ECGCondition::AV_BLOCK_1:              return "BAV1";
         case ECGCondition::ST_ELEVATION:            return "STE";
         case ECGCondition::ST_DEPRESSION:           return "STD";
         default:                                    return "UNK";
@@ -143,14 +180,12 @@ const char* getECGConditionShortName(ECGCondition cond) {
 // ============================================================================
 const char* getEMGConditionName(EMGCondition cond) {
     switch (cond) {
-        case EMGCondition::REST:                 return "Reposo (0-10% MVC)";
-        case EMGCondition::LOW_CONTRACTION:      return "Baja (10-30% MVC)";
-        case EMGCondition::MODERATE_CONTRACTION: return "Moderada (30-60% MVC)";
-        case EMGCondition::HIGH_CONTRACTION:     return "Alta (60-100% MVC)";
+        case EMGCondition::REST:                 return "Reposo (0-5% MVC)";
+        case EMGCondition::LOW_CONTRACTION:      return "Baja (5-20% MVC)";
+        case EMGCondition::MODERATE_CONTRACTION: return "Moderada (20-50% MVC)";
+        case EMGCondition::HIGH_CONTRACTION:     return "Alta (50-100% MVC)";
         case EMGCondition::TREMOR:               return "Temblor Parkinson (4-6 Hz)";
-        case EMGCondition::MYOPATHY:             return "Miopatia (MUAPs pequenos)";
-        case EMGCondition::NEUROPATHY:           return "Neuropatia (MUAPs gigantes)";
-        case EMGCondition::FASCICULATION:        return "Fasciculacion";
+        case EMGCondition::FATIGUE:              return "Fatiga Muscular (50% MVC sostenido)";
         default:                                 return "Desconocido";
     }
 }
@@ -160,38 +195,39 @@ const char* getEMGConditionName(EMGCondition cond) {
 // ============================================================================
 const char* getPPGConditionName(PPGCondition cond) {
     switch (cond) {
-        case PPGCondition::NORMAL:            return "Normal (PI 2-5%)";
+        case PPGCondition::NORMAL:            return "Normal (PI 1-5%)";
         case PPGCondition::ARRHYTHMIA:        return "Arritmia (RR irregular)";
-        case PPGCondition::WEAK_PERFUSION:    return "Perfusion Debil (PI<0.5%)";
-        case PPGCondition::STRONG_PERFUSION:  return "Perfusion Fuerte (PI>10%)";
-        case PPGCondition::VASOCONSTRICTION:  return "Vasoconstriccion";
-        case PPGCondition::LOW_SPO2:          return "SpO2 Bajo (<90%)";
+        case PPGCondition::WEAK_PERFUSION:    return "Perfusion Debil (PI 0.02-0.4%)";
+        case PPGCondition::VASODILATION:      return "Vasodilatacion (PI 5-10%)";
+        case PPGCondition::STRONG_PERFUSION:  return "Perfusion Fuerte (PI 10-20%)";
+        case PPGCondition::VASOCONSTRICTION:  return "Vasoconstriccion (PI 0.2-0.8%)";
         default:                              return "Desconocido";
     }
 }
 
 // ============================================================================
-// RANGOS CLINICOS EMG (De Luca 1997, Fuglevand 1993)
+// RANGOS CLINICOS EMG - VALIDADOS CON FUGLEVAND 1993
 // ============================================================================
+/**
+ * NOTA: LOW, MODERATE y HIGH usan SECUENCIAS DINAMICAS (REST → CONTRACCION)
+ * Los valores RMS son el TECHO durante la fase de contracción.
+ * Durante REST: RMS ≈ 0.001 mV (solo ruido)
+ */
 struct EMGExpectedRange {
-    float rmsMin;       // RMS minimo esperado (mV)
-    float rmsMax;       // RMS maximo esperado (mV)
+    float rmsMin;       // RMS minimo (durante REST en secuencias dinamicas)
+    float rmsMax;       // RMS maximo (TECHO durante contraccion)
     float excitationMin; // Excitacion minima
     float excitationMax; // Excitacion maxima
     const char* description;
 };
 
 static const EMGExpectedRange EMG_CLINICAL_RANGES[] = {
-    { 0.0f, 0.05f, 0.0f, 0.1f, "Reposo: RMS<50uV" },
-    { 0.1f, 0.5f, 0.1f, 0.3f, "Leve: RMS 0.1-0.5mV" },
-    { 0.5f, 1.5f, 0.3f, 0.6f, "Moderada: RMS 0.5-1.5mV" },
-    { 1.0f, 3.0f, 0.6f, 0.9f, "Fuerte: RMS 1-3mV" },
-    { 1.5f, 4.0f, 0.8f, 1.0f, "Maxima: RMS 1.5-4mV" },
-    { 0.1f, 1.0f, 0.0f, 0.5f, "Temblor: modulacion 4-6Hz" },
-    { 0.05f, 0.3f, 0.3f, 0.5f, "Miopatia: MUAPs 40% amp" },
-    { 0.5f, 3.0f, 0.4f, 0.6f, "Neuropatia: MUAPs 250% amp" },
-    { 0.0f, 0.5f, 0.0f, 0.1f, "Fasciculacion: espontaneos" },
-    { 0.5f, 2.5f, 0.6f, 0.9f, "Fatiga: FR reducida" }
+    { 0.001f, 0.001f, 0.005f, 0.005f, "Reposo: RMS 0.001mV (solo ruido)" },
+    { 0.001f, 0.60f,  0.12f,  0.12f,  "Leve: RMS techo 0.52mV (secuencia dinamica)" },
+    { 0.001f, 2.00f,  0.35f,  0.35f,  "Moderada: RMS techo 1.7mV (secuencia dinamica)" },
+    { 0.001f, 3.10f,  0.80f,  0.80f,  "Alta: RMS techo 2.8mV (secuencia dinamica)" },
+    { 0.10f,  0.50f,  0.0f,   0.0f,   "Temblor: RMS 0.1-0.5mV, 5Hz" },
+    { 1.50f,  0.40f,  0.50f,  0.50f,  "Fatiga: RMS 1.5mV->0.4mV (decay)" }
 };
 
 // ============================================================================
@@ -253,10 +289,9 @@ void showECGMenu() {
     Serial.println("    [2] Bradicardia (<60 BPM)");
     Serial.println("    [3] Fibrilacion Auricular (AFib)");
     Serial.println("    [4] Fibrilacion Ventricular (VFib)");
-    Serial.println("    [5] Contraccion Ventricular Prematura (PVC)");
-    Serial.println("    [6] Bloqueo de Rama (BBB)");
-    Serial.println("    [7] Elevacion ST (Infarto STEMI)");
-    Serial.println("    [8] Depresion ST (Isquemia)");
+    Serial.println("    [5] Bloqueo AV 1er Grado (BAV1)");
+    Serial.println("    [6] Elevacion ST (Infarto STEMI)");
+    Serial.println("    [7] Depresion ST (Isquemia)");
     Serial.println();
     Serial.println("    [b] Volver al menu principal");
     Serial.println();
@@ -274,16 +309,12 @@ void showEMGMenu() {
     Serial.println();
     Serial.println("  Seleccione condicion:");
     Serial.println();
-    Serial.println("    [0] Reposo (0% MVC, RMS<50uV)");
-    Serial.println("    [1] Contraccion Leve (20% MVC)");
-    Serial.println("    [2] Contraccion Moderada (50% MVC)");
-    Serial.println("    [3] Contraccion Fuerte (80% MVC)");
-    Serial.println("    [4] Contraccion Maxima (100% MVC)");
-    Serial.println("    [5] Temblor Parkinsoniano (4-6 Hz)");
-    Serial.println("    [6] Miopatia (MUAPs pequenos)");
-    Serial.println("    [7] Neuropatia (MUAPs gigantes)");
-    Serial.println("    [8] Fasciculacion (disparos espontaneos)");
-    Serial.println("    [9] Fatiga (FR decreciente)");
+    Serial.println("    [0] Reposo (0-5% MVC, RMS<50uV)");
+    Serial.println("    [1] Contraccion Baja (5-20% MVC)");
+    Serial.println("    [2] Contraccion Moderada (20-50% MVC)");
+    Serial.println("    [3] Contraccion Alta (50-100% MVC)");
+    Serial.println("    [4] Temblor Parkinsoniano (4-6 Hz)");
+    Serial.println("    [5] Fatiga Muscular (50% MVC sostenido)");
     Serial.println();
     Serial.println("    [b] Volver al menu principal");
     Serial.println();
@@ -341,16 +372,18 @@ struct ExpectedRange {
     const char* description;
 };
 
+// Índices alineados con ECGCondition enum:
+// 0=NORMAL, 1=TACHYCARDIA, 2=BRADYCARDIA, 3=ATRIAL_FIBRILLATION,
+// 4=VENTRICULAR_FIBRILLATION, 5=AV_BLOCK_1, 6=ST_ELEVATION, 7=ST_DEPRESSION
 static const ExpectedRange CLINICAL_RANGES[] = {
-    { 60.0f, 100.0f, "Normal: 60-100 BPM" },
-    { 100.0f, 180.0f, "Taquicardia: >100 BPM" },
-    { 30.0f, 59.0f, "Bradicardia: <60 BPM" },
-    { 60.0f, 180.0f, "AFib: 60-180 BPM (irregular)" },
-    { 150.0f, 500.0f, "VFib: caotico (4-10 Hz)" },
-    { 50.0f, 120.0f, "PVC: 50-120 BPM base" },
-    { 40.0f, 100.0f, "BBB: 40-100 BPM" },
-    { 50.0f, 110.0f, "ST Elevacion: 50-110 BPM" },
-    { 50.0f, 150.0f, "ST Depresion: 50-150 BPM" }
+    { 60.0f, 100.0f, "Normal: 60-100 BPM, <10% var" },           // 0 - NORMAL
+    { 100.0f, 180.0f, "Taquicardia: >100 BPM" },                 // 1 - TACHYCARDIA
+    { 30.0f, 59.0f, "Bradicardia: <60 BPM" },                    // 2 - BRADYCARDIA
+    { 60.0f, 180.0f, "AFib: 60-180 BPM (RR irregular)" },        // 3 - ATRIAL_FIBRILLATION
+    { 150.0f, 500.0f, "VFib: caotico (4-10 Hz)" },               // 4 - VENTRICULAR_FIBRILLATION
+    { 60.0f, 100.0f, "BAV1: 60-100 BPM, PR>200ms" },             // 5 - AV_BLOCK_1
+    { 50.0f, 110.0f, "STEMI: 50-110 BPM, ST>=0.2mV" },           // 6 - ST_ELEVATION
+    { 50.0f, 150.0f, "NSTEMI: 50-150 BPM, ST<=-0.05mV" }         // 7 - ST_DEPRESSION
 };
 
 // ============================================================================
@@ -366,38 +399,81 @@ void setupECGCondition(ECGCondition cond) {
     params.noiseLevel = 0.02f;
     params.heartRate = 0;
     ecgModel.setParameters(params);
+    // ECG no necesita speedMultiplier (siempre tiempo real)
     
     minVal = 999.0f;
     maxVal = -999.0f;
     
     uint8_t idx = static_cast<uint8_t>(cond);
-    if (idx < 9) {
+    if (idx < 8) {  // 8 condiciones ECG: 0-7
         Serial.printf("  [Rango clinico: %s]\n", CLINICAL_RANGES[idx].description);
-        Serial.printf("  [HR inicial: %.0f BPM]\n", ecgModel.getCurrentBPM());
+        Serial.printf("  [HR objetivo: %.0f BPM]\n", ecgModel.getHRMean());
+        // ECG siempre en tiempo real (1.0x)
     }
 }
 
 // ============================================================================
-// CONFIGURAR EMG
+// CONFIGURAR EMG CON SECUENCIAS DINAMICAS
 // ============================================================================
 void setupEMGCondition(EMGCondition cond) {
     currentSignalType = SignalType::EMG;
     currentEMGCondition = cond;
     
+    // Configurar parámetros base
     EMGParameters params;
     params.condition = cond;
-    params.amplitude = 1.0f;
-    params.noiseLevel = 0.05f;
-    params.excitationLevel = 0.0f;  // Usar default de la condici├│n
+    params.noiseLevel = 0.02f;
+    params.excitationLevel = 0.0f;  // Usar default de la condición
+    params.amplitude = 1.0f;        // Sin ganancia artificial
+    
+    // Ajustar ruido según condición
+    switch (cond) {
+        case EMGCondition::REST:
+            params.noiseLevel = 0.01f;
+            break;
+        case EMGCondition::TREMOR:
+            params.noiseLevel = 0.015f;
+            break;
+        default:
+            params.noiseLevel = 0.02f;
+            break;
+    }
+    
+    // Las SECUENCIAS se activan AUTOMÁTICAMENTE en emg_model.cpp
+    // según la condición seleccionada (funciona para debug y Nextion)
     emgModel.setParameters(params);
+    
+    // Mostrar info de la secuencia activada
+    switch (cond) {
+        case EMGCondition::REST:
+            Serial.println("  [Modo: Reposo estatico]");
+            break;
+        case EMGCondition::LOW_CONTRACTION:
+            Serial.println("  [Modo: Secuencia dinamica REST->LOW]");
+            Serial.println("  [Ciclo: REST 1s + LOW 3s = 4s total, ~3-4 bursts por ventana]");
+            break;
+        case EMGCondition::MODERATE_CONTRACTION:
+            Serial.println("  [Modo: Secuencia dinamica REST->MODERATE]");
+            Serial.println("  [Ciclo: REST 1s + MOD 3s = 4s total, ~3-4 bursts por ventana]");
+            break;
+        case EMGCondition::HIGH_CONTRACTION:
+            Serial.println("  [Modo: Secuencia dinamica REST->HIGH]");
+            Serial.println("  [Ciclo: REST 1s + HIGH 3s = 4s total, ~3-4 bursts por ventana]");
+            break;
+        case EMGCondition::TREMOR:
+            Serial.println("  [Modo: Temblor continuo - Parkinson 4-6 Hz]");
+            break;
+        case EMGCondition::FATIGUE:
+            Serial.println("  [Modo: Fatiga continua con decay progresivo]");
+            break;
+    }
     
     minVal = 999.0f;
     maxVal = -999.0f;
     
     uint8_t idx = static_cast<uint8_t>(cond);
-    if (idx < 10) {
+    if (idx < 6) {  // 6 condiciones EMG: 0-5
         Serial.printf("  [Rango clinico: %s]\n", EMG_CLINICAL_RANGES[idx].description);
-        Serial.printf("  [Excitacion: %.0f%%]\n", emgModel.getContractionLevel());
     }
 }
 
@@ -410,10 +486,35 @@ void setupPPGCondition(PPGCondition cond) {
     
     PPGParameters params;
     params.condition = cond;
-    params.heartRate = 75.0f;  // Default, ser├í modificado por condici├│n
-    params.perfusionIndex = 3.0f;
+    params.heartRate = 75.0f;  // Default, será modificado por condición
     params.dicroticNotch = 0.25f;
-    params.noiseLevel = 0.02f;
+    params.noiseLevel = 0.002f;  // Reducido para señal más limpia
+    
+    // Ajustar PI base según condición para rangos clínicos correctos
+    switch (cond) {
+        case PPGCondition::NORMAL:
+            params.perfusionIndex = 3.5f;   // 2-5%
+            break;
+        case PPGCondition::ARRHYTHMIA:
+            params.perfusionIndex = 3.0f;   // 1-5%
+            break;
+        case PPGCondition::WEAK_PERFUSION:
+            params.perfusionIndex = 0.3f;   // 0.1-0.5% (shock)
+            break;
+        case PPGCondition::STRONG_PERFUSION:
+            params.perfusionIndex = 10.0f;  // 5-20% (vasodilatación)
+            break;
+        case PPGCondition::VASODILATION:
+            params.perfusionIndex = 7.5f;   // 5-10% (vasodilatación)
+            break;
+        case PPGCondition::VASOCONSTRICTION:
+            params.perfusionIndex = 0.5f;   // 0.2-0.8% (frío)
+            break;
+        default:
+            params.perfusionIndex = 3.0f;
+            break;
+    }
+    
     ppgModel.setParameters(params);
     
     minVal = 999.0f;
@@ -437,7 +538,7 @@ void startPlotting() {
         Serial.printf("  PLOTEANDO: ECG - %s\n", getECGConditionName(currentECGCondition));
         float hr = ecgModel.getCurrentBPM();
         uint8_t idx = static_cast<uint8_t>(currentECGCondition);
-        if (idx < 9) {
+        if (idx < 8) {  // 8 condiciones ECG: 0-7
             const ExpectedRange& range = CLINICAL_RANGES[idx];
             bool inRange = (hr >= range.hrMin && hr <= range.hrMax);
             Serial.printf("  HR inicial: %.0f BPM %s\n", hr, inRange ? "[OK]" : "[FUERA DE RANGO!]");
@@ -445,7 +546,7 @@ void startPlotting() {
     } else if (currentSignalType == SignalType::EMG) {
         Serial.printf("  PLOTEANDO: EMG - %s\n", getEMGConditionName(currentEMGCondition));
         uint8_t idx = static_cast<uint8_t>(currentEMGCondition);
-        if (idx < 10) {
+        if (idx < 6) {  // 6 condiciones EMG
             Serial.printf("  Excitacion: %.0f%%, MUs activas: %d\n", 
                          emgModel.getContractionLevel(), emgModel.getActiveMotorUnits());
             Serial.printf("  Rango RMS esperado: %.2f-%.2f mV\n", 
@@ -490,7 +591,7 @@ void showPlotSummary() {
         Serial.printf("  Senal: ECG - %s\n", getECGConditionName(currentECGCondition));
         float hr = ecgModel.getCurrentBPM();
         uint8_t idx = static_cast<uint8_t>(currentECGCondition);
-        if (idx < 9) {
+        if (idx < 8) {  // 8 condiciones ECG: 0-7
             const ExpectedRange& range = CLINICAL_RANGES[idx];
             bool inRange = (hr >= range.hrMin && hr <= range.hrMax);
             Serial.printf("  HR final: %.1f BPM %s\n", hr, inRange ? "[OK]" : "[FUERA DE RANGO!]");
@@ -501,7 +602,7 @@ void showPlotSummary() {
         Serial.printf("  Senal: EMG - %s\n", getEMGConditionName(currentEMGCondition));
         float rms = emgModel.getRMSAmplitude();
         uint8_t idx = static_cast<uint8_t>(currentEMGCondition);
-        if (idx < 10) {
+        if (idx < 6) {  // 6 condiciones EMG
             const EMGExpectedRange& range = EMG_CLINICAL_RANGES[idx];
             bool inRange = (rms >= range.rmsMin && rms <= range.rmsMax);
             Serial.printf("  RMS: %.3f mV %s\n", rms, inRange ? "[OK]" : "[VERIFICAR]");
@@ -592,7 +693,7 @@ void processECGMenu(char input) {
         case '2': selectedCond = ECGCondition::BRADYCARDIA; break;
         case '3': selectedCond = ECGCondition::ATRIAL_FIBRILLATION; break;
         case '4': selectedCond = ECGCondition::VENTRICULAR_FIBRILLATION; break;
-        case '5': selectedCond = ECGCondition::PREMATURE_VENTRICULAR; break;
+        case '5': selectedCond = ECGCondition::AV_BLOCK_1; break;
         case '6': selectedCond = ECGCondition::ST_ELEVATION; break;
         case '7': selectedCond = ECGCondition::ST_DEPRESSION; break;
         case 'b':
@@ -666,9 +767,7 @@ void processEMGMenu(char input) {
         case '2': selectedCond = EMGCondition::MODERATE_CONTRACTION; break;
         case '3': selectedCond = EMGCondition::HIGH_CONTRACTION; break;
         case '4': selectedCond = EMGCondition::TREMOR; break;
-        case '5': selectedCond = EMGCondition::MYOPATHY; break;
-        case '6': selectedCond = EMGCondition::NEUROPATHY; break;
-        case '7': selectedCond = EMGCondition::FASCICULATION; break;
+        case '5': selectedCond = EMGCondition::FATIGUE; break;
         case 'b':
         case 'B':
             menuState = MenuState::MAIN_MENU;
@@ -699,9 +798,9 @@ void processPPGMenu(char input) {
         case '0': selectedCond = PPGCondition::NORMAL; break;
         case '1': selectedCond = PPGCondition::ARRHYTHMIA; break;
         case '2': selectedCond = PPGCondition::WEAK_PERFUSION; break;
-        case '3': selectedCond = PPGCondition::STRONG_PERFUSION; break;
-        case '4': selectedCond = PPGCondition::VASOCONSTRICTION; break;
-        case '5': selectedCond = PPGCondition::LOW_SPO2; break;
+        case '3': selectedCond = PPGCondition::VASODILATION; break;
+        case '4': selectedCond = PPGCondition::STRONG_PERFUSION; break;
+        case '5': selectedCond = PPGCondition::VASOCONSTRICTION; break;
         case 'b':
         case 'B':
             menuState = MenuState::MAIN_MENU;
@@ -740,21 +839,39 @@ void setup() {
     Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     
     // Configurar se├▒al seg├║n AUTO_SIGNAL_TYPE
+    // Variables para mostrar rango de señal
+    float rangoMin = 0, rangoMax = 0;
+    const char* unidadRango = "mV";
+    
     #if AUTO_SIGNAL_TYPE == 0  // ECG
         setupECGCondition((ECGCondition)AUTO_ECG_CONDITION);
-        Serial.printf("  Se├▒al: ECG - %s\n", getECGConditionName((ECGCondition)AUTO_ECG_CONDITION));
+        Serial.printf("  Senal: ECG - %s\n", getECGConditionName((ECGCondition)AUTO_ECG_CONDITION));
+        ecgModel.getOutputRange(&rangoMin, &rangoMax);
     #elif AUTO_SIGNAL_TYPE == 1  // EMG
         setupEMGCondition((EMGCondition)AUTO_EMG_CONDITION);
-        Serial.printf("  Se├▒al: EMG - %s\n", getEMGConditionName((EMGCondition)AUTO_EMG_CONDITION));
+        Serial.printf("  Senal: EMG - %s\n", getEMGConditionName((EMGCondition)AUTO_EMG_CONDITION));
+        emgModel.getOutputRange(&rangoMin, &rangoMax);
     #else  // PPG
         setupPPGCondition((PPGCondition)AUTO_PPG_CONDITION);
-        Serial.printf("  Se├▒al: PPG - %s\n", getPPGConditionName((PPGCondition)AUTO_PPG_CONDITION));
+        Serial.printf("  Senal: PPG - %s\n", getPPGConditionName((PPGCondition)AUTO_PPG_CONDITION));
+        rangoMin = 0.8f;
+        rangoMax = 1.3f;
+        unidadRango = "norm";  // PPG usa valores normalizados
     #endif
+    
+    // Mostrar rango de salida de la señal actual
+    Serial.printf("  Rango de salida: [%.3f, %.3f] %s\n", rangoMin, rangoMax, unidadRango);
     
     continuousMode = AUTO_CONTINUOUS;
     plotDuration = AUTO_CONTINUOUS ? 0xFFFFFFFF : PLOT_DURATION_MS;
     
-    Serial.println("  Modo: CONTINUO (presione 'r' en Serial Monitor para reiniciar)");
+    #if AUTO_CONTINUOUS
+    Serial.println("  Modo: CONTINUO (presiona 'r' para reiniciar)");
+    #else
+    Serial.printf("  Modo: DURACION FIJA - %.1f segundos\n", (float)PLOT_DURATION_MS / 1000.0f);
+    #endif
+    Serial.printf("  DAC: actualizacion continua | Serial Plotter: cada %d ms\n", PLOT_UPDATE_INTERVAL_MS);
+    Serial.println("  Eje X: muestras enviadas | Eje Y: ver unidad de rango");
     Serial.println("ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ");
     Serial.println();
     delay(2000);
@@ -771,7 +888,6 @@ void setup() {
 // LOOP
 // ============================================================================
 void loop() {
-    static unsigned long lastSample = 0;
     static unsigned long lastPlot = 0;
     unsigned long now = millis();
     
@@ -817,77 +933,139 @@ void loop() {
         }
     }
     
-    // Verificar duraci├│n
+    // Verificar duración
     if (!continuousMode && (now - plotStartTime >= plotDuration)) {
         showPlotSummary();
         return;
     }
     
-    // Generar muestras a 1000 Hz seg├║n tipo de se├▒al
+    // Actualizar señal cada 1 ms (1000 Hz) - UNA SOLA VEZ
+    static unsigned long lastSample = 0;
     if (now - lastSample >= 1) {
+        lastSample = now;
+        
+        // deltaTime acelerado para ver más latidos en pantalla
+        // El modelo avanza SIGNAL_SPEED_MULTIPLIER veces más rápido
+        // Las mediciones compensan multiplicando sampleCount por el mismo factor
+        float deltaTime = 0.001f * SIGNAL_SPEED_MULTIPLIER;
+        
         uint8_t dacValue = 128;
         if (currentSignalType == SignalType::ECG) {
-            dacValue = ecgModel.getDACValue(0.001f);
+            dacValue = ecgModel.getDACValue(deltaTime);
         } else if (currentSignalType == SignalType::EMG) {
-            dacValue = emgModel.getDACValue(0.001f);
+            // ✅ NUEVO API: Tick del modelo (1 sola vez)
+            emgModel.tick(deltaTime);
+            dacValue = emgModel.getRawDACValue();  // DAC de señal cruda
         } else if (currentSignalType == SignalType::PPG) {
-            dacValue = ppgModel.getDACValue(0.001f);
+            dacValue = ppgModel.getDACValue(deltaTime);
         }
         dacWrite(DAC_SIGNAL_PIN, dacValue);
-        lastSample = now;
     }
     
-    // Enviar datos seg├║n tipo de se├▒al
-    if (now - lastPlot >= DEBUG_SAMPLE_INTERVAL) {
+    // Enviar datos al Serial Plotter cada 2 ms
+    if (now - lastPlot >= PLOT_UPDATE_INTERVAL_MS) {
         float value = 0.0f;
         
         if (currentSignalType == SignalType::ECG) {
-            value = ecgModel.getCurrentValueMV();
+            value = ecgModel.getCurrentValueMV();  // Señal en mV clínicos
             if (value < minVal) minVal = value;
             if (value > maxVal) maxVal = value;
             
-            // Formato Serial Plotter: >nombre:valor
-            // ECG: se├▒al, HR, RR, amplitud R, desviaci├│n ST, duraci├│n QRS, latidos
+            // =====================================================================
+            // FORMATO SERIAL PLOTTER - ECG Lead II (valores clínicos)
+            // =====================================================================
+            // Señal: mV | Intervalos: ms | Amplitudes: mV | Frecuencia: bpm
+            //
+            // Parámetros mostrados:
+            // - ecg: señal instantánea en mV
+            // - HR: frecuencia cardíaca (bpm) = 60000/RR_ms
+            // - RR: intervalo R-R (ms)
+            // - PR: intervalo PR (ms) - conducción AV
+            // - QRS: duración QRS (ms) - despolarización ventricular
+            // - QT: intervalo QT medido (ms) - sístole eléctrica
+            // - QTc: intervalo QTc corregido Bazett (ms) - IMPORTANTE CLÍNICO
+            // - P: amplitud onda P (mV)
+            // - Q: amplitud onda Q (mV, negativa)
+            // - R: amplitud onda R (mV)
+            // - S: amplitud onda S (mV, negativa)
+            // - ST: desviación ST (mV)
+            // - T: amplitud onda T (mV)
+            
             Serial.print(">ecg:");
-            Serial.print(value, 4);
-            Serial.print(",hr:");
-            Serial.print(ecgModel.getCurrentBPM(), 1);
-            Serial.print(",rr:");
-            Serial.print(ecgModel.getCurrentRR_ms(), 0);
-            Serial.print(",ramp:");
-            Serial.print(ecgModel.getRWaveAmplitude_mV(), 2);
-            Serial.print(",st:");
-            Serial.print(ecgModel.getSTDeviation_mV(), 3);
-            Serial.print(",qrs:");
-            Serial.print(ecgModel.getQRSDuration_ms(), 0);
-            Serial.print(",beats:");
-            Serial.print(ecgModel.getBeatCount());
+            Serial.print(value, 3);           // Señal ECG en mV
+            Serial.print(",HR:");
+            Serial.print(ecgModel.getHeartRate_bpm(), 1);  // bpm
+            Serial.print(",RR:");
+            Serial.print(ecgModel.getRRInterval_ms(), 0);  // ms
+            Serial.print(",PR:");
+            Serial.print(ecgModel.getPRInterval_ms(), 0);  // ms
+            Serial.print(",QRS:");
+            Serial.print(ecgModel.getQRSDuration_ms(), 0); // ms
+            Serial.print(",QT:");
+            Serial.print(ecgModel.getQTInterval_ms(), 0);  // ms
+            Serial.print(",QTc:");
+            Serial.print(ecgModel.getQTcInterval_ms(), 0); // ms (Bazett)
+            Serial.print(",P:");
+            Serial.print(ecgModel.getPAmplitude_mV(), 2);  // mV
+            Serial.print(",Q:");
+            Serial.print(ecgModel.getQAmplitude_mV(), 2);  // mV (negativa)
+            Serial.print(",R:");
+            Serial.print(ecgModel.getRAmplitude_mV(), 2);  // mV
+            Serial.print(",S:");
+            Serial.print(ecgModel.getSAmplitude_mV(), 2);  // mV (negativa)
+            Serial.print(",ST:");
+            Serial.print(ecgModel.getSTDeviation_mV(), 2); // mV
+            Serial.print(",T:");
+            Serial.print(ecgModel.getTAmplitude_mV(), 2);  // mV
             Serial.println();
             
         } else if (currentSignalType == SignalType::EMG) {
-            value = emgModel.getCurrentValueMV();
-            if (value < minVal) minVal = value;
-            if (value > maxVal) maxVal = value;
+            // Obtener ambas se├▒ales (ya generadas en tick())
+            float rawSignal = emgModel.getRawSample();      // Cruda bipolar ┬▒5 mV
+            float procSignal = emgModel.getProcessedSample(); // Procesada 0-5 mV
             
-            // EMG: se├▒al, RMS, MUs activas, frecuencia de disparo, % contracci├│n
-            Serial.print(">emg:");
-            Serial.print(value, 4);
+            // Track min/max de se├▒al cruda para resumen
+            if (rawSignal < minVal) minVal = rawSignal;
+            if (rawSignal > maxVal) maxVal = rawSignal;
+            
+            // FORMATO SERIAL PLOTTER - EMG Dual Channel (valores cl├¡nicos)
+            // raw_emg: se├▒al cruda bipolar en mV (┬▒5 mV) -> DAC GPIO25
+            // proc_emg: envolvente RMS en mV (0-5 mV) -> Nextion waveform
+            // rms: amplitud RMS instant├ínea (mV)
+            // mus: unidades motoras activas (count)
+            // fr: frecuencia disparo media (Hz)
+            // cont: nivel contracci├│n (%MVC)
+            // mdf: frecuencia mediana (Hz) - solo FATIGUE
+            // mfl: nivel fatiga muscular (0-1) - solo FATIGUE
+            
+            Serial.print(">raw_emg:");
+            Serial.print(rawSignal, 4);           // Se├▒al cruda ┬▒5 mV
+            Serial.print(",proc_emg:");
+            Serial.print(procSignal, 4);          // Envolvente 0-5 mV
             Serial.print(",rms:");
-            Serial.print(emgModel.getRMSAmplitude(), 3);
+            Serial.print(emgModel.getRMSAmplitude(), 3);  // RMS mV
             Serial.print(",mus:");
-            Serial.print(emgModel.getActiveMotorUnits());
+            Serial.print(emgModel.getActiveMotorUnits()); // Count
             Serial.print(",fr:");
-            Serial.print(emgModel.getMeanFiringRate(), 1);
+            Serial.print(emgModel.getMeanFiringRate(), 1); // Hz
             Serial.print(",cont:");
-            Serial.print(emgModel.getContractionLevel(), 1);
+            Serial.print(emgModel.getContractionLevel(), 1); // %MVC
+            
+            // M├®tricas de fatiga (solo si condici├│n = FATIGUE)
+            if (emgModel.isFatigueActive()) {
+                Serial.print(",mdf:");
+                Serial.print(emgModel.getFatigueMDF(), 1);    // Hz (120->80)
+                Serial.print(",mfl:");
+                Serial.print(emgModel.getFatigueMFL(), 3);    // 0-1
+            }
             Serial.println();
             
         } else if (currentSignalType == SignalType::PPG) {
-            value = ppgModel.getCurrentValueNormalized();
+            value = ppgModel.generateSample(0.001f);  // Versión antigua retorna 0-1 normalizado
             if (value < minVal) minVal = value;
             if (value > maxVal) maxVal = value;
             
-            // PPG: se├▒al, HR, RR, PI, SpO2, latidos
+            // PPG: señal, HR, RR, PI, latidos (versión antigua)
             Serial.print(">ppg:");
             Serial.print(value, 4);
             Serial.print(",hr:");
@@ -896,8 +1074,6 @@ void loop() {
             Serial.print(ppgModel.getCurrentRRInterval(), 0);
             Serial.print(",pi:");
             Serial.print(ppgModel.getPerfusionIndex(), 2);
-            Serial.print(",spo2:");
-            Serial.print(ppgModel.getSpO2(), 1);
             Serial.print(",beats:");
             Serial.print(ppgModel.getBeatCount());
             Serial.println();
@@ -906,33 +1082,70 @@ void loop() {
         lastPlot = now;
     }
     
-    // ========== ESTAD├ìSTICAS PERI├ôDICAS (cada 3 segundos) ==========
+    // ========== ESTADISTICAS PERIODICAS (cada 2 segundos) ==========
     static unsigned long lastStats = 0;
-    if (now - lastStats >= 3000) {
+    if (now - lastStats >= 2000) {
         Serial.println();
-        Serial.println("ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ");
+        Serial.println("========================================================");
         Serial.printf("  [%lu s] METRICAS EN TIEMPO REAL\n", (now - plotStartTime) / 1000);
-        Serial.println("ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ");
+        Serial.println("--------------------------------------------------------");
         
         if (currentSignalType == SignalType::ECG) {
-            float hr = ecgModel.getCurrentBPM();
-            float rr = ecgModel.getCurrentRR_ms();
-            float rAmp = ecgModel.getRWaveAmplitude_mV();
-            float stDev = ecgModel.getSTDeviation_mV();
-            uint32_t beats = ecgModel.getBeatCount();
+            // Obtener todas las métricas clínicas
+            ECGDisplayMetrics m = ecgModel.getDisplayMetrics();
             
             // Obtener rangos esperados
             uint8_t idx = static_cast<uint8_t>(currentECGCondition);
             const ExpectedRange& range = CLINICAL_RANGES[idx];
-            bool hrOK = (hr >= range.hrMin && hr <= range.hrMax);
+            bool hrOK = (m.bpm >= range.hrMin && m.bpm <= range.hrMax);
+            bool qrsOK = (m.qrsDuration_ms >= 60.0f && m.qrsDuration_ms <= 120.0f);
+            // PR: para AVB1 debe ser >200ms, para otros 120-200ms
+            bool prOK;
+            if (currentECGCondition == ECGCondition::AV_BLOCK_1) {
+                prOK = (m.prInterval_ms > 200.0f);  // AVB1: PR prolongado >200ms
+            } else if (currentECGCondition == ECGCondition::ATRIAL_FIBRILLATION) {
+                prOK = true;  // AFib: sin onda P, PR no aplica
+            } else {
+                prOK = (m.prInterval_ms >= 120.0f && m.prInterval_ms <= 200.0f);
+            }
+            bool qtcOK = (m.qtcInterval_ms >= 320.0f && m.qtcInterval_ms <= 460.0f);
             
-            Serial.printf("  HR: %.1f BPM %s (esperado: %.0f-%.0f)\n", 
-                         hr, hrOK ? "[OK]" : "[!]", range.hrMin, range.hrMax);
-            Serial.printf("  RR: %.0f ms (calculado: %.0f ms)\n", rr, 60000.0f/hr);
-            Serial.printf("  Onda R: %.2f mV (tipico: 0.5-1.5 mV)\n", rAmp);
-            Serial.printf("  ST: %.3f mV %s\n", stDev, 
-                         (fabsf(stDev) < 0.1f) ? "[normal]" : "[elevado/deprimido]");
-            Serial.printf("  Latidos: %lu | Rango se├▒al: [%.3f, %.3f]\n", beats, minVal, maxVal);
+            Serial.println("  --- FRECUENCIA ---");
+            Serial.printf("  HR: %.1f bpm %s (esperado: %.0f-%.0f)\n", 
+                         m.bpm, hrOK ? "[OK]" : "[!]", range.hrMin, range.hrMax);
+            
+            Serial.println("  --- INTERVALOS (ms) ---");
+            Serial.printf("  RR: %.0f ms\n", m.rrInterval_ms);
+            // Mensaje de PR adaptado a la condición
+            if (currentECGCondition == ECGCondition::AV_BLOCK_1) {
+                Serial.printf("  PR: %.0f ms %s (AVB1: >200ms)\n", m.prInterval_ms, prOK ? "[OK]" : "[!]");
+            } else if (currentECGCondition == ECGCondition::ATRIAL_FIBRILLATION) {
+                Serial.printf("  PR: -- ms (AFib: sin onda P)\n");
+            } else {
+                Serial.printf("  PR: %.0f ms %s (normal: 120-200)\n", m.prInterval_ms, prOK ? "[OK]" : "[!]");
+            }
+            Serial.printf("  QRS: %.0f ms %s (normal: <120)\n", m.qrsDuration_ms, qrsOK ? "[OK]" : "[!]");
+            Serial.printf("  QT: %.0f ms | QTc: %.0f ms %s (normal: 320-460)\n", 
+                         m.qtInterval_ms, m.qtcInterval_ms, qtcOK ? "[OK]" : "[!]");
+            
+            Serial.println("  --- AMPLITUDES (mV) ---");
+            Serial.printf("  P: %.2f mV (normal: <0.25)\n", m.pAmplitude_mV);
+            Serial.printf("  R: %.2f mV (normal: 0.5-1.5)\n", m.rAmplitude_mV);
+            // ST: validación específica por condición
+            if (currentECGCondition == ECGCondition::ST_ELEVATION) {
+                bool stOK = (m.stDeviation_mV >= 0.2f);  // STEMI: ST >= 0.2mV
+                Serial.printf("  ST: %.2f mV %s (STEMI: >=0.2mV)\n", m.stDeviation_mV, stOK ? "[OK]" : "[!]");
+            } else if (currentECGCondition == ECGCondition::ST_DEPRESSION) {
+                bool stOK = (m.stDeviation_mV <= -0.05f);  // NSTEMI: ST <= -0.05mV
+                Serial.printf("  ST: %.2f mV %s (NSTEMI: <=-0.05mV)\n", m.stDeviation_mV, stOK ? "[OK]" : "[!]");
+            } else {
+                // Condiciones normales: ST isoeléctrico
+                bool stOK = (fabsf(m.stDeviation_mV) < 0.1f);
+                Serial.printf("  ST: %.2f mV %s\n", m.stDeviation_mV, stOK ? "[normal]" : "[!]");
+            }
+            Serial.printf("  T: %.2f mV (normal: <0.5)\n", m.tAmplitude_mV);
+            
+            Serial.printf("  Latidos: %lu | Senal: [%.2f, %.2f] mV\n", m.beatCount, minVal, maxVal);
             
         } else if (currentSignalType == SignalType::EMG) {
             float rms = emgModel.getRMSAmplitude();
@@ -970,7 +1183,7 @@ void loop() {
             Serial.printf("  Latidos: %lu | Rango se├▒al: [%.3f, %.3f]\n", beats, minVal, maxVal);
         }
         
-        Serial.println("ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ");
+        Serial.println("========================================================");
         Serial.println();
         
         lastStats = now;

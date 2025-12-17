@@ -120,9 +120,9 @@ ECG_CLINICAL_RANGES: Dict[str, ECGClinicalRange] = {
         rr_min_ms=600.0, rr_max_ms=1000.0,
         r_amplitude_min_mV=0.5, r_amplitude_max_mV=1.5,
         st_deviation_min_mV=-0.05, st_deviation_max_mV=0.05,
-        qrs_duration_min_ms=80.0, qrs_duration_max_ms=100.0,
+        qrs_duration_min_ms=60.0, qrs_duration_max_ms=100.0,
         description="Ritmo sinusal normal",
-        clinical_notes="HR 60-100 BPM, QRS <100ms, ST isoeléctrico"
+        clinical_notes="HR 60-100 BPM, QRS 60-100ms, ST isoeléctrico"
     ),
     
     # -------------------------------------------------------------------------
@@ -134,7 +134,7 @@ ECG_CLINICAL_RANGES: Dict[str, ECGClinicalRange] = {
         rr_min_ms=333.0, rr_max_ms=600.0,
         r_amplitude_min_mV=0.5, r_amplitude_max_mV=1.5,
         st_deviation_min_mV=-0.1, st_deviation_max_mV=0.05,
-        qrs_duration_min_ms=80.0, qrs_duration_max_ms=100.0,
+        qrs_duration_min_ms=60.0, qrs_duration_max_ms=100.0,
         description="Taquicardia sinusal >100 BPM",
         clinical_notes="Puede tener ligera depresión ST por demanda"
     ),
@@ -148,7 +148,7 @@ ECG_CLINICAL_RANGES: Dict[str, ECGClinicalRange] = {
         rr_min_ms=1017.0, rr_max_ms=2000.0,
         r_amplitude_min_mV=0.5, r_amplitude_max_mV=1.5,
         st_deviation_min_mV=-0.05, st_deviation_max_mV=0.05,
-        qrs_duration_min_ms=80.0, qrs_duration_max_ms=100.0,
+        qrs_duration_min_ms=60.0, qrs_duration_max_ms=100.0,
         description="Bradicardia sinusal <60 BPM",
         clinical_notes="Común en atletas, puede ser patológica si <40 BPM"
     ),
@@ -163,7 +163,7 @@ ECG_CLINICAL_RANGES: Dict[str, ECGClinicalRange] = {
         rr_min_ms=319.0, rr_max_ms=1053.0,  # RR correspondiente
         r_amplitude_min_mV=0.4, r_amplitude_max_mV=1.5,
         st_deviation_min_mV=-0.1, st_deviation_max_mV=0.1,
-        qrs_duration_min_ms=80.0, qrs_duration_max_ms=120.0,
+        qrs_duration_min_ms=60.0, qrs_duration_max_ms=120.0,
         description="Fibrilación auricular con respuesta ventricular variable",
         clinical_notes="Ausencia de ondas P, RR irregularmente irregular"
     ),
@@ -208,7 +208,7 @@ ECG_CLINICAL_RANGES: Dict[str, ECGClinicalRange] = {
         rr_min_ms=600.0, rr_max_ms=1000.0,  # Correspondiente a 60-100 BPM
         r_amplitude_min_mV=0.5, r_amplitude_max_mV=1.8,
         st_deviation_min_mV=0.25, st_deviation_max_mV=0.60,  # Elevación base (antes de factor)
-        qrs_duration_min_ms=80.0, qrs_duration_max_ms=120.0,
+        qrs_duration_min_ms=60.0, qrs_duration_max_ms=120.0,
         description="Infarto agudo con elevación ST (STEMI) - meseta visible",
         clinical_notes="ST elevado en meseta, T hiperaguda, patrón 'lomo de delfín'"
     ),
@@ -223,7 +223,7 @@ ECG_CLINICAL_RANGES: Dict[str, ECGClinicalRange] = {
         rr_min_ms=600.0, rr_max_ms=1000.0,
         r_amplitude_min_mV=0.5, r_amplitude_max_mV=1.5,
         st_deviation_min_mV=-0.55, st_deviation_max_mV=-0.20,  # Depresión visible
-        qrs_duration_min_ms=80.0, qrs_duration_max_ms=100.0,
+        qrs_duration_min_ms=60.0, qrs_duration_max_ms=100.0,
         description="Isquemia subendocárdica - patrón downsloping",
         clinical_notes="ST descendente desde punto J, T aplanada, signo de isquemia"
     ),
@@ -252,10 +252,11 @@ EMG_CLINICAL_RANGES: Dict[str, EMGClinicalRange] = {
     # -------------------------------------------------------------------------
     # REPOSO (0-5% MVC) - De Luca 1997 [7]
     # Modelo: excitación 0-5%, muy pocas MUs activas
+    # Rango pico: ±0.02 mV, RMS: <0.02 mV
     # -------------------------------------------------------------------------
     "REST": EMGClinicalRange(
         condition="Reposo",
-        rms_min_mV=0.0, rms_max_mV=0.05,
+        rms_min_mV=0.0, rms_max_mV=0.02,  # v1.1: corregido según RANGOS_CLINICOS.md
         motor_units_min=0, motor_units_max=20,
         firing_rate_min_Hz=0.0, firing_rate_max_Hz=8.0,
         contraction_min_pct=0.0, contraction_max_pct=6.0,
@@ -265,11 +266,11 @@ EMG_CLINICAL_RANGES: Dict[str, EMGClinicalRange] = {
     
     # -------------------------------------------------------------------------
     # CONTRACCIÓN BAJA (5-20% MVC) - Fuglevand 1993 [6], De Luca 2010 [8]
-    # Modelo: excitación 5-20%, RMS 0.1-0.4 mV, picos <1.0 mV
+    # Modelo: excitación 5-20%, Rango pico: ±0.15 mV, RMS: 0.02-0.10 mV
     # -------------------------------------------------------------------------
     "LOW": EMGClinicalRange(
         condition="Contracción Baja",
-        rms_min_mV=0.1, rms_max_mV=0.4,
+        rms_min_mV=0.02, rms_max_mV=0.10,  # v1.1: corregido según RANGOS_CLINICOS.md
         motor_units_min=15, motor_units_max=60,
         firing_rate_min_Hz=6.0, firing_rate_max_Hz=15.0,
         contraction_min_pct=5.0, contraction_max_pct=22.0,
@@ -279,11 +280,11 @@ EMG_CLINICAL_RANGES: Dict[str, EMGClinicalRange] = {
     
     # -------------------------------------------------------------------------
     # CONTRACCIÓN MODERADA (20-50% MVC) - Fuglevand 1993 [6]
-    # Modelo: excitación 20-50%, RMS 0.5-1.2 mV, picos hasta ~2.0 mV
+    # Modelo: excitación 20-50%, Rango pico: ±0.50 mV, RMS: 0.10-0.40 mV
     # -------------------------------------------------------------------------
     "MODERATE": EMGClinicalRange(
         condition="Contracción Moderada",
-        rms_min_mV=0.5, rms_max_mV=1.2,
+        rms_min_mV=0.10, rms_max_mV=0.40,  # v1.1: corregido según RANGOS_CLINICOS.md
         motor_units_min=50, motor_units_max=100,
         firing_rate_min_Hz=12.0, firing_rate_max_Hz=25.0,
         contraction_min_pct=18.0, contraction_max_pct=55.0,
@@ -293,11 +294,11 @@ EMG_CLINICAL_RANGES: Dict[str, EMGClinicalRange] = {
     
     # -------------------------------------------------------------------------
     # CONTRACCIÓN ALTA (50-100% MVC) - De Luca 1997 [7], Fuglevand 1993 [6]
-    # Modelo: excitación 50-100%, RMS 1.5-5.0 mV, picos hasta 4-5 mV
+    # Modelo: excitación 50-100%, Rango pico: ±2.00 mV, RMS: 0.50-1.50 mV
     # -------------------------------------------------------------------------
     "HIGH": EMGClinicalRange(
         condition="Contracción Alta",
-        rms_min_mV=1.5, rms_max_mV=5.0,
+        rms_min_mV=0.50, rms_max_mV=1.50,  # v1.1: corregido según RANGOS_CLINICOS.md
         motor_units_min=85, motor_units_max=100,
         firing_rate_min_Hz=20.0, firing_rate_max_Hz=50.0,
         contraction_min_pct=60.0, contraction_max_pct=100.0,
@@ -308,10 +309,11 @@ EMG_CLINICAL_RANGES: Dict[str, EMGClinicalRange] = {
     # -------------------------------------------------------------------------
     # TEMBLOR PARKINSONIANO - Deuschl 1998, 2001
     # Oscila entre reposo y contracción a 4-6 Hz
+    # Rango pico: ±0.80 mV, RMS: 0.10-0.50 mV
     # -------------------------------------------------------------------------
     "TREMOR": EMGClinicalRange(
         condition="Temblor",
-        rms_min_mV=0.1, rms_max_mV=1.0,
+        rms_min_mV=0.10, rms_max_mV=0.50,  # v1.1: corregido según RANGOS_CLINICOS.md
         motor_units_min=0, motor_units_max=100,      # Oscila entre 0 y máximo
         firing_rate_min_Hz=4.0, firing_rate_max_Hz=18.0,  # Variable por oscilación
         contraction_min_pct=0.0, contraction_max_pct=40.0,  # Oscila 0-40%
@@ -322,11 +324,11 @@ EMG_CLINICAL_RANGES: Dict[str, EMGClinicalRange] = {
     # -------------------------------------------------------------------------
     # MIOPATÍA - Kimura 2013, Merletti 2004
     # MUAPs pequeños (<500µV), polifásicos, reclutamiento precoz
-    # Muchas MUs activas para poca fuerza
+    # Rango pico: ±0.25 mV, RMS: 0.05-0.15 mV
     # -------------------------------------------------------------------------
     "MYOPATHY": EMGClinicalRange(
         condition="Miopatía",
-        rms_min_mV=0.1, rms_max_mV=0.6,
+        rms_min_mV=0.05, rms_max_mV=0.15,  # v1.1: corregido según RANGOS_CLINICOS.md
         motor_units_min=60, motor_units_max=100,    # Reclutamiento agresivo
         firing_rate_min_Hz=15.0, firing_rate_max_Hz=35.0,
         contraction_min_pct=30.0, contraction_max_pct=60.0,
@@ -336,25 +338,27 @@ EMG_CLINICAL_RANGES: Dict[str, EMGClinicalRange] = {
     
     # -------------------------------------------------------------------------
     # NEUROPATÍA - Kimura 2013, Merletti 2004
-    # MUAPs gigantes (>2mV), duración larga, pocas MUs activas (10-40)
+    # MUAPs gigantes, reinervación colateral
+    # Rango pico: ±2.50 mV (sEMG, atenuado), RMS: 0.30-1.50 mV
     # -------------------------------------------------------------------------
     "NEUROPATHY": EMGClinicalRange(
         condition="Neuropatía",
-        rms_min_mV=0.8, rms_max_mV=2.5,
-        motor_units_min=10, motor_units_max=40,     # Pocas MUs sobreviven
+        rms_min_mV=0.30, rms_max_mV=1.50,  # v1.1: corregido según RANGOS_CLINICOS.md
+        motor_units_min=10, motor_units_max=40,     # Pocas MUs sobreviven (70% pérdida)
         firing_rate_min_Hz=8.0, firing_rate_max_Hz=25.0,
         contraction_min_pct=25.0, contraction_max_pct=55.0,
         description="Patrón neuropático",
-        clinical_notes="MUAPs gigantes (>2mV), reinervación colateral, reducción MUs"
+        clinical_notes="MUAPs gigantes (sEMG ±2.5mV), reinervación colateral, 70% pérdida MUs"
     ),
     
     # -------------------------------------------------------------------------
     # FASCICULACIÓN - Mills 2010, Kimura 2013
     # Eventos aislados espontáneos, base silenciosa con picos transitorios
+    # Rango pico: ±1.00 mV, RMS: 0.10-0.50 mV
     # -------------------------------------------------------------------------
     "FASCICULATION": EMGClinicalRange(
         condition="Fasciculación",
-        rms_min_mV=0.0, rms_max_mV=0.5,
+        rms_min_mV=0.10, rms_max_mV=0.50,  # v1.1: corregido según RANGOS_CLINICOS.md
         motor_units_min=0, motor_units_max=5,       # 0-5 MUs instantáneas
         firing_rate_min_Hz=0.0, firing_rate_max_Hz=40.0,  # 0 basal, bursts 25-40Hz
         contraction_min_pct=0.0, contraction_max_pct=10.0,

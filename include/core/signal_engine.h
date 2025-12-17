@@ -13,11 +13,11 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
-#include "../config.h"
-#include "../data/signal_types.h"
-#include "../models/ecg_model.h"
-#include "../models/emg_model.h"
-#include "../models/ppg_model.h"
+#include "config.h"
+#include "data/signal_types.h"
+#include "models/ecg_model.h"
+#include "models/emg_model.h"
+#include "models/ppg_model.h"
 
 // ============================================================================
 // ESTADÍSTICAS DE PERFORMANCE
