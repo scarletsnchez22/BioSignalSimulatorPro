@@ -2,6 +2,7 @@
  * @file state_machine.cpp
  * @brief Implementación de la máquina de estados
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * Flujo: INIT → PORTADA → MENU → SELECT_CONDITION → SIMULATING
  *        (portada)  (menu)  (ecg_sim/emg_sim/ppg_sim)  (ecg_wave/emg_wave/ppg_wave)

@@ -1,7 +1,8 @@
 /**
  * @file emg_model.h
  * @brief Modelo EMG basado en reclutamiento de unidades motoras (sEMG)
- * @version 1.1.0
+ * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * REFERENCIAS CIENTÍFICAS:
  * 

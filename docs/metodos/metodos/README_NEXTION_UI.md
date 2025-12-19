@@ -1,26 +1,24 @@
 # 📱 Interfaz Nextion - BioSimulator Pro v1.0.0
 
-## Documentación de la Experiencia de Usuario y Comunicación ESP32-Nextion
-*Última actualización: 07.12.2025*
-*Estado: ✅ Validado - Selección única funcionando en ECG/EMG/PPG*
+## Documentación de la Interfaz de Usuario y Comunicación ESP32-Nextion
+*Última actualización: 18.12.2025*
+*Estado: ✅ Validado y funcionando*
 
 ---
 
 ## 📋 Índice
 
 1. [Resumen del Sistema](#resumen-del-sistema)
-2. [Arquitectura de Comunicación](#arquitectura-de-comunicación)
-3. [Mapa de Páginas](#mapa-de-páginas)
-4. [Diagrama de Flujo de Usuario](#diagrama-de-flujo-de-usuario)
-5. [Estructura de Cada Página](#estructura-de-cada-página)
-6. [Protocolo de Comunicación](#protocolo-de-comunicación)
-7. [Comandos y Eventos](#comandos-y-eventos)
+2. [Flujo de Pantallas](#flujo-de-pantallas)
+3. [Tabla de Variables Nextion](#tabla-de-variables-nextion)
+4. [Protocolo de Comunicación](#protocolo-de-comunicación)
+5. [Reglas de Implementación](#reglas-de-implementación)
 
 ---
 
 ## 🎯 Resumen del Sistema
 
-El sistema utiliza una pantalla **Nextion NX4024T032** (320x240 píxeles) como interfaz de usuario. La comunicación es bidireccional vía UART a 115200 baudios.
+El sistema utiliza una pantalla **Nextion NX8048T070** (800×480 píxeles, 7 pulgadas) como interfaz de usuario. La comunicación es bidireccional vía UART a 115200 baudios.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -30,16 +28,16 @@ El sistema utiliza una pantalla **Nextion NX4024T032** (320x240 píxeles) como i
 │   ┌──────────────┐         UART 115200          ┌──────────────────┐    │
 │   │              │ ◄──────────────────────────► │                  │    │
 │   │   NEXTION    │    TX/RX (GPIO 16/17)        │     ESP32        │    │
-│   │   Display    │                              │   WROOM-32       │    │
-│   │  320 x 240   │                              │                  │    │
-│   │              │                              │                  │    │
+│   │ NX8048T070   │                              │   WROOM-32       │    │
+│   │  800 x 480   │                              │                  │    │
+│   │  7" Touch    │                              │                  │    │
 │   └──────────────┘                              └──────────────────┘    │
 │         │                                              │                │
 │         │ Muestra                                      │ Genera         │
 │         ▼                                              ▼                │
 │   ┌──────────────┐                              ┌──────────────────┐    │
 │   │  Waveforms   │                              │  Señales ECG     │    │
-│   │  Controles   │                              │  EMG, PPG        │    │
+│   │  700×380 px  │                              │  EMG, PPG        │    │
 │   │  Métricas    │                              │  DAC Output      │    │
 │   └──────────────┘                              └──────────────────┘    │
 │                                                                          │

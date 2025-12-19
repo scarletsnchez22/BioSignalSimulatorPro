@@ -1,9 +1,11 @@
 /**
  * @file nextion_driver.h
- * @brief Driver para pantalla Nextion NX4024T032
+ * @brief Driver para pantalla Nextion NX8048T070 (7" 800x480)
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * Comunicación serial con la pantalla Nextion.
+ * Manejo de eventos UI, actualización de waveforms y métricas.
  */
 
 #ifndef NEXTION_DRIVER_H
@@ -20,7 +22,7 @@ enum class NextionPage : uint8_t {
     PORTADA = 0,        // Splash/bienvenida
     MENU = 1,           // Selección de señal (ECG/EMG/PPG)
     ECG_SIM = 2,        // Selección condición ECG (8 condiciones)
-    EMG_SIM = 3,        // Selección condición EMG (10 condiciones)
+    EMG_SIM = 3,        // Selección condición EMG (6 condiciones)
     PPG_SIM = 4,        // Selección condición PPG (6 condiciones)
     WAVEFORM_ECG = 5,   // Waveform ECG + valores integrados (281x240)
     PARAMETROS_ECG = 6, // Popup parámetros ECG
@@ -69,10 +71,11 @@ enum class UIEvent : uint8_t {
     SLIDER_EMG_AMP,         // Slider amplitud (ID 9)
     SLIDER_EMG_NOISE,       // Slider ruido (ID 10)
     
-    // Sliders PPG (parametros_ppg página 13)
-    SLIDER_PPG_HR,          // Slider frecuencia cardíaca (ID 8)
-    SLIDER_PPG_PI,          // Slider índice de perfusión (ID 9)
-    SLIDER_PPG_NOISE        // Slider ruido (ID 10)
+    // Sliders PPG (parametros_ppg página 10)
+    SLIDER_PPG_HR,          // Slider frecuencia cardíaca (ID 4)
+    SLIDER_PPG_PI,          // Slider índice de perfusión (ID 5)
+    SLIDER_PPG_NOISE,       // Slider ruido (ID 6)
+    SLIDER_PPG_AMP          // Slider factor amplitud (ID 14)
 };
 
 // ============================================================================
@@ -191,11 +194,14 @@ public:
     void setupECGParametersPage(int hrMin, int hrMax, int hrCurrent,
                                  int ampCurrent, int noiseCurrent, int hrvCurrent);
     
+    // Actualizar escala mV/div en waveform_ecg y parametros_ecg
+    void updateECGScale(int zoomPercent);
+    
     // Configurar página parametros_emg
     void setupEMGParametersPage(int excCurrent, int ampCurrent, int noiseCurrent);
     
     // Configurar página parametros_ppg
-    void setupPPGParametersPage(int hrCurrent, int piCurrent, int noiseCurrent);
+    void setupPPGParametersPage(int hrCurrent, int piCurrent, int noiseCurrent, int ampCurrent);
     
     // Leer valor de un slider (retorna -1 si error)
     int readSliderValue(const char* sliderName);

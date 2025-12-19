@@ -2,6 +2,7 @@
  * @file state_machine.h
  * @brief Máquina de estados del sistema
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * Gestiona las transiciones de estado de la aplicación.
  */

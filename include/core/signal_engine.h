@@ -2,6 +2,7 @@
  * @file signal_engine.h
  * @brief Motor de generación de señales en tiempo real
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * Gestiona la generación de señales con buffer circular y timer ISR.
  */

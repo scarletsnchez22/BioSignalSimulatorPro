@@ -1,40 +1,23 @@
 /**
  * @file ppg_model.h
  * @brief Modelo PPG con doble gaussiana y 6 condiciones clínicas
- * @version 1.1.0
- * 
- * Modelo de fotopletismografía con HRV, muesca dicrótica y simulación
- * de condiciones patológicas con parámetros dinámicos (PI, SpO2).
- * 
- * Condiciones soportadas (valores en mV físicos reales):
- * - NORMAL:           PI 1-5%, DC=1000mV, AC=15-50mV, morfología estándar
- * - ARRHYTHMIA:       PI 1-5%, DC=1000mV, AC=15-50mV, RR irregular ±15%
- * - WEAK_PERFUSION:   PI 0.02-0.4%, DC=1000mV, AC=0.2-5mV, señal muy débil
- * - VASODILATION:     PI 5-10%, DC=1000mV, AC=50-100mV, muesca marcada
- * - STRONG_PERFUSION: PI 10-20%, DC=1000mV, AC=100-200mV, señal muy robusta
- * - VASOCONSTRICTION: PI 0.2-0.8%, DC=1000mV, AC=2-10mV, onda afilada
- * 
- * Referencias científicas:
- * - BPL Medical Technologies (2023): Understanding Perfusion Index
- * - Allen J. Physiol Meas. 2007;28(3):R1-R39: Morfología PPG y PI
- * - ProQuest: AC/DC típico 1-2% del componente continuo
- * - De La Peña Sanabria I., et al. Rev. Physiol. Meas., 2007: PI clínico
- * - Lima A, Bakker J. Intensive Care Med, 2005: Monitoreo perfusión periférica
- * - Reisner A et al. Anesthesiology, 2008: Utilidad clínica PPG
-/**
- * @file ppg_model.h
- * @brief Modelo PPG con doble gaussiana
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
- * Modelo de fotopletismografía con HRV y muesca dicrótica.
+ * Modelo fisiológico de fotopletismografía:
+ * - Sístole ~constante, diástole variable (se comprime con HR alto)
+ * - PI dinámico como ÚNICO control de amplitud AC
+ * - Forma de onda normalizada [0,1] con modificadores suaves por condición
  * 
- * Referencias científicas:
- * - Allen J. "Photoplethysmography and its application in clinical
- *   physiological measurement." Physiological Measurement, 2007.
- * - Elgendi M. "On the Analysis of Fingertip Photoplethysmogram Signals."
- *   Current Cardiology Reviews, 2012.
- * - Reisner A et al. "Utility of the photoplethysmogram in circulatory
- *   monitoring." Anesthesiology, 2008.
+ * Flujo del modelo:
+ *   Patología → HR,PI (dinámicos dentro de rango) → RR=60/HR
+ *   → systole_time=f(HR), diastole_time=RR-systole
+ *   → pulseShape normalizado [0,1] → AC=PI*scale → signal=DC+pulse*AC
+ * 
+ * Referencias:
+ * - Allen J. Physiol Meas. 2007: Morfología base PPG
+ * - Sun X et al. 2024: PI variabilidad latido a latido
+ * - Fisiología cardiovascular: sístole ~constante, diástole variable
  */
 
 #ifndef PPG_MODEL_H
@@ -44,40 +27,47 @@
 #include "../data/signal_types.h"
 
 // ============================================================================
-// CONSTANTES TEMPORALES DEL MODELO PPG
-// Basado en: Elgendi M. "On the Analysis of Fingertip PPG Signals" (2012)
-//            Allen J. "Photoplethysmography and its application" (2007)
-//            Millasseau SC et al. "Contour analysis of the PPG pulse" (2006)
+// CONSTANTES BASE DEL MODELO PPG (Allen 2007)
 // ============================================================================
 
 // --- Posiciones temporales (fracción del ciclo RR) ---
-// Elgendi 2012, Fig. 3: Análisis de puntos fiduciales
-#define PPG_SYSTOLIC_POS    0.15f   // Pico sistólico: 10-20% del ciclo (media ~15%)
-#define PPG_NOTCH_POS       0.30f   // Muesca dicrótica: 25-35% (cierre válvula aórtica)
-#define PPG_DIASTOLIC_POS   0.40f   // Pico diastólico: 35-50% (onda reflejada)
+#define PPG_SYSTOLIC_POS    0.15f   // Pico sistólico: ~15% del ciclo
+#define PPG_NOTCH_POS       0.30f   // Muesca dicrótica: ~30% (cierre válvula aórtica)
+#define PPG_DIASTOLIC_POS   0.40f   // Pico diastólico: ~40% (onda reflejada)
 
 // --- Anchos gaussianos (desviación estándar normalizada) ---
-// Derivados de FWHM típicos en Millasseau 2006
-#define PPG_SYSTOLIC_WIDTH  0.055f  // σ sistólico: ~55ms FWHM a 75 BPM
-#define PPG_DIASTOLIC_WIDTH 0.10f   // σ diastólico: más ancho (onda dispersada)
-#define PPG_NOTCH_WIDTH     0.02f   // σ muesca: muy estrecha (evento valvular rápido)
+#define PPG_SYSTOLIC_WIDTH  0.055f  // σ sistólico
+#define PPG_DIASTOLIC_WIDTH 0.10f   // σ diastólico (más ancho)
+#define PPG_NOTCH_WIDTH     0.02f   // σ muesca (evento valvular rápido)
 
-// --- Amplitudes relativas ---
-// Allen 2007, Tabla 1: Ratios de amplitud típicos
-#define PPG_DIASTOLIC_RATIO 0.40f   // Ratio diastólico/sistólico: 0.3-0.6 (media 0.4)
-#define PPG_NOTCH_DEPTH     0.25f   // Profundidad muesca: 0.1-0.4 (variable con edad)
+// --- Amplitudes BASE normalizadas (Allen 2007) ---
+#define PPG_BASE_SYSTOLIC_AMPL   1.0f    // Amplitud sistólica base (referencia)
+#define PPG_BASE_DIASTOLIC_RATIO 0.4f    // Ratio diastólico/sistólico
+#define PPG_BASE_DICROTIC_DEPTH  0.25f   // Profundidad muesca base
 
-// --- Componentes DC/AC ---
-// Reisner 2008: El componente pulsátil es típicamente 1-5% del DC
-#define PPG_DC_LEVEL        0.50f   // Nivel DC base (absorción tisular constante)
-#define PPG_AC_SCALE        0.30f   // Escala AC: componente pulsátil visible
+// --- Escalado AC ---
+#define PPG_AC_SCALE_PER_PI  15.0f  // mV por cada 1% de PI (DC=1000mV, PI=3% → AC=45mV)
 
-// --- Índice de Perfusión ---
-// Lima & Bakker 2005: "Noninvasive monitoring of peripheral perfusion"
-// PI normal en adultos: 0.5-5%, puede llegar a 20% en vasodilatación
-#define PPG_PI_REFERENCE    5.0f    // PI de referencia para escala 1.0
-#define PPG_PI_MIN          0.1f    // PI mínimo (shock severo)
-#define PPG_PI_MAX          20.0f   // PI máximo (vasodilatación extrema)
+// --- Duración sistólica (fisiología: ~constante, ~300ms en reposo) ---
+// La sístole varía poco con HR; la diástole absorbe el cambio
+#define PPG_SYSTOLE_BASE_MS  300.0f  // Duración sistólica base en ms
+#define PPG_SYSTOLE_MIN_MS   250.0f  // Mínimo a HR muy alto
+#define PPG_SYSTOLE_MAX_MS   350.0f  // Máximo a HR muy bajo
+
+// ============================================================================
+// ESTRUCTURA PARA RANGOS DE CONDICIÓN (según tabla rangos_clinicos.md)
+// ============================================================================
+struct ConditionRanges {
+    // Rangos dinámicos
+    float hrMin, hrMax;       // Rango HR (BPM)
+    float hrCV;               // Coeficiente variación HR (<10% normal, >10% arritmia)
+    float piMin, piMax;       // Rango PI (%)
+    float piCV;               // Coeficiente variación PI
+    // Valores de forma (base Allen 2007, ajustados por patología)
+    float systolicAmpl;       // Amplitud sistólica (base 1.0)
+    float diastolicAmpl;      // Amplitud diastólica (base 0.4, ratio d/s)
+    float dicroticDepth;      // Profundidad muesca dicrótica
+};
 
 // ============================================================================
 // CLASE PPGModel
@@ -93,13 +83,13 @@ private:
     bool gaussHasSpare;
     float gaussSpare;
     
-    // Parámetros del modelo
-    float systolicAmplitude;    // A1
-    float systolicWidth;        // σ1
-    float diastolicAmplitude;   // A2
-    float diastolicWidth;       // σ2
-    float dicroticDepth;        // D
-    float dicroticWidth;        // σd
+    // Parámetros de forma de onda (normalizados, NO en mV)
+    float systolicAmplitude;    // Escala sistólica (base 1.0)
+    float systolicWidth;        // σ sistólico
+    float diastolicAmplitude;   // Escala diastólica (base 0.4)
+    float diastolicWidth;       // σ diastólico
+    float dicroticDepth;        // Profundidad muesca (base 0.25)
+    float dicroticWidth;        // σ muesca
     
     // Parámetros de entrada
     PPGParameters params;
@@ -112,10 +102,59 @@ private:
     float motionNoise;
     float baselineWander;
     
+    // Último valor de muestra generado
+    float lastSampleValue;
+    float lastACValue;          // Último valor AC (sin DC)
+    
+    // HR y PI dinámicos (valor actual dentro del rango de patología)
+    float currentHR;            // HR instantáneo (BPM)
+    float currentPI;            // PI instantáneo (%)
+    
+    // Rangos de la condición actual
+    ConditionRanges condRanges;
+    
+    // === VARIABLES PARA MEDICIÓN EN TIEMPO REAL ===
+    // Valores medidos en cada ciclo
+    float measuredPeakValue;        // Valor del pico sistólico medido (mV)
+    float measuredValleyValue;      // Valor del valle (inicio pulso) medido (mV)
+    float measuredNotchValue;       // Valor de la muesca dicrótica medida (mV)
+    
+    // Tracking de máximos/mínimos dentro del ciclo actual
+    float currentCyclePeak;         // Máximo en ciclo actual
+    float currentCycleValley;       // Mínimo en ciclo actual
+    float currentCycleNotch;        // Mínimo en zona de muesca
+    
+    // Tiempo simulado acumulado (ms)
+    float simulatedTime_ms;         // Tiempo total simulado
+    float lastPeakTime_ms;          // Tiempo del último pico (simulado)
+    float lastValleyTime_ms;        // Tiempo del último valle (simulado)
+    float cycleStartTime_ms;        // Inicio del ciclo actual
+    
+    // Métricas medidas
+    float measuredRRInterval_ms;    // Intervalo RR medido (ms)
+    float measuredSystoleTime_ms;   // Tiempo sistólico medido (ms)
+    float measuredDiastoleTime_ms;  // Tiempo diastólico medido (ms)
+    
+    // Estado de fase anterior
+    float previousPhase;            // Fase anterior para detectar transiciones
+    
+    // Tiempos de fase calculados
+    float systoleTime;          // Duración sístole (ms) - ~constante
+    float diastoleTime;         // Duración diástole (ms) - variable
+    float systoleFraction;      // Fracción del ciclo para sístole
+    
+    // DC baseline configurable
+    float dcBaseline;           // Nivel DC en mV (0 = señal AC pura)
+    
     // Métodos privados
+    void initConditionRanges();                 // Inicializa rangos según condición
+    float generateDynamicHR();                  // HR dentro del rango con variabilidad
+    float generateDynamicPI();                  // PI dentro del rango con variabilidad
+    float calculateSystoleFraction(float hr);   // f(HR) → fracción sistólica
     float generateNextRR();
     float gaussianRandom(float mean, float std);
-    float computePulseShape(float phase);
+    float computePulseShape(float phase);       // Retorna forma normalizada [0,1]
+    float normalizePulse(float rawPulse);       // Normaliza a [0,1]
     void applyConditionModifiers();
     void detectBeatAndApplyPending();
     
@@ -130,29 +169,74 @@ public:
     void setPendingParameters(const PPGParameters& newParams);
     void reset();
     
-    // Parámetros Tipo A (aplicación inmediata)
-    void setNoiseLevel(float noise) { params.noiseLevel = noise; }
-    void setAmplitude(float amp) { params.perfusionIndex = amp; systolicAmplitude = amp * 0.1f; }
+    // =========================================================================
+    // PARAMETROS AJUSTABLES DESDE SLIDERS NEXTION
+    // =========================================================================
+    // HR: 40-180 BPM - Solo cambia duracion del ciclo, no forma de onda
+    void setHeartRate(float hr) { 
+        hr = constrain(hr, 40.0f, 180.0f);
+        params.heartRate = hr;
+        currentHR = hr;
+        currentRR = 60.0f / hr;
+        systoleFraction = calculateSystoleFraction(hr);
+        systoleTime = currentRR * 1000.0f * systoleFraction;
+        diastoleTime = currentRR * 1000.0f * (1.0f - systoleFraction);
+    }
+    
+    // PI: 0.5-20% - Modula amplitud AC, no toca posicion de pico ni muesca
+    void setPerfusionIndex(float pi) {
+        pi = constrain(pi, 0.5f, 20.0f);
+        params.perfusionIndex = pi;
+        currentPI = pi;
+    }
+    
+    // Noise: 0-1 - Ruido gaussiano proporcional a AC
+    void setNoiseLevel(float noise) { 
+        params.noiseLevel = constrain(noise, 0.0f, 1.0f); 
+    }
+    
+    // Alias para compatibilidad
+    void setAmplitude(float amp) { setPerfusionIndex(amp); }
+    
+    // Configuracion de baseline
+    void setDCBaseline(float dc) { dcBaseline = dc; }
+    float getDCBaselineConfig() const { return dcBaseline; }
     
     // Generación
     float generateSample(float deltaTime);
     uint8_t getDACValue(float deltaTime);
     
     // Getters
-    float getCurrentHeartRate() const;
+    float getCurrentHeartRate() const { return currentHR; }
     float getCurrentRRInterval() const { return currentRR * 1000.0f; } // ms
     uint32_t getBeatCount() const { return beatCount; }
-    float getPerfusionIndex() const;
+    float getPerfusionIndex() const { return currentPI; }
     bool isInSystole() const;
     PPGCondition getCondition() const { return params.condition; }
     const char* getConditionName() const;
     float getNoiseLevel() const { return params.noiseLevel; }
+    float getCurrentPI() const { return currentPI; }
     
-    // Métricas medibles (según tabla de rangos clínicos)
-    float getACAmplitude() const;      // AC en mV
-    float getDCBaseline() const;       // DC en mV (siempre 1000)
-    float getSystoleTime() const;      // Duración sístole en ms
-    float getDiastoleTime() const;     // Duración diástole en ms
+    // Métricas calculadas (del modelo)
+    float getACAmplitude() const;      // AC en mV (PI * scale)
+    float getDCBaseline() const;       // DC en mV actual
+    float getSystoleTime() const;      // Duración sístole en ms (modelo)
+    float getDiastoleTime() const;     // Duración diástole en ms (modelo)
+    float getSystoleFraction() const { return systoleFraction; }
+    
+    // === SEÑAL AC PURA (para Nextion Waveform) ===
+    float getLastACValue() const { return lastACValue; }  // Señal sin DC
+    uint8_t getWaveformValue() const;                     // Escalado a 0-255
+    
+    // === MÉTRICAS MEDIDAS EN TIEMPO REAL ===
+    // (medidas de la señal, no de las variables del modelo)
+    float getMeasuredHR() const;           // HR medido desde RR real (BPM)
+    float getMeasuredRRInterval() const;   // Intervalo RR medido (ms)
+    float getMeasuredACAmplitude() const;  // AC medido: pico - valle (mV)
+    float getMeasuredPI() const;           // PI medido: AC/DC × 100 (%)
+    float getMeasuredSystoleTime() const;  // Sístole medida (ms)
+    float getMeasuredDiastoleTime() const; // Diástole medida (ms)
+    float getMeasuredNotchDepth() const;   // Profundidad muesca medida (mV)
 };
 
 #endif // PPG_MODEL_H

@@ -1,7 +1,8 @@
 /**
  * @file ecg_model.h
  * @brief Modelo ECG ECGSYN (McSharry, Clifford et al. 2003)
- * @version 2.0.0
+ * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * Implementación fiel del modelo ECGSYN de MATLAB en C++ para ESP32.
  * 

@@ -2,6 +2,7 @@
  * @file param_controller.cpp
  * @brief Implementación del controlador de parámetros
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  */
 
 #include "core/param_controller.h"

@@ -2,6 +2,7 @@
  * @file serial_handler.cpp
  * @brief Implementación del manejador serial
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  */
 
 #include "comm/serial_handler.h"

@@ -2,6 +2,7 @@
  * @file param_controller.h
  * @brief Controlador de parámetros con aplicación diferida
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * Gestiona parámetros Tipo A (inmediatos) y Tipo B (diferidos).
  */

@@ -2,6 +2,7 @@
  * @file main.cpp
  * @brief BioSimulator Pro - Punto de entrada principal
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * Sistema de generación de señales biomédicas (ECG, EMG, PPG).
  * 
@@ -11,7 +12,7 @@
  * 
  * HARDWARE:
  * - ESP32-WROOM-32 @ 240MHz
- * - Nextion NX4024T032 (320x240)
+ * - Nextion NX8048T070 (800x480)
  * - DAC salida GPIO25 (0-3.3V, 8-bit)
  */
 
@@ -23,6 +24,7 @@
 #include "core/param_controller.h"
 #include "comm/nextion_driver.h"
 #include "comm/serial_handler.h"
+#include "comm/wifi_server.h"
 
 // ============================================================================
 // INSTANCIAS GLOBALES
@@ -39,7 +41,7 @@ ParamController paramController;
 // ============================================================================
 struct ECGSliderValues {
     int hr = 75;        // Frecuencia cardíaca (BPM)
-    int amp = 100;      // Amplitud QRS × 100 (1.00 mV)
+    int zoom = 100;     // Zoom visual (50-200%), NO afecta modelo ni DAC
     int noise = 2;      // Ruido × 100 (0.02)
     int hrv = 5;        // Variabilidad HRV (%)
     bool modified = false;  // ¿Se modificó algún valor?
@@ -64,6 +66,7 @@ struct PPGSliderValues {
     int hr = 75;        // Frecuencia cardíaca (BPM)
     int pi = 50;        // Índice perfusión × 10 (5.0%)
     int noise = 5;      // Ruido × 100 (0.05)
+    int amp = 100;      // Factor amplitud/zoom (50-200%), solo visual
     bool modified = false;
 } ppgSliderValues;
 
@@ -240,6 +243,8 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             } else {
                 stateMachine.processEvent(SystemEvent::START_SIMULATION);
             }
+            // Habilitar streaming WiFi
+            wifiServer.setStreamingEnabled(true);
             break;
             
         case UIEvent::BUTTON_PAUSE:
@@ -254,6 +259,8 @@ void handleUIEvent(UIEvent event, uint8_t param) {
         case UIEvent::BUTTON_STOP:
             // Serial.println("[UI] STOP presionado");
             stateMachine.processEvent(SystemEvent::STOP);
+            // Deshabilitar streaming WiFi
+            wifiServer.setStreamingEnabled(false);
             // Volver a la página de selección de condición
             switch (stateMachine.getSelectedSignal()) {
                 case SignalType::ECG:
@@ -285,7 +292,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 nextion->goToPage(NextionPage::PARAMETROS_ECG);
                 ECGModel& ecg = signalEngine->getECGModel();
                 ecgSliderValues.hr = (int)ecg.getHRMean();
-                ecgSliderValues.amp = (int)(ecg.getQRSAmplitude() * 100);
+                // zoom ya tiene su valor actual (no se obtiene del modelo)
                 ecgSliderValues.noise = (int)(ecg.getNoiseLevel() * 100);
                 ecgSliderValues.hrv = (int)(ecg.getHRStd() / ecg.getHRMean() * 100);
                 ecgSliderValues.modified = false;
@@ -295,7 +302,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 nextion->setupECGParametersPage(
                     (int)hrMin, (int)hrMax,
                     ecgSliderValues.hr,
-                    ecgSliderValues.amp,
+                    ecgSliderValues.zoom,  // Zoom visual (50-200%)
                     ecgSliderValues.noise,
                     ecgSliderValues.hrv
                 );
@@ -318,12 +325,14 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 ppgSliderValues.hr = (int)ppg.getCurrentHeartRate();
                 ppgSliderValues.pi = (int)(ppg.getPerfusionIndex() * 10);  // 5.2% → 52
                 ppgSliderValues.noise = (int)(ppg.getNoiseLevel() * 100);
+                // amp ya tiene su valor actual (solo visual, no del modelo)
                 ppgSliderValues.modified = false;
                 
                 nextion->setupPPGParametersPage(
                     ppgSliderValues.hr,
                     ppgSliderValues.pi,
-                    ppgSliderValues.noise
+                    ppgSliderValues.noise,
+                    ppgSliderValues.amp
                 );
             }
             break;
@@ -338,10 +347,13 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     ECGParameters params;
                     params.condition = ecg.getCondition();
                     params.heartRate = (float)ecgSliderValues.hr;
-                    params.qrsAmplitude = ecgSliderValues.amp / 100.0f;
+                    // NOTA: zoom NO afecta el modelo, solo la visualización
                     params.noiseLevel = ecgSliderValues.noise / 100.0f;
                     ecg.setParameters(params);
-                    Serial.println("[UI] Parámetros ECG aplicados");
+                    
+                    // Actualizar escala mV/div en waveform_ecg
+                    nextion->updateECGScale(ecgSliderValues.zoom);
+                    Serial.printf("[UI] Parámetros ECG aplicados, Zoom: %d%%\n", ecgSliderValues.zoom);
                 }
                 ecgSliderValues.modified = false;
                 nextion->goToPage(NextionPage::WAVEFORM_ECG);
@@ -403,7 +415,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 ecg.setParameters(params);
                 
                 ecgSliderValues.hr = (int)ecg.getHRMean();
-                ecgSliderValues.amp = (int)(ecg.getQRSAmplitude() * 100);
+                ecgSliderValues.zoom = 100;  // Reset zoom a 100%
                 ecgSliderValues.noise = (int)(ecg.getNoiseLevel() * 100);
                 ecgSliderValues.hrv = (int)(ecg.getHRStd() / ecg.getHRMean() * 100);
                 ecgSliderValues.modified = false;
@@ -413,11 +425,12 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 nextion->setupECGParametersPage(
                     (int)hrMin, (int)hrMax,
                     ecgSliderValues.hr,
-                    ecgSliderValues.amp,
+                    ecgSliderValues.zoom,
                     ecgSliderValues.noise,
                     ecgSliderValues.hrv
                 );
-                Serial.println("[UI] Parámetros ECG reseteados");
+                nextion->updateECGScale(ecgSliderValues.zoom);
+                Serial.println("[UI] Parámetros ECG reseteados, Zoom: 100%");
             } else if (stateMachine.getSelectedSignal() == SignalType::EMG) {
                 EMGModel& emg = signalEngine->getEMGModel();
                 EMGCondition currentCond = emg.getCondition();
@@ -448,14 +461,16 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 ppgSliderValues.hr = (int)ppg.getCurrentHeartRate();
                 ppgSliderValues.pi = (int)(ppg.getPerfusionIndex() * 10);
                 ppgSliderValues.noise = (int)(ppg.getNoiseLevel() * 100);
+                ppgSliderValues.amp = 100;  // Reset amp a 100%
                 ppgSliderValues.modified = false;
                 
                 nextion->setupPPGParametersPage(
                     ppgSliderValues.hr,
                     ppgSliderValues.pi,
-                    ppgSliderValues.noise
+                    ppgSliderValues.noise,
+                    ppgSliderValues.amp
                 );
-                Serial.println("[UI] Parámetros PPG reseteados");
+                Serial.println("[UI] Parámetros PPG reseteados, Amp: 100%");
             }
             break;
         
@@ -473,11 +488,13 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             
         case UIEvent::SLIDER_ECG_AMP:
             {
-                int ampValue = nextion->readSliderValue("h_amp");
-                if (ampValue > 0) {
-                    ecgSliderValues.amp = ampValue;
+                int zoomValue = nextion->readSliderValue("h_amp");
+                if (zoomValue >= 50 && zoomValue <= 200) {
+                    ecgSliderValues.zoom = zoomValue;
                     ecgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider Amplitud: %d (pendiente aplicar)\n", ampValue);
+                    // Actualizar etiqueta de escala en tiempo real
+                    nextion->updateECGScale(zoomValue);
+                    Serial.printf("[UI] Slider Zoom: %d%% (pendiente aplicar)\n", zoomValue);
                 }
             }
             break;
@@ -572,6 +589,17 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             }
             break;
             
+        case UIEvent::SLIDER_PPG_AMP:
+            {
+                int ampValue = nextion->readSliderValue("h_amp");
+                if (ampValue >= 50 && ampValue <= 200) {
+                    ppgSliderValues.amp = ampValue;
+                    ppgSliderValues.modified = true;
+                    Serial.printf("[UI] Slider Amplitud PPG: %d%% (pendiente aplicar)\n", ampValue);
+                }
+            }
+            break;
+            
         default:
             break;
     }
@@ -648,24 +676,46 @@ void updateDisplay() {
     // Actualizar waveform a 100 Hz (enviar punto cada 10ms)
     if (now - lastWaveform >= WAVEFORM_UPDATE_MS) {
         if (signalEngine->getState() == SignalState::RUNNING) {
-            // Obtener valor DAC actual (0-255)
-            uint8_t dacValue = signalEngine->getLastDACValue();
+            uint8_t dacValue;
             
-            // Escalar a la altura del waveform (0-211)
-            // El waveform de Nextion acepta 0-255, pero se recorta a su altura
-            // Usamos todo el rango 0-255 y el waveform lo escala internamente
-            // Para mejor visualización, mapeamos a WAVEFORM_HEIGHT
-            uint8_t waveValue = map(dacValue, 0, 255, 10, WAVEFORM_HEIGHT - 10);
+            // Para PPG usamos getWaveformValue() que escala solo la AC al rango 0-255
+            // Para ECG/EMG usamos getLastDACValue() que ya tiene el escalado correcto
+            SignalType type = signalEngine->getCurrentType();
+            if (type == SignalType::PPG) {
+                dacValue = signalEngine->getPPGModel().getWaveformValue();
+            } else {
+                dacValue = signalEngine->getLastDACValue();
+            }
+            
+            // Aplicar zoom visual (solo afecta display, no DAC)
+            // zoom 100% = normal, 200% = señal 2x más grande, 50% = señal más pequeña
+            int waveValue;
+            float zoomFactor = 1.0f;
+            
+            if (type == SignalType::ECG) {
+                zoomFactor = ecgSliderValues.zoom / 100.0f;
+            } else if (type == SignalType::EMG) {
+                zoomFactor = emgSliderValues.amp / 100.0f;
+            } else if (type == SignalType::PPG) {
+                zoomFactor = ppgSliderValues.amp / 100.0f;
+            }
+            
+            // Zoom visual: expandir/comprimir respecto al centro (127)
+            int centered = dacValue - 127;  // Centrar en 0
+            int zoomed = (int)(centered * zoomFactor) + 127;  // Aplicar zoom y recentrar
+            zoomed = constrain(zoomed, 0, 255);  // Clampear para evitar overflow
+            waveValue = map(zoomed, 0, 255, 10, NEXTION_WAVEFORM_HEIGHT - 10);
             
             // DEBUG: Mostrar primer punto
             static bool firstPoint = true;
             if (firstPoint) {
-                Serial.printf("[Waveform] Enviando puntos: DAC=%d, Wave=%d\n", dacValue, waveValue);
+                Serial.printf("[Waveform] DAC=%d, Wave=%d, Zoom=%.0f%%\n", 
+                              dacValue, waveValue, zoomFactor * 100);
                 firstPoint = false;
             }
             
             // Enviar al waveform (ID=1, Canal=0)
-            nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, WAVEFORM_CHANNEL, waveValue);
+            nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, WAVEFORM_CHANNEL, (uint8_t)waveValue);
         }
         lastWaveform = now;
     }
@@ -767,6 +817,17 @@ void setup() {
     // Navegar a página inicial
     nextion->goToPage(NextionPage::PORTADA);
     
+    // Inicializar WiFi Server
+    Serial.println("\n[WiFi] Iniciando servidor web...");
+    if (wifiServer.begin()) {
+        Serial.println("[WiFi] Servidor iniciado correctamente");
+        Serial.println("[WiFi] SSID: BioSimulator_Pro");
+        Serial.println("[WiFi] Pass: biosignal123");
+        Serial.println("[WiFi] URL: http://192.168.4.1");
+    } else {
+        Serial.println("[WiFi] ERROR: No se pudo iniciar servidor");
+    }
+    
     // LED verde: listo
     digitalWrite(LED_RGB_RED, LED_RGB_COMMON_ANODE ? HIGH : LOW);
     digitalWrite(LED_RGB_GREEN, LED_RGB_COMMON_ANODE ? LOW : HIGH);
@@ -788,6 +849,71 @@ void loop() {
     
     // Actualizar display
     updateDisplay();
+    
+    // Procesar WiFi Server
+    wifiServer.loop();
+    
+    // Enviar datos a clientes WebSocket si hay señal activa
+    if (wifiServer.getClientCount() > 0 && stateMachine.getState() == SystemState::SIMULATING) {
+        WSSignalData wsData;
+        WSSignalMetrics wsMetrics;
+        memset(&wsData, 0, sizeof(wsData));
+        memset(&wsMetrics, 0, sizeof(wsMetrics));
+        
+        SignalType type = signalEngine->getCurrentType();
+        
+        switch (type) {
+            case SignalType::ECG: {
+                ECGModel& ecg = signalEngine->getECGModel();
+                wsData.signalType = "ECG";
+                wsData.condition = ecg.getConditionName();
+                wsData.state = "RUNNING";
+                wsData.value = ecg.getCurrentValueMV();
+                wsData.dacValue = signalEngine->getLastDACValue();
+                wsData.timestamp = millis();
+                
+                wsMetrics.hr = (int)ecg.getCurrentHeartRate();
+                wsMetrics.rr = (int)ecg.getCurrentRRInterval();
+                wsMetrics.qrs = ecg.getQRSAmplitude();
+                wsMetrics.st = ecg.getSTDeviation_mV();
+                break;
+            }
+            case SignalType::EMG: {
+                EMGModel& emg = signalEngine->getEMGModel();
+                wsData.signalType = "EMG";
+                wsData.condition = emg.getConditionName();
+                wsData.state = "RUNNING";
+                wsData.value = emg.getCurrentValueMV();
+                wsData.dacValue = signalEngine->getLastDACValue();
+                wsData.timestamp = millis();
+                
+                wsMetrics.rms = emg.getRMSAmplitude();
+                wsMetrics.excitation = (int)(emg.getExcitation() * 100);
+                wsMetrics.activeUnits = emg.getActiveMotorUnits();
+                break;
+            }
+            case SignalType::PPG: {
+                PPGModel& ppg = signalEngine->getPPGModel();
+                wsData.signalType = "PPG";
+                wsData.condition = ppg.getConditionName();
+                wsData.state = "RUNNING";
+                wsData.value = ppg.getLastACValue();
+                wsData.dacValue = signalEngine->getLastDACValue();
+                wsData.timestamp = millis();
+                
+                wsMetrics.hr = (int)ppg.getCurrentHeartRate();
+                wsMetrics.rr = (int)ppg.getCurrentRRInterval();
+                wsMetrics.pi = ppg.getPerfusionIndex();
+                wsMetrics.spo2 = 98;
+                break;
+            }
+            default:
+                break;
+        }
+        
+        wifiServer.sendSignalData(wsData);
+        wifiServer.sendMetrics(wsMetrics);
+    }
     
     // Pequeño delay para no saturar
     delay(1);

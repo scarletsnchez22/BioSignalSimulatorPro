@@ -1,7 +1,8 @@
 /**
  * @file ecg_model.cpp
  * @brief Implementación del modelo ECGSYN (McSharry, Clifford et al. 2003)
- * @version 2.0.0
+ * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * Implementación fiel del modelo ECGSYN de MATLAB en C++ para ESP32.
  * 
@@ -1139,10 +1140,7 @@ void ECGModel::updateVFibParameters() {
         
         // =====================================================================
         // AMPLITUDES INDIVIDUALES - AJUSTE CRÍTICO
-        // =====================================================================
-        // Antes: 0.1-0.5 mV → suma hasta 2.5 mV ❌
         // Ahora: 0.2-0.8 mV → suma hasta 4.0 mV, pero se normaliza después ✅
-        //
         // ¿Por qué aumentamos los valores crudos?
         // - El VFIB_SCALE_FACTOR (0.24) reducirá todo después
         // - Queremos mantener la variabilidad caótica entre componentes

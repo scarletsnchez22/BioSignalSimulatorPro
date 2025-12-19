@@ -1,14 +1,8 @@
 /**
  * @file emg_model.cpp
  * @brief Implementación del modelo EMG basado en reclutamiento de unidades motoras
- * @version 1.1.0
- * 
- * CAMBIOS v1.1.0:
- * - Amplitudes MU: distribución EXPONENCIAL (Fuglevand 1993) en lugar de lineal
- * - MUAP normalizado correctamente (factor 0.6065 analítico)
- * - Neuropatía: pérdida ALEATORIA de MUs (70%) en lugar de determinística
- * - Rangos sEMG corregidos según literatura (neuropatía ±2.5 mV, no ±5.0)
- * - Defaults de excitación mejor documentados
+ * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * MODELO BASE:
  * Fuglevand AJ, Winter DA, Patla AE.

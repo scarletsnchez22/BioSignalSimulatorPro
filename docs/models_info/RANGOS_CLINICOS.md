@@ -143,161 +143,79 @@ Las secuencias dinámicas permiten observar la **modulación del envelope RMS** 
 
 ---
 
-### 📺 Señales por Salida (Arquitectura del Simulador)
-
-| Salida | Señal Digital | Voltaje Físico | Frecuencia | Propósito |
-|--------|---------------|----------------|------------|-----------|
-| **Nextion Waveform** | Envolvente RMS procesada (0-3.5 mV) | — (UART serial) | 1 kHz | Didáctica visual principal |
-| **DAC GPIO25** | Señal cruda mapeada (0-255) | 0-3.3V | 1 kHz | Osciloscopio, trigger, debug |
-| **Serial Plotter** | Ambas señales + métricas | — (USB serial) | 500 Hz | Validación, captura para tesis |
-
--
-#### **✅ Utilidades Reales del DAC (sin exagerar)**
-
-##### **1. Osciloscopio básico - Visualización de morfología (cualitativa)**
-```
-DAC GPIO25 → Cable BNC → Osciloscopio
-```
-**SÍ sirve para:**
-- Observar morfología PQRST en ECG (forma general del latido)
-- Ver envolvente EMG (patrón de contracción)
-- Medir intervalos temporales (RR, PR, QT) con cursores del osciloscopio
-- Demostración didáctica de formas de onda
-
-**NO sirve para:**
-- Mediciones de amplitud precisas (ruido ±10 mV + resolución 12.9 mV/paso invalidan mediciones clínicas en el rango de mV)
-- Simulación clínica certificada (no cumple estándares IEC 60601)
-
----
-
-##### **2. Trigger de sincronización - Detección de eventos**
-```
-DAC GPIO25 → Pin de trigger → Sistema externo
-```
-**SÍ sirve para:**
-- Detectar pico R en ECG (umbral simple)
-- Sincronizar cámara de video con latidos cardíacos
-- Trigger básico para adquisición multimodal (EMG + acelerómetro)
-
-**Ejemplo de implementación:**
-```cpp
-if (ecgDACValue > 200) {  // Umbral para detectar pico R
-    digitalWrite(TRIGGER_PIN, HIGH);
-    delayMicroseconds(100);
-    digitalWrite(TRIGGER_PIN, LOW);
-}
-```
-
----
-
-##### **3. Prueba de algoritmos de procesamiento (estudiantes)**
-```
-DAC GPIO25 → ADC de Arduino/ESP32 → Algoritmo de detección
-```
-**SÍ sirve para:**
-- Validar algoritmos de detección de QRS (ej. Pan-Tompkins)
-- Probar filtros digitales con señal conocida
-- Proyectos educativos de procesamiento de señales
-
-**NO sirve para:**
-- Entrenamiento de modelos ML con datos clínicos reales (la resolución y ruido no son representativos)
-
----
-
-##### **4. ❌ NO sirve para control de prótesis mioeléctricas profesionales**
-
-**Alternativa realista:**
-- El DAC puede generar señal de prueba para validar **lógica de control** (ej. umbral de activación ON/OFF)
-- **NO** para simular señal EMG clínica real que alimentaría una prótesis comercial
-
----
-
-##### **5. ❌ NO sirve directamente para tarjetas de adquisición profesionales**
-
-**Razones técnicas:**
-- ADCs clínicos esperan señales en rango ±5 mV o ±10 mV (NO 0-3.3V)
-- Requieren impedancia de fuente alta (1-10 kΩ vs 100 Ω del DAC)
-- Esperan ruido <1 mV (vs ±10-20 mV del DAC)
-
-**Posible solución (fuera del alcance del proyecto):**
-- Circuito acondicionador externo:
-  - Divisor resistivo: 3.3V → ±5 mV
-  - Filtro RC pasa-bajas (reducir ruido)
-  - Buffer de alta impedancia (op-amp)
-- Esto requiere diseño PCB adicional (NO parte del simulador base)
-
----
-
-#### **🎯 Resumen: ¿Para qué SÍ sirve el DAC?**
-
-| Aplicación | ¿Funciona? | Limitación |
-|------------|------------|------------|
-| Osciloscopio (morfología) | ✅ SÍ | Solo cualitativo, no amplitudes precisas |
-| Trigger sincronización | ✅ SÍ | Detección de eventos simple |
-| Debug algoritmos (estudiantes) | ✅ SÍ | Señal de prueba conocida |
-| Prótesis profesionales | ❌ NO | Requiere resolución/aislamiento |
-| ADC clínicos directos | ❌ NO | Rango de voltaje incompatible |
-| Mediciones clínicas certificadas | ❌ NO | No cumple IEC 60601 |
-
-**Conclusión técnica:**
-El DAC GPIO25 es una **salida auxiliar para debug y demostración**, NO un generador biomédico certificado. Su utilidad principal es permitir verificación visual de morfología en osciloscopio y trigger básico para sincronización.
-
-> **Refs:** ESP32 Technical Reference Manual v5.4 (DAC specifications) | IEC 60601-2-27 (ECG equipment safety)
-
----
-
 ## PPG - Fotopletismografía
 
-### Rangos por Condición
+### Tabla de Condiciones Clínicas PPG
 
-| # | Condición | Rango (norm) | PI típico (%) |
-|---|-----------|--------------|---------------|
-| 0 | Normal | 0.92–1.00 | 2–5 |
-| 1 | Arritmia | 0.90–1.00 | 1–5 |
-| 2 | Perfusión Débil | 0.995–1.00 | 0.1–0.5 |
-| 3 | Perfusión Fuerte | 0.80–1.00 | 5–20 |
-| 4 | Vasoconstricción | 0.992–1.00 | 0.2–0.8 |
-| 5 | SpO2 Bajo | 0.93–1.00 | 0.5–3.5 |
+| # | Condición | PI (%) | Morfología / Notas | Muesca Dicrótica |
+|---|-----------|--------|-------------------|------------------|
+| 0 | **Normal** | 2.9–6.1 | Pico sistólico claro; upstroke rápido; muesca sutil; d/s 0.1–0.4 | Posición: 20–50%; Amplitud: ≥20%; Anchura: 20–60 ms |
+| 1 | **Arritmia** | 1.0–5.0 | Latidos irregulares; amplitud variable; plantilla promedio dispersa | Posición: variable; Amplitud: 10–30%; Anchura: 20–70 ms |
+| 2 | **Weak Perfusion** | 0.5–2.1 | AC muy reducido; pico atenuado; muesca ausente o tenue | Posición: <20% o ausente; Amplitud: <10%; no detectable |
+| 3 | **Vasodilatación** | 5.0–10.0 | Pico más alto y ancho; muesca más marcada; mejor relleno diastólico | Posición: 25–55%; Amplitud: 20–40%; Anchura: 30–60 ms |
+| 4 | **Strong Perfusion** | 7.0–20.0 | Señal robusta; muesca y reflejo vascular prominentes; alta AC | Posición: 30–60%; Amplitud: ≥30%; Anchura: 30–80 ms |
+| 5 | **Vasoconstricción** | 0.7–0.8 | Pulso pequeño y aplanado; upstroke menos pronunciado; muesca tenue | Posición: <20% o ausente; Amplitud: <10%; no medible |
 
-> **Ref:** Allen J. Physiol Meas. 2007;28(3):R1-R39.
+### Clasificación de Muesca Dicrótica (Aguilar et al. 2022)
+
+| Clase | Profundidad | Interpretación |
+|-------|-------------|----------------|
+| I | < 20% | Vasodilatación / Tono bajo |
+| II | 20–35% | Normal bajo |
+| **III** | **20–50%** | **Tono vascular normal** |
+| IV | > 50% | Vasoconstricción / Rigidez arterial |
+
+### Modelo de Duración Sístole/Diástole (Fisiología Cardiovascular)
+
+La literatura fisiológica describe que la **duración de la sístole varía poco** con la frecuencia cardíaca, mientras que la **diástole absorbe el cambio**. El modelo implementa:
+
+- **Sístole ~constante**: ~300ms base (rango 250-350ms)
+- **Diástole variable**: RR - sístole (se comprime a HR alto)
+
+| HR (BPM) | RR (ms) | Sístole (ms) | Diástole (ms) | Fracción Sístole |
+|----------|---------|--------------|---------------|------------------|
+| 60 | 1000 | ~320 | ~680 | 32% |
+| 75 | 800 | ~300 | ~500 | 37% |
+| 90 | 667 | ~285 | ~382 | 43% |
+| 120 | 500 | ~270 | ~230 | 54% |
+
+> El acortamiento del ciclo cardíaco a frecuencias elevadas se produce predominantemente a expensas de la diástole.
+
+
+**Flujo del modelo:**
+```
+Patología → HR,PI (aleatorios dentro del rango) → RR = 60/HR
+→ systole_time = f(HR), diastole_time = RR - systole
+→ pulseShape normalizado [0,1] (base Allen: systolic=1.0, diastolic=0.4)
+→ AC = PI × 15 mV/% → signal = DC + pulse × AC
+```
+
+**Variabilidad (sigma = mean × CV):**
+| Condición | HR CV | PI CV | Notas |
+|-----------|-------|-------|-------|
+| Normal | 2% | 10% | Variabilidad fisiológica |
+| Arritmia | 15% | 20% | Alta variabilidad RR |
+| Otras | 2% | 10-15% | Según condición |
+
+**Forma de onda (Allen 2007):**
+- `systolicAmplitude = 1.0` (base, siempre)
+- `diastolicAmplitude = 0.4` (ratio d/s, siempre)
+- `dicroticDepth` = según tabla clínica (0.05-0.35)
+- **PI controla la amplitud AC** (único escalado de amplitud)
 
 ---
 
-### Índice de Perfusión (PI)
+### Referencias PPG
 
-| Condición | PI (%) |
-|-----------|--------|
-| Normal | 2–5 |
-| Perfusión débil | < 0.5 |
-| Perfusión fuerte | > 5 |
-| Vasoconstricción | 0.2–0.8 |
+1. **Sun, X., He, H., Xu, M., & Long, Y.** (2024). *Peripheral perfusion index of pulse oximetry in adult patients: a narrative review.* European Journal of Medical Research, 29, 457. https://link.springer.com/article/10.1186/s40001-024-02048-3
 
-> **Ref:** Lima AP, et al. Intensive Care Med. 2002;28(4):445-449.
+2. **De la Peña Sanabria, I., Ochoa Martelo, M., Baquero Latorre, H., & Acosta‑Reyes, J.** (2017). *Peripheral perfusion index in the neonatal ICU: A response to non‑invasive monitoring of the critical newborn.* doi:10.1016/j.rprh.2017.10.015
 
----
+3. **University of California San Diego.** (2017). *Cardiac Cycle* (teaching notes / PDF). https://cvil.ucsd.edu/wp-content/uploads/2017/02/cardiac-cycle.pdf
 
-### Saturación de Oxígeno (SpO2)
+4. **Aguilar, F. G., Monares Z., E., et al.** (2022). *Algoritmo de Emergencias Médicas de Chiapas para pacientes en estado de choque.* Medicina Crítica (Colegio Mexicano de Medicina Crítica). — Clasificación de muesca dicrótica Clase III = 20–50% como tono vascular normal.
 
-| Condición | SpO2 (%) |
-|-----------|----------|
-| Normal | 95–100 |
-| Hipoxemia leve | 90–94 |
-| Hipoxemia moderada | 85–89 |
-| Hipoxemia severa | < 85 |
-
-> **Ref:** WHO Pulse Oximetry Training Manual. 2011.
-
----
-
-### Frecuencia Cardíaca (HR)
-
-| Condición | HR (BPM) |
-|-----------|----------|
-| Normal | 60–100 |
-| Bradicardia | < 60 |
-| Taquicardia | > 100 |
-
-> **Ref:** AHA/ACC Guidelines. Circulation. 2017.
+5. **Allen J.** (2007). *Photoplethysmography and its application in clinical physiological measurement.* Physiological Measurement, 28(3):R1-R39.
 
 ---
 
@@ -307,8 +225,8 @@ El DAC GPIO25 es una **salida auxiliar para debug y demostración**, NO un gener
 |-------|------------------------|
 | ECG | Goldberger AL 2017, Surawicz 2008, Task Force ESC/NASPE 1996 |
 | EMG | Fuglevand 1993, De Luca 1997/2010, Kimura 2013, Henneman 1965 |
-| PPG | Allen J 2007, Lima 2002, WHO 2011 |
+| PPG | Sun 2024, De la Peña 2017, UCSD 2017, Aguilar 2022, Allen 2007 |
 
 ---
 
-*BioSimulator Pro v1.1.0*
+*BioSimulator Pro v2.0.0*

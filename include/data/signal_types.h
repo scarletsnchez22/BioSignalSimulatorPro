@@ -2,6 +2,7 @@
  * @file signal_types.h
  * @brief Definición de tipos de señales y sus estructuras
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  * 
  * Enumeraciones y estructuras para ECG, EMG y PPG.
  * Los rangos exactos por condición están en param_limits.h

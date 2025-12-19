@@ -1,7 +1,8 @@
 /**
  * @file nextion_driver.cpp
- * @brief Implementación del driver Nextion
+ * @brief Implementación del driver Nextion NX8048T070
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  */
 
 #include "comm/nextion_driver.h"
@@ -105,267 +106,259 @@ void NextionDriver::parseEvent() {
                 break;
                 
             case 2:  // ECG_SIM
-                // Estructura de ecg_sim:
-                // ID 1: bt_atras (hotspot) → volver a menu
-                // ID 2: bt_ir (hotspot) → ir a ecg_wave
-                // ID 3: sel_ecg (number) - variable, no genera evento
-                // ID 4-11: botones de condición (dual-state)
-                //   4=Normal(0), 5=Taquicardia(1), 6=Bradicardia(2),
-                //   7=FA(3), 8=FV(4), 9=PVC(5), 10=STup(6), 11=STdn(7)
+                // Estructura de ecg_sim (800x480):
+                // ID 1-8: botones de condición (dual-state)
+                //   1=Normal(0), 2=Taquicardia(1), 3=Bradicardia(2), 4=Bloqueo(3),
+                //   5=FA(4), 6=FV(5), 7=STEMI(6), 8=Isquemia(7)
+                // ID 9: bt_atras (hotspot) → volver a menu
+                // ID 10: bt_ir (hotspot) → ir a waveform_ecg
+                // ID 11: sel_ecg (number) - variable, no genera evento
                 switch (component) {
-                    case 1: 
+                    case 1: case 2: case 3: case 4: 
+                    case 5: case 6: case 7: case 8:
+                        uiEvent = UIEvent::BUTTON_CONDITION;
+                        param = component - 1;  // ID 1 → condición 0, ID 8 → condición 7
+                        break;
+                    case 9: 
                         uiEvent = UIEvent::BUTTON_ATRAS; 
                         break;
-                    case 2: 
+                    case 10: 
                         uiEvent = UIEvent::BUTTON_IR; 
-                        break;
-                    case 4: case 5: case 6: case 7: case 8: 
-                    case 9: case 10: case 11:
-                        uiEvent = UIEvent::BUTTON_CONDITION;
-                        param = component - 4;  // ID 4 → condición 0, ID 11 → condición 7
                         break;
                 }
                 break;
                 
             case 3:  // EMG_SIM
-                // Estructura de emg_sim:
-                // ID 1-10: botones de condición (dual-state)
-                //   1=Reposo(0), 2=Leve(1), 3=Moderada(2), 4=Fuerte(3), 5=Máxima(4),
-                //   6=Temblor(5), 7=Miopatía(6), 8=Neuropatía(7), 9=Fasciculación(8), 10=Fatiga(9)
-                // ID 11: sel_emg (number) - variable, no genera evento
-                // ID 12: bt_atras (hotspot) → volver a menu
-                // ID 13: bt_ir (hotspot) → ir a emg_wave (si sel_emg >= 0)
-                switch (component) {
-                    case 12: 
-                        uiEvent = UIEvent::BUTTON_ATRAS; 
-                        break;
-                    case 13: 
-                        uiEvent = UIEvent::BUTTON_IR; 
-                        break;
-                    case 1: case 2: case 3: case 4: case 5:
-                    case 6: case 7: case 8: case 9: case 10:
-                        uiEvent = UIEvent::BUTTON_CONDITION;
-                        param = component - 1;  // ID 1 → condición 0, ID 10 → condición 9
-                        break;
-                }
-                break;
-                
-            case 4:  // PPG_SIM
-                // Estructura de ppg_sim:
-                // ID 1-6: botones de condición
-                //   1=Normal(0), 2=Arritmia(1), 3=SPO2 bajo(2), 4=Perfusión débil(3),
-                //   5=Perfusión fuerte(4), 6=Vasoconstricción(5)
+                // Estructura de emg_sim (800x480):
+                // ID 1-6: botones de condición (dual-state)
+                //   1=Reposo(0), 2=Leve(1), 3=Moderada(2), 4=Máxima(3),
+                //   5=Temblor(4), 6=Fatiga(5)
                 // ID 7: bt_atras (hotspot) → volver a menu
-                // ID 8: bt_ir (hotspot) → ir a ppg_wave
-                // sel_ppg es un number independiente (no genera evento)
+                // ID 8: bt_ir (hotspot) → ir a waveform_emg
+                // ID 9: sel_emg (number) - variable, no genera evento
                 switch (component) {
+                    case 1: case 2: case 3: case 4: case 5: case 6:
+                        uiEvent = UIEvent::BUTTON_CONDITION;
+                        param = component - 1;  // ID 1 → condición 0, ID 6 → condición 5
+                        break;
                     case 7: 
                         uiEvent = UIEvent::BUTTON_ATRAS; 
                         break;
                     case 8: 
                         uiEvent = UIEvent::BUTTON_IR; 
                         break;
+                }
+                break;
+                
+            case 4:  // PPG_SIM
+                // Estructura de ppg_sim (800x480):
+                // ID 1-6: botones de condición (dual-state)
+                //   1=Normal(0), 2=Arritmia(1), 3=Perfusión débil(2), 4=Perfusión fuerte(3),
+                //   5=Vasodilatación(4), 6=Vasoconstricción(5)
+                // ID 7: bt_atras (hotspot) → volver a menu
+                // ID 8: bt_ir (hotspot) → ir a waveform_ppg
+                // ID 9: sel_ppg (number) - variable, no genera evento
+                switch (component) {
                     case 1: case 2: case 3: case 4: case 5: case 6:
                         uiEvent = UIEvent::BUTTON_CONDITION;
                         param = component - 1;  // ID 1 → condición 0, ID 6 → condición 5
+                        break;
+                    case 7: 
+                        uiEvent = UIEvent::BUTTON_ATRAS; 
+                        break;
+                    case 8: 
+                        uiEvent = UIEvent::BUTTON_IR; 
                         break;
                 }
                 break;
                 
             case 5:  // WAVEFORM_ECG
-                // Estructura de waveform_ecg (281x240):
-                // ID 1: ecg (waveform) - no genera evento
-                // ID 2: parametros (hotspot) → ir a parametros_ecg (página 6)
-                // ID 3: play (hotspot) → iniciar/reanudar señal
-                // ID 4: pause (hotspot) → pausar señal
-                // ID 5: stop (hotspot) → detener y volver a menú
+                // Estructura de waveform_ecg (700x380 px):
+                // ID 1: ecg (waveform) - área de dibujo
+                // ID 2: play (hotspot) → iniciar simulación (si calibración OK)
+                // ID 3: pause (hotspot) → pausar señal
+                // ID 4: stop (hotspot) → detener y volver a ecg_sim
+                // ID 5: parametros (hotspot) → ir a parametros_ecg
                 // ID 6: t_patol (text) - nombre patología
-                // ID 7: t_bpm (text) - etiqueta
-                // ID 8: t_rr (text) - etiqueta
-                // ID 9: t_ramp (text) - etiqueta
-                // ID 10: t_st (text) - etiqueta
-                // ID 11: t_beats (text) - etiqueta
-                // ID 12-16: n_bpm, n_rr, n_ramp, n_st, n_beats (xfloat/number)
+                // ID 7-17: textos etiquetas (trr,tpr,tqrs,tqtc,tp,tq,tr,ts,tt,tst,thr)
+                // ID 19-29: valores xfloat (nrr,npr,nqrs,nqtc,np,nq,nr,ns,nt,nst,nhr)
+                // ID 31: t_mvdiv (text) - escala mV/div actual
+                // ID 32: t_msdiv (text) - escala ms/div actual
+                // ID 33: h_barra (progress bar) - progreso calibración
                 switch (component) {
                     case 2: 
-                        uiEvent = UIEvent::BUTTON_PARAMETROS; 
-                        break;
-                    case 3: 
                         uiEvent = UIEvent::BUTTON_START; 
                         break;
-                    case 4: 
+                    case 3: 
                         uiEvent = UIEvent::BUTTON_PAUSE; 
                         break;
-                    case 5: 
+                    case 4: 
                         uiEvent = UIEvent::BUTTON_STOP; 
+                        break;
+                    case 5: 
+                        uiEvent = UIEvent::BUTTON_PARAMETROS; 
                         break;
                 }
                 break;
                 
-            case 6:  // PARAMETROS_ECG
+            case 6:  // PARAMETROS_ECG (popup sobre waveform_ecg)
                 // Estructura de parametros_ecg (página 6):
-                // ID 0: p0 (picture) - background
-                // ID 1: parametros (picture) - popup frame
-                // ID 2-5: t_hr, t_amp, t_noise, t_hrv (text) - etiquetas
-                // ID 6-9: n_hr, n_amp, n_noise, n_hrv (xfloat) - valores display
-                // ID 10: h_hr (slider) - frecuencia cardíaca
-                // ID 11: h_amp (slider) - amplitud QRS
-                // ID 12: h_noise (slider) - nivel de ruido
-                // ID 13: h_hrv (slider) - variabilidad HRV
-                // ID 14: p_reset (picture) - imagen botón reset
-                // ID 15: bt_reset (hotspot) - resetear parámetros
-                // ID 16: bt_act (button) - aplicar y cerrar
-                // ID 17: bt_ex (hotspot) - cancelar sin guardar
+                // ID 2: bt_act (button) - guardar cambios y volver a waveform
+                // ID 3: bt_ex (hotspot) - salir sin guardar
+                // ID 4: h_hr (slider) - frecuencia cardíaca (BPM)
+                // ID 5: h_amp (slider) - factor zoom visual (%)
+                // ID 6: h_noise (slider) - nivel ruido
+                // ID 7: h_hrv (slider) - variabilidad HRV (%)
+                // ID 12: n_hr (xfloat vvs0=3,vvs1=0) - valor HR
+                // ID 13: n_amp (xfloat vvs0=3,vvs1=0) - valor zoom %
+                // ID 14: n_noise (xfloat vvs0=1,vvs1=2) - valor ruido
+                // ID 15: n_hrv (xfloat vvs0=2,vvs1=0) - valor HRV
+                // ID 16: bt_rst (button) - reset a valores iniciales
+                // ID 18: t_esc (text) - escala actual "X.XX mV/div"
                 switch (component) {
-                    case 10:
-                        uiEvent = UIEvent::SLIDER_ECG_HR;
-                        break;
-                    case 11:
-                        uiEvent = UIEvent::SLIDER_ECG_AMP;
-                        break;
-                    case 12:
-                        uiEvent = UIEvent::SLIDER_ECG_NOISE;
-                        break;
-                    case 13:
-                        uiEvent = UIEvent::SLIDER_ECG_HRV;
-                        break;
-                    case 15:
-                        uiEvent = UIEvent::BUTTON_RESET_PARAMS;
-                        break;
-                    case 16:
+                    case 2:
                         uiEvent = UIEvent::BUTTON_APPLY_PARAMS;
                         break;
-                    case 17:
+                    case 3:
                         uiEvent = UIEvent::BUTTON_CANCEL_PARAMS;
+                        break;
+                    case 4:
+                        uiEvent = UIEvent::SLIDER_ECG_HR;
+                        break;
+                    case 5:
+                        uiEvent = UIEvent::SLIDER_ECG_AMP;
+                        break;
+                    case 6:
+                        uiEvent = UIEvent::SLIDER_ECG_NOISE;
+                        break;
+                    case 7:
+                        uiEvent = UIEvent::SLIDER_ECG_HRV;
+                        break;
+                    case 16:
+                        uiEvent = UIEvent::BUTTON_RESET_PARAMS;
                         break;
                 }
                 break;
                 
             case 7:  // WAVEFORM_EMG
-                // Estructura de waveform_emg (281x240):
-                // ID 1: emg (waveform) - no genera evento
-                // ID 2: parametros (hotspot) → ir a parametros_emg (página 8)
-                // ID 3: play (hotspot) → iniciar/reanudar señal
-                // ID 4: pause (hotspot) → pausar señal
-                // ID 5: stop (hotspot) → detener y volver a menú
+                // Estructura de waveform_emg (700x380 px):
+                // ID 1: emg (waveform) - área de dibujo
+                // ID 2: play (hotspot) → iniciar simulación
+                // ID 3: pause (hotspot) → pausar señal
+                // ID 4: stop (hotspot) → detener y volver a emg_sim
+                // ID 5: parametros (hotspot) → ir a parametros_emg
                 // ID 6: t_patol (text) - nombre condición
-                // ID 7: t_rms (text) - etiqueta amplitud
-                // ID 8: t_mu (text) - etiqueta unidades motoras
-                // ID 9: t_freq (text) - etiqueta disparo
-                // ID 10: t_cont (text) - etiqueta contracción
-                // ID 11-14: n_rms, n_mu, n_freq, n_cont (xfloat/number)
+                // ID 13-18: nraw, nenv, nrms, nmu, nfr, nmvc (xfloat valores)
+                // ID 20: mvdiv (text) - escala mV/div raw
+                // ID 21: mvdiv2 (text) - escala mV/div envolvente
+                // ID ??: msdiv (text) - escala ms/div (compartida)
                 switch (component) {
                     case 2: 
-                        uiEvent = UIEvent::BUTTON_PARAMETROS; 
-                        break;
-                    case 3: 
                         uiEvent = UIEvent::BUTTON_START; 
                         break;
-                    case 4: 
+                    case 3: 
                         uiEvent = UIEvent::BUTTON_PAUSE; 
                         break;
-                    case 5: 
+                    case 4: 
                         uiEvent = UIEvent::BUTTON_STOP; 
+                        break;
+                    case 5: 
+                        uiEvent = UIEvent::BUTTON_PARAMETROS; 
                         break;
                 }
                 break;
                 
-            case 8:  // PARAMETROS_EMG
+            case 8:  // PARAMETROS_EMG (popup sobre waveform_emg)
                 // Estructura de parametros_emg (página 8):
-                // ID 0: p0 (picture) - background
-                // ID 1: parametros (picture) - popup frame
-                // ID 2-4: t_exc, t_amp, t_noise (text) - etiquetas
-                // ID 5-7: n_exc, n_amp, n_noise (xfloat) - valores display
-                // ID 8: h_exc (slider) - excitación
-                // ID 9: h_amp (slider) - amplitud
-                // ID 10: h_noise (slider) - ruido
-                // ID 11: p_reset (picture) - imagen botón reset
-                // ID 12: bt_reset (hotspot) - resetear parámetros
-                // ID 13: bt_act (button) - aplicar y cerrar
-                // ID 14: bt_ex (hotspot) - cancelar sin guardar
+                // ID 2: bt_act (button) - guardar cambios y volver a waveform
+                // ID 3: bt_ex (hotspot) - salir sin guardar
+                // ID 4: h_exc (slider) - nivel excitación (%)
+                // ID 5: h_amp (slider) - factor zoom visual (%)
+                // ID 6: h_noise (slider) - nivel ruido
+                // ID ??: n_exc, n_amp, n_noise (xfloat valores)
+                // ID 13: bt_rst (button) - reset a valores iniciales
                 switch (component) {
-                    case 8:
-                        uiEvent = UIEvent::SLIDER_EMG_EXC;
-                        break;
-                    case 9:
-                        uiEvent = UIEvent::SLIDER_EMG_AMP;
-                        break;
-                    case 10:
-                        uiEvent = UIEvent::SLIDER_EMG_NOISE;
-                        break;
-                    case 12:
-                        uiEvent = UIEvent::BUTTON_RESET_PARAMS;
-                        break;
-                    case 13:
+                    case 2:
                         uiEvent = UIEvent::BUTTON_APPLY_PARAMS;
                         break;
-                    case 14:
+                    case 3:
                         uiEvent = UIEvent::BUTTON_CANCEL_PARAMS;
+                        break;
+                    case 4:
+                        uiEvent = UIEvent::SLIDER_EMG_EXC;
+                        break;
+                    case 5:
+                        uiEvent = UIEvent::SLIDER_EMG_AMP;
+                        break;
+                    case 6:
+                        uiEvent = UIEvent::SLIDER_EMG_NOISE;
+                        break;
+                    case 13:
+                        uiEvent = UIEvent::BUTTON_RESET_PARAMS;
                         break;
                 }
                 break;
                 
             case 9:  // WAVEFORM_PPG
-                // Estructura de waveform_ppg (281x240):
-                // ID 1: ppg (waveform) - no genera evento
-                // ID 2: parametros (hotspot) → ir a parametros_ppg (página 10)
-                // ID 3: play (hotspot) → iniciar/reanudar señal
-                // ID 4: pause (hotspot) → pausar señal
-                // ID 5: stop (hotspot) → detener y volver a menú
+                // Estructura de waveform_ppg (700x380 px):
+                // ID 1: ppg (waveform) - área de dibujo
+                // ID 2: play (hotspot) → iniciar simulación
+                // ID 3: pause (hotspot) → pausar señal
+                // ID 4: stop (hotspot) → detener y volver a ppg_sim
+                // ID 5: parametros (hotspot) → ir a parametros_ppg
                 // ID 6: t_patol (text) - nombre condición
-                // ID 7: t_hr (text) - etiqueta HR
-                // ID 8: t_rr (text) - etiqueta RR
-                // ID 9: t_pi (text) - etiqueta PI
-                // ID 10: t_spo2 (text) - etiqueta SpO2
-                // ID 11: t_beats (text) - etiqueta beats
-                // ID 12-16: n_hr, n_rr, n_pi, n_spo2, n_beats (xfloat/number)
+                // ID 13-18: nac, nenv, nhr, npi, nsys, ndia (xfloat valores)
+                // ID 20: mvdiv (text) - escala mV/div
+                // ID 21: msdiv (text) - escala ms/div
+                // ID 23: ndc (xfloat) - valor DC actual en mV
                 switch (component) {
                     case 2: 
-                        uiEvent = UIEvent::BUTTON_PARAMETROS; 
-                        break;
-                    case 3: 
                         uiEvent = UIEvent::BUTTON_START; 
                         break;
-                    case 4: 
+                    case 3: 
                         uiEvent = UIEvent::BUTTON_PAUSE; 
                         break;
-                    case 5: 
+                    case 4: 
                         uiEvent = UIEvent::BUTTON_STOP; 
+                        break;
+                    case 5: 
+                        uiEvent = UIEvent::BUTTON_PARAMETROS; 
                         break;
                 }
                 break;
                 
-            case 10:  // PARAMETROS_PPG
+            case 10:  // PARAMETROS_PPG (popup sobre waveform_ppg)
                 // Estructura de parametros_ppg (página 10):
-                // ID 0: p0 (picture) - background
-                // ID 1: parametros (picture) - popup frame
-                // ID 2-4: t_hr, t_pi, t_noise (text) - etiquetas
-                // ID 5-7: n_hr, n_pi, n_noise (xfloat) - valores display
-                // ID 8: h_hr (slider) - frecuencia cardíaca
-                // ID 9: h_pi (slider) - índice de perfusión
-                // ID 10: h_noise (slider) - ruido
-                // ID 11: p_reset (picture) - imagen botón reset
-                // ID 12: bt_reset (hotspot) - resetear parámetros
-                // ID 13: bt_act (button) - aplicar y cerrar
-                // ID 14: bt_ex (hotspot) - cancelar sin guardar
+                // ID 2: bt_act (button) - guardar cambios y volver a waveform
+                // ID 3: bt_ex (hotspot) - salir sin guardar
+                // ID 4: h_hr (slider) - frecuencia cardíaca (BPM)
+                // ID 5: h_pi (slider) - índice de perfusión (%)
+                // ID 6: h_noise (slider) - nivel ruido
+                // ID 10-12: n_hr, n_pi, n_noise (xfloat valores)
+                // ID 13: bt_rst (button) - reset a valores iniciales
+                // ID 14: h_amp (slider) - factor amplitud/zoom (%)
+                // ID 16: n_amp (xfloat) - valor amplitud
                 switch (component) {
-                    case 8:
-                        uiEvent = UIEvent::SLIDER_PPG_HR;
-                        break;
-                    case 9:
-                        uiEvent = UIEvent::SLIDER_PPG_PI;
-                        break;
-                    case 10:
-                        uiEvent = UIEvent::SLIDER_PPG_NOISE;
-                        break;
-                    case 12:
-                        uiEvent = UIEvent::BUTTON_RESET_PARAMS;
-                        break;
-                    case 13:
+                    case 2:
                         uiEvent = UIEvent::BUTTON_APPLY_PARAMS;
                         break;
-                    case 14:
+                    case 3:
                         uiEvent = UIEvent::BUTTON_CANCEL_PARAMS;
+                        break;
+                    case 4:
+                        uiEvent = UIEvent::SLIDER_PPG_HR;
+                        break;
+                    case 5:
+                        uiEvent = UIEvent::SLIDER_PPG_PI;
+                        break;
+                    case 6:
+                        uiEvent = UIEvent::SLIDER_PPG_NOISE;
+                        break;
+                    case 13:
+                        uiEvent = UIEvent::BUTTON_RESET_PARAMS;
+                        break;
+                    case 14:
+                        uiEvent = UIEvent::SLIDER_PPG_AMP;
                         break;
                 }
                 break;
@@ -421,41 +414,37 @@ void NextionDriver::updateMenuButtons(SignalType selected) {
 void NextionDriver::updateECGConditionButtons(int selectedCondition) {
     Serial.printf("[ECG] updateConditionButtons: cond=%d\n", selectedCondition);
     
-    // Limpiar primero por IDs genéricos (b4..b11) para evitar conflictos de nombre
-    char cmd[32];
-    for (int id = 4; id <= 11; id++) {
-        sprintf(cmd, "b%d.val=0", id);
-        sendCommand(cmd);
-    }
+    // Estructura ecg_sim (800x480):
+    // ID 1-8: bt_norm, bt_taq, bt_bra, bt_blk, bt_fa, bt_fv, bt_stup, bt_stdn
+    // ID 9: bt_atras, ID 10: bt_ir, ID 11: sel_ecg
     
-    // Luego limpiar por nombres (sin pic/pic2 que pueden causar loops)
+    char cmd[32];
+    
+    // Limpiar todos los botones de condición
     sendCommand("bt_norm.val=0");
-    Serial.println("[ECG] Limpiado bt_norm.val=0");
     sendCommand("bt_taq.val=0");
     sendCommand("bt_bra.val=0");
+    sendCommand("bt_blk.val=0");
     sendCommand("bt_fa.val=0");
     sendCommand("bt_fv.val=0");
-    sendCommand("bt_pvc.val=0");
     sendCommand("bt_stup.val=0");
     sendCommand("bt_stdn.val=0");
 
+    // Activar el botón seleccionado
     switch (selectedCondition) {
-        case 0: 
-            sendCommand("bt_norm.val=1");
-            Serial.println("[ECG] Activado bt_norm.val=1");
-            sendCommand("b4.val=1"); 
-            break;
-        case 1: sendCommand("bt_taq.val=1"); sendCommand("b5.val=1"); break;
-        case 2: sendCommand("bt_bra.val=1"); sendCommand("b6.val=1"); break;
-        case 3: sendCommand("bt_fa.val=1");  sendCommand("b7.val=1"); break;
-        case 4: sendCommand("bt_fv.val=1");  sendCommand("b8.val=1"); break;
-        case 5: sendCommand("bt_pvc.val=1"); sendCommand("b9.val=1"); break;
-        case 6: sendCommand("bt_stup.val=1");sendCommand("b10.val=1"); break;
-        case 7: sendCommand("bt_stdn.val=1");sendCommand("b11.val=1"); break;
+        case 0: sendCommand("bt_norm.val=1"); break;
+        case 1: sendCommand("bt_taq.val=1"); break;
+        case 2: sendCommand("bt_bra.val=1"); break;
+        case 3: sendCommand("bt_blk.val=1"); break;
+        case 4: sendCommand("bt_fa.val=1"); break;
+        case 5: sendCommand("bt_fv.val=1"); break;
+        case 6: sendCommand("bt_stup.val=1"); break;
+        case 7: sendCommand("bt_stdn.val=1"); break;
         default: break;
     }
 
-    int ecgSel = (selectedCondition >= 0 && selectedCondition <= 7) ? selectedCondition : -1;
+    // Actualizar variable sel_ecg
+    int ecgSel = (selectedCondition >= 0 && selectedCondition <= 7) ? selectedCondition : 255;
     sprintf(cmd, "sel_ecg.val=%d", ecgSel);
     sendCommand(cmd);
 }
@@ -464,36 +453,35 @@ void NextionDriver::updateECGConditionButtons(int selectedCondition) {
 // ACTUALIZAR BOTONES DE CONDICIONES EMG
 // ============================================================================
 void NextionDriver::updateEMGConditionButtons(int selectedCondition) {
-    // bt_reposo (0), bt_leve (1), bt_moderada (2), bt_fuerte (3), bt_maxima (4),
-    // bt_temblor (5), bt_miopatia (6), bt_neuropatia (7), bt_fasc (8), bt_fatiga (9)
-
+    Serial.printf("[EMG] updateConditionButtons: cond=%d\n", selectedCondition);
+    
+    // Estructura emg_sim (800x480):
+    // ID 1-6: bt_reposo, bt_leve, bt_moderada, bt_maxima, bt_temblor, bt_fatiga
+    // ID 7: bt_atras, ID 8: bt_ir, ID 9: sel_emg
+    
+    char cmd[32];
+    
+    // Limpiar todos los botones de condición
     sendCommand("bt_reposo.val=0");
     sendCommand("bt_leve.val=0");
     sendCommand("bt_moderada.val=0");
-    sendCommand("bt_fuerte.val=0");
     sendCommand("bt_maxima.val=0");
     sendCommand("bt_temblor.val=0");
-    sendCommand("bt_miopatia.val=0");
-    sendCommand("bt_neuropatia.val=0");
-    sendCommand("bt_fasc.val=0");
     sendCommand("bt_fatiga.val=0");
 
+    // Activar el botón seleccionado
     switch (selectedCondition) {
         case 0: sendCommand("bt_reposo.val=1"); break;
         case 1: sendCommand("bt_leve.val=1"); break;
         case 2: sendCommand("bt_moderada.val=1"); break;
-        case 3: sendCommand("bt_fuerte.val=1"); break;
-        case 4: sendCommand("bt_maxima.val=1"); break;
-        case 5: sendCommand("bt_temblor.val=1"); break;
-        case 6: sendCommand("bt_miopatia.val=1"); break;
-        case 7: sendCommand("bt_neuropatia.val=1"); break;
-        case 8: sendCommand("bt_fasc.val=1"); break;
-        case 9: sendCommand("bt_fatiga.val=1"); break;
+        case 3: sendCommand("bt_maxima.val=1"); break;
+        case 4: sendCommand("bt_temblor.val=1"); break;
+        case 5: sendCommand("bt_fatiga.val=1"); break;
         default: break;
     }
 
-    char cmd[24];
-    int emgSel = (selectedCondition >= 0 && selectedCondition <= 9) ? selectedCondition : -1;
+    // Actualizar variable sel_emg
+    int emgSel = (selectedCondition >= 0 && selectedCondition <= 5) ? selectedCondition : 255;
     sprintf(cmd, "sel_emg.val=%d", emgSel);
     sendCommand(cmd);
 }
@@ -504,37 +492,33 @@ void NextionDriver::updateEMGConditionButtons(int selectedCondition) {
 void NextionDriver::updatePPGConditionButtons(int selectedCondition) {
     Serial.printf("[PPG] updateConditionButtons: cond=%d\n", selectedCondition);
     
-    // Limpiar primero por IDs genéricos (b1..b6) para evitar conflictos de nombre
-    char cmd[32];
-    for (int id = 1; id <= 6; id++) {
-        sprintf(cmd, "b%d.val=0", id);
-        sendCommand(cmd);
-    }
+    // Estructura ppg_sim (800x480):
+    // ID 1-6: bt_norm, bt_arr, bt_lowp, bt_highp, bt_vasod, bt_vascon
+    // ID 7: bt_atras, ID 8: bt_ir, ID 9: sel_ppg
     
-    // Luego limpiar por nombres (sin pic/pic2 que pueden causar loops)
+    char cmd[32];
+    
+    // Limpiar todos los botones de condición
     sendCommand("bt_norm.val=0");
-    Serial.println("[PPG] Limpiado bt_norm.val=0");
     sendCommand("bt_arr.val=0");
-    sendCommand("bt_spo2.val=0");
     sendCommand("bt_lowp.val=0");
     sendCommand("bt_highp.val=0");
-    sendCommand("bt_vasc.val=0");
+    sendCommand("bt_vasod.val=0");
+    sendCommand("bt_vascon.val=0");
 
+    // Activar el botón seleccionado
     switch (selectedCondition) {
-        case 0: 
-            sendCommand("bt_norm.val=1");
-            Serial.println("[PPG] Activado bt_norm.val=1");
-            sendCommand("b1.val=1"); 
-            break;
-        case 1: sendCommand("bt_arr.val=1"); sendCommand("b2.val=1"); break;
-        case 2: sendCommand("bt_spo2.val=1"); sendCommand("b3.val=1"); break;
-        case 3: sendCommand("bt_lowp.val=1"); sendCommand("b4.val=1"); break;
-        case 4: sendCommand("bt_highp.val=1");sendCommand("b5.val=1"); break;
-        case 5: sendCommand("bt_vasc.val=1"); sendCommand("b6.val=1"); break;
+        case 0: sendCommand("bt_norm.val=1"); break;
+        case 1: sendCommand("bt_arr.val=1"); break;
+        case 2: sendCommand("bt_lowp.val=1"); break;
+        case 3: sendCommand("bt_highp.val=1"); break;
+        case 4: sendCommand("bt_vasod.val=1"); break;
+        case 5: sendCommand("bt_vascon.val=1"); break;
         default: break;
     }
 
-    int ppgSel = (selectedCondition >= 0 && selectedCondition <= 5) ? selectedCondition : -1;
+    // Actualizar variable sel_ppg
+    int ppgSel = (selectedCondition >= 0 && selectedCondition <= 5) ? selectedCondition : 255;
     sprintf(cmd, "sel_ppg.val=%d", ppgSel);
     sendCommand(cmd);
 }
@@ -745,103 +729,154 @@ void NextionDriver::updatePPGValuesPage(int hr, int rr_ms, int pi_x10, int spo2,
 // ============================================================================
 void NextionDriver::setupECGParametersPage(int hrMin, int hrMax, int hrCurrent,
                                             int ampCurrent, int noiseCurrent, int hrvCurrent) {
-    // Configurar límites del slider HR según la patología
-    char cmd[32];
+    // Estructura parametros_ecg (página 6 - popup sobre waveform_ecg):
+    // Sliders: h_hr(ID4), h_amp(ID5), h_noise(ID6), h_hrv(ID7)
+    // Valores: n_hr(ID12), n_amp(ID13), n_noise(ID14), n_hrv(ID15)
+    // Escala: t_esc(ID18)
     
-    // Slider HR (ID 11): límites dinámicos según patología
+    char cmd[48];
+    
+    // Slider HR (ID 4): límites dinámicos según patología
     sprintf(cmd, "h_hr.minval=%d", hrMin);
     sendCommand(cmd);
     sprintf(cmd, "h_hr.maxval=%d", hrMax);
     sendCommand(cmd);
     sprintf(cmd, "h_hr.val=%d", hrCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_hr.val=%d", hrCurrent);   // ID 7: xfloat display
+    sprintf(cmd, "n_hr.val=%d", hrCurrent);   // ID 12: xfloat (vvs0=3, vvs1=0)
     sendCommand(cmd);
     
-    // Slider Amplitud (ID 12): rango fijo 50-200 (representa 0.50-2.00 mV)
+    // Slider Zoom (ID 5): factor de zoom visual (50-200%)
+    // 100% = 0.2 mV/div (rango base 2.0 mV / 10 div)
+    // 200% = 0.1 mV/div (zoom in), 50% = 0.4 mV/div (zoom out)
     sendCommand("h_amp.minval=50");
     sendCommand("h_amp.maxval=200");
     sprintf(cmd, "h_amp.val=%d", ampCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_amp.val=%d", ampCurrent); // ID 8: xfloat display
+    sprintf(cmd, "n_amp.val=%d", ampCurrent); // ID 13: xfloat (vvs0=3, vvs1=0) muestra %
     sendCommand(cmd);
     
-    // Slider Ruido (ID 13): rango fijo 0-10 (representa 0.00-0.10)
+    // Actualizar texto de escala actual
+    float zoomFactor = ampCurrent / 100.0f;
+    float mvDiv = 0.2f / zoomFactor;  // 0.2 mV/div es la escala base
+    sprintf(cmd, "t_esc.txt=\"%.2f mV/div\"", mvDiv);
+    sendCommand(cmd);
+    
+    // Slider Ruido (ID 6): rango 0-100 (representa 0.00-1.00)
     sendCommand("h_noise.minval=0");
-    sendCommand("h_noise.maxval=10");
+    sendCommand("h_noise.maxval=100");
     sprintf(cmd, "h_noise.val=%d", noiseCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_noise.val=%d", noiseCurrent); // ID 9: xfloat display
+    sprintf(cmd, "n_noise.val=%d", noiseCurrent); // ID 14: xfloat (vvs0=1, vvs1=2)
     sendCommand(cmd);
     
-    // Slider HRV (ID 14): rango fijo 0-15 (representa 0-15%)
+    // Slider HRV (ID 7): rango 0-15 (representa 0-15%)
     sendCommand("h_hrv.minval=0");
     sendCommand("h_hrv.maxval=15");
     sprintf(cmd, "h_hrv.val=%d", hrvCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_hrv.val=%d", hrvCurrent); // ID 10: xfloat display
+    sprintf(cmd, "n_hrv.val=%d", hrvCurrent); // ID 15: xfloat (vvs0=2, vvs1=0)
     sendCommand(cmd);
+}
+
+// ============================================================================
+// ACTUALIZAR ESCALA ECG (mV/div)
+// ============================================================================
+void NextionDriver::updateECGScale(int zoomPercent) {
+    // Actualiza las etiquetas de escala en waveform_ecg y parametros_ecg
+    // Rango base ECG: 2.0 mV total, 10 divisiones = 0.2 mV/div
+    // zoomPercent: 50-200%, donde 100% = 0.2 mV/div
+    
+    char cmd[48];
+    float zoomFactor = zoomPercent / 100.0f;
+    float mvDiv = 0.2f / zoomFactor;  // 0.2 mV/div es la escala base
+    
+    // Actualizar en waveform_ecg (t_mvdiv ID 31)
+    sprintf(cmd, "t_mvdiv.txt=\"%.2f mV/div\"", mvDiv);
+    sendCommand(cmd);
+    
+    // Actualizar en parametros_ecg (t_esc ID 18) si está visible
+    sprintf(cmd, "t_esc.txt=\"%.2f mV/div\"", mvDiv);
+    sendCommand(cmd);
+    
+    Serial.printf("[ECG] Zoom: %d%%, Escala: %.2f mV/div\n", zoomPercent, mvDiv);
 }
 
 // ============================================================================
 // CONFIGURAR PÁGINA PARÁMETROS EMG
 // ============================================================================
 void NextionDriver::setupEMGParametersPage(int excCurrent, int ampCurrent, int noiseCurrent) {
-    char cmd[32];
+    // Estructura parametros_emg (página 8 - popup sobre waveform_emg):
+    // Sliders: h_exc(ID4), h_amp(ID5), h_noise(ID6)
+    // Valores: n_exc, n_amp, n_noise
     
-    // Slider Excitación (ID 8): rango fijo 0-100 (representa 0-100%)
+    char cmd[48];
+    
+    // Slider Excitación (ID 4): rango 0-100 (representa 0-100%)
     sendCommand("h_exc.minval=0");
     sendCommand("h_exc.maxval=100");
     sprintf(cmd, "h_exc.val=%d", excCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_exc.val=%d", excCurrent); // ID 5: xfloat display (vvs0=0)
+    sprintf(cmd, "n_exc.val=%d", excCurrent);
     sendCommand(cmd);
     
-    // Slider Amplitud (ID 9): rango fijo 10-300 (representa 0.10-3.00)
-    sendCommand("h_amp.minval=10");
-    sendCommand("h_amp.maxval=300");
+    // Slider Zoom/Amplitud (ID 5): rango 50-200 (factor zoom visual %)
+    sendCommand("h_amp.minval=50");
+    sendCommand("h_amp.maxval=200");
     sprintf(cmd, "h_amp.val=%d", ampCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_amp.val=%d", ampCurrent); // ID 6: xfloat display (vvs0=2)
+    sprintf(cmd, "n_amp.val=%d", ampCurrent);
     sendCommand(cmd);
     
-    // Slider Ruido (ID 10): rango fijo 0-100 (representa 0.00-1.00)
+    // Slider Ruido (ID 6): rango 0-100 (representa 0.00-1.00)
     sendCommand("h_noise.minval=0");
     sendCommand("h_noise.maxval=100");
     sprintf(cmd, "h_noise.val=%d", noiseCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_noise.val=%d", noiseCurrent); // ID 7: xfloat display (vvs0=2)
+    sprintf(cmd, "n_noise.val=%d", noiseCurrent);
     sendCommand(cmd);
 }
 
 // ============================================================================
 // CONFIGURAR PÁGINA PARÁMETROS PPG
 // ============================================================================
-void NextionDriver::setupPPGParametersPage(int hrCurrent, int piCurrent, int noiseCurrent) {
-    char cmd[32];
+void NextionDriver::setupPPGParametersPage(int hrCurrent, int piCurrent, int noiseCurrent, int ampCurrent) {
+    // Estructura parametros_ppg (página 10 - popup sobre waveform_ppg):
+    // Sliders: h_hr(ID4), h_pi(ID5), h_noise(ID6), h_amp(ID14)
+    // Valores: n_hr(ID10), n_pi(ID11), n_noise(ID12), n_amp(ID16)
     
-    // Slider HR (ID 8): rango fijo 50-150 BPM
+    char cmd[48];
+    
+    // Slider HR (ID 4): rango 50-150 BPM
     sendCommand("h_hr.minval=50");
     sendCommand("h_hr.maxval=150");
     sprintf(cmd, "h_hr.val=%d", hrCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_hr.val=%d", hrCurrent); // ID 5: xfloat display (vvs0=0)
+    sprintf(cmd, "n_hr.val=%d", hrCurrent);
     sendCommand(cmd);
     
-    // Slider PI (ID 9): rango fijo 3-200 (representa 0.3-20.0%)
+    // Slider PI (ID 5): rango 3-200 (representa 0.3-20.0%)
     sendCommand("h_pi.minval=3");
     sendCommand("h_pi.maxval=200");
     sprintf(cmd, "h_pi.val=%d", piCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_pi.val=%d", piCurrent); // ID 6: xfloat display (vvs0=1)
+    sprintf(cmd, "n_pi.val=%d", piCurrent);
     sendCommand(cmd);
     
-    // Slider Ruido (ID 10): rango fijo 0-100 (representa 0.00-1.00)
+    // Slider Ruido (ID 6): rango 0-100 (representa 0.00-1.00)
     sendCommand("h_noise.minval=0");
     sendCommand("h_noise.maxval=100");
     sprintf(cmd, "h_noise.val=%d", noiseCurrent);
     sendCommand(cmd);
-    sprintf(cmd, "n_noise.val=%d", noiseCurrent); // ID 7: xfloat display (vvs0=2)
+    sprintf(cmd, "n_noise.val=%d", noiseCurrent);
+    sendCommand(cmd);
+    
+    // Slider Amplitud/Zoom (ID 14): rango 50-200 (factor zoom visual %)
+    sendCommand("h_amp.minval=50");
+    sendCommand("h_amp.maxval=200");
+    sprintf(cmd, "h_amp.val=%d", ampCurrent);
+    sendCommand(cmd);
+    sprintf(cmd, "n_amp.val=%d", ampCurrent);
     sendCommand(cmd);
 }
 

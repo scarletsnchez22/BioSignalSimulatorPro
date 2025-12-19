@@ -2,6 +2,7 @@
  * @file signal_engine.cpp
  * @brief Implementación del motor de generación de señales
  * @version 1.0.0
+ * @date 18 Diciembre 2025
  */
 
 #include "core/signal_engine.h"
