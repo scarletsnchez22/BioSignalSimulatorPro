@@ -185,7 +185,7 @@ La distribución de tareas entre los dos núcleos del ESP32 se diseñó para ais
 | Core 0 | loop() | Nextion, UI, WiFi | Continuo | 1 | Default |
 | Core 0 | WiFi | AP + WebSocket server | Asíncrono | 1 | 4096 |
 | Core 1 | generationTask | Generación de muestras | 1 ms | 5 | 4096 |
-| Core 1 | Timer ISR | Salida DAC | 1 ms (1 kHz) | Máxima | ISR |
+| Core 1 | Timer ISR | Salida DAC | 0.25 ms (4 kHz) | Máxima | ISR |
 
 **Tabla 3.2: Constantes de configuración (config.h)**
 
@@ -195,7 +195,7 @@ La distribución de tareas entre los dos núcleos del ESP32 se diseñó para ais
 | `CORE_UI_COMMUNICATION` | 0 | Núcleo para UI/WiFi |
 | `TASK_PRIORITY_SIGNAL` | 5 | Prioridad máxima de tarea |
 | `STACK_SIZE_SIGNAL` | 4096 | Stack de tarea de señal |
-| `SAMPLE_RATE_HZ` | 1000 | Timer maestro DAC (1 kHz) |
+| `FS_TIMER_HZ` | 4000 | Timer maestro DAC (4 kHz) |
 | `SIGNAL_BUFFER_SIZE` | 2048 | Tamaño buffer circular |
 
 ### 3.3 Recursos Compartidos y Sincronización
@@ -353,7 +353,8 @@ Se definieron dos tasas de actualización independientes para optimizar el ancho
 
 | Componente | Tasa | Período | Justificación |
 |------------|------|---------|---------------|
-| Waveform | 100 Hz | 10 ms | Fluidez visual, límite percepción |
+| Waveform ECG | 200 Hz | 5 ms | Mayor resolución temporal QRS |
+| Waveform EMG/PPG | 100 Hz | 10 ms | Fluidez visual, límite percepción |
 | Métricas | 4 Hz | 250 ms | Legibilidad de números |
 | Escalas | 1 Hz | 1000 ms | Cambios infrecuentes |
 
@@ -680,16 +681,14 @@ $$V_{out} = \frac{191}{255} \times 3.3V = 2.47V$$
 
 ### 8.5 Tiempo Visible en Waveform
 
-**Cálculo del tiempo visible en pantalla:**
+**Cálculo del tiempo visible en pantalla (depende de Fds por señal):**
 
 ```
 Ancho waveform: 700 px
-Frecuencia display: 100 Hz (1 punto cada 10 ms)
-Tiempo visible: T = 700 px × 10 ms/px = 7000 ms = 7 s
 
-Latidos visibles @ 75 BPM:
-Período RR = 60/75 = 0.8 s
-Latidos = 7 s / 0.8 s = 8.75 ≈ 9 latidos
+ECG @ 200 Hz: T = 700 / 200 = 3.5 s (~4 latidos @ 75 BPM)
+EMG @ 100 Hz: T = 700 / 100 = 7.0 s
+PPG @ 100 Hz: T = 700 / 100 = 7.0 s (~9 latidos @ 75 BPM)
 ```
 
 ---

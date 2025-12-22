@@ -91,7 +91,7 @@ El siguiente diagrama ilustra la estructura jerárquica completa del producto, d
 │  │  ┌──────────────────────────┐    ┌──────────────────────────┐          │   │
 │  │  │      PRO_CPU (Core 0)    │    │      APP_CPU (Core 1)    │          │   │
 │  │  │  ┌────────────────────┐  │    │  ┌────────────────────┐  │          │   │
-│  │  │  │ WiFi Stack         │  │    │  │ Timer ISR (1kHz)   │  │          │   │
+│  │  │  │ WiFi Stack         │  │    │  │ Timer ISR (4kHz)   │  │          │   │
 │  │  │  │ WebSocket Server   │  │    │  │ Signal Generation  │  │          │   │
 │  │  │  │ HTTP Server        │  │    │  │ DAC Output         │  │          │   │
 │  │  │  │ mDNS Service       │  │    │  │ Nextion Comm       │  │          │   │
@@ -137,7 +137,7 @@ El siguiente diagrama ilustra la estructura jerárquica completa del producto, d
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-El diagrama anterior representa la filosofía de diseño adoptada: cada capa cumple una función específica y se comunica con las adyacentes mediante interfaces bien definidas. La **capa de modelos matemáticos** implementa los algoritmos de síntesis de señales basados en literatura científica peer-reviewed; cada modelo encapsula las ecuaciones diferenciales, parámetros fisiológicos y condiciones patológicas correspondientes. La **capa de procesamiento** aprovecha la arquitectura dual-core del ESP32 para garantizar determinismo temporal: el Core 1 (APP_CPU) ejecuta exclusivamente el timer de interrupción a 1 kHz y la generación de muestras, mientras el Core 0 (PRO_CPU) maneja toda la comunicación WiFi y el servidor web sin interferir con el timing crítico.
+El diagrama anterior representa la filosofía de diseño adoptada: cada capa cumple una función específica y se comunica con las adyacentes mediante interfaces bien definidas. La **capa de modelos matemáticos** implementa los algoritmos de síntesis de señales basados en literatura científica peer-reviewed; cada modelo encapsula las ecuaciones diferenciales, parámetros fisiológicos y condiciones patológicas correspondientes. La **capa de procesamiento** aprovecha la arquitectura dual-core del ESP32 para garantizar determinismo temporal: el Core 1 (APP_CPU) ejecuta exclusivamente el timer de interrupción a 4 kHz y la generación de muestras, mientras el Core 0 (PRO_CPU) maneja toda la comunicación WiFi y el servidor web sin interferir con el timing crítico.
 
 La **capa de interfaces** proporciona tres vías complementarias de interacción con el usuario. La salida analógica, acondicionada mediante buffer de alta impedancia y divisor resistivo, permite la conexión directa a osciloscopios y equipos de adquisición de datos. La pantalla Nextion de 7 pulgadas ofrece visualización en tiempo real y control táctil de todos los parámetros. La aplicación web, accesible mediante WiFi, extiende estas capacidades a cualquier dispositivo con navegador moderno, facilitando el uso en entornos educativos donde múltiples estudiantes pueden observar las señales simultáneamente.
 

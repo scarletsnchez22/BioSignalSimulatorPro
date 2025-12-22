@@ -66,9 +66,9 @@
     
     <text x="0" y="80" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• Superposición de gaussianas (sistólica + diastólica)</text>
     <text x="0" y="98" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• Muesca dicrótica configurable por condición</text>
-    <text x="0" y="116" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• Índice de perfusión (PI) y SpO₂ dinámicos</text>
+    <text x="0" y="116" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• Índice de perfusión (PI) dinámico con variabilidad</text>
     <text x="0" y="134" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• 6 condiciones: normal, arritmia, perfusión débil,</text>
-    <text x="12" y="150" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">perfusión fuerte, vasoconstricción, SpO₂ bajo</text>
+    <text x="12" y="150" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">perfusión fuerte, vasoconstricción</text>
     
     <!-- PPG Waveform -->
     <g transform="translate(480, 15)">

@@ -162,9 +162,6 @@ const uint16_t SERIAL_PLOTTER_RATE_EMG = FDS_EMG;
 // - ECG @ 200 Hz: 700px / 200Hz = 3.5 segundos (~4 latidos @ 75 BPM)
 // - EMG @ 100 Hz: 700px / 100Hz = 7.0 segundos
 // - PPG @ 100 Hz: 700px / 100Hz = 7.0 segundos (~9 latidos @ 75 BPM)
-// 
-// NOTA: Los ratios de downsampling (NEXTION_DOWNSAMPLE_*) se calculan
-// respecto a FS_TIMER_HZ (4kHz), NO respecto a WAVEFORM_UPDATE_MS.
 
 // ============================================================================
 // CONFIGURACIÓN DE DEBUG

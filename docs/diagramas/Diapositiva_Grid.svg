@@ -89,7 +89,7 @@
   <rect x="560" y="177" width="345" height="20" fill="white"/>
   <text x="620" y="191" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">Tiempo visible</text>
   <text x="720" y="191" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">700 px</text>
-  <text x="835" y="191" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#27ae60">7 segundos</text>
+  <text x="835" y="191" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#27ae60">3.5s (ECG 200Hz)</text>
   
   <!-- Sección 3: Fórmulas de Conversión -->
   <rect x="545" y="215" width="375" height="160" rx="8" fill="#f5f5f5" stroke="#999" stroke-width="2"/>
@@ -123,8 +123,8 @@
   <text x="250" y="466" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">-0.5 a +1.5 mV</text>
   <text x="390" y="466" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">0.5 mV/div</text>
   <text x="510" y="466" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">200 ms/div</text>
-  <text x="640" y="466" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">7 segundos</text>
-  <text x="790" y="466" text-anchor="middle" font-family="Arial" font-size="10" fill="#27ae60">7s/0.8s = 8-9 latidos</text>
+  <text x="640" y="466" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">3.5 segundos</text>
+  <text x="790" y="466" text-anchor="middle" font-family="Arial" font-size="10" fill="#27ae60">3.5s/0.8s = 4 latidos</text>
   
   <rect x="50" y="472" width="845" height="20" fill="white"/>
   <text x="130" y="486" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#27ae60">EMG</text>

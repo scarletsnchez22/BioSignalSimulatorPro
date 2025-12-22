@@ -17,7 +17,7 @@
 7. [Resultados y Métricas](#7-resultados-y-métricas)
 8. [Referencias](#8-referencias)
 
-> **Nota:** La arquitectura computacional del sistema (ESP32, FreeRTOS, comunicación Nextion, WiFi/WebSocket) se documenta en el archivo separado `METODOLOGIA_ARQUITECTURA_COMPUTACIONAL.md`.
+> **Nota:** La arquitectura computacional del sistema (ESP32, FreeRTOS, comunicación Nextion, WiFi/WebSocket) se documenta en el archivo separado `METODOLOGIA_COMPUTACIONAL.md`.
 
 ---
 

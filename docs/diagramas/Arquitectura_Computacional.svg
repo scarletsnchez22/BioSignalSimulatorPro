@@ -71,7 +71,7 @@
   <text x="447" y="212" text-anchor="middle" class="box-bold">Nextion</text>
   <text x="447" y="227" text-anchor="middle" class="box-text">UART2</text>
   <text x="447" y="242" text-anchor="middle" class="box-code">115200 baud</text>
-  <text x="447" y="257" text-anchor="middle" class="small">Waveform 100Hz</text>
+  <text x="447" y="257" text-anchor="middle" class="small">ECG 200Hz EMG/PPG 100Hz</text>
   
   <!-- WiFi -->
   <rect x="515" y="195" width="115" height="70" rx="3" fill="#e0e0e0" stroke="#333" stroke-width="1"/>
@@ -113,7 +113,7 @@
   <text x="140" y="633" text-anchor="middle" class="box-text">NX8048T070</text>
   <text x="140" y="650" text-anchor="middle" class="box-code">800×480 px</text>
   <text x="140" y="670" text-anchor="middle" class="small">Waveform + Métricas + UI</text>
-  <text x="140" y="685" text-anchor="middle" class="small">Downsampling a 100Hz</text>
+  <text x="140" y="685" text-anchor="middle" class="small">ECG 200Hz, EMG/PPG 100Hz</text>
   
   <!-- BNC -->
   <rect x="260" y="595" width="180" height="100" rx="5" fill="white" stroke="#333" stroke-width="1.5"/>
@@ -156,8 +156,8 @@
   <text x="200" y="765" class="box-code">SIGNAL_BUFFER_SIZE = 2048</text>
   <text x="200" y="780" class="small">~0.5 segundos de buffer</text>
   
-  <text x="400" y="765" class="box-code">NEXTION_SEND_RATE = 200</text>
-  <text x="400" y="780" class="small">Nextion display rate</text>
+  <text x="400" y="765" class="box-code">FDS_ECG=200, FDS_EMG/PPG=100</text>
+  <text x="400" y="780" class="small">Frecuencias display</text>
   
   <text x="560" y="765" class="box-code">Downsampling ratios</text>
   <text x="560" y="780" class="small">20:1, 40:1, 40:1</text>
