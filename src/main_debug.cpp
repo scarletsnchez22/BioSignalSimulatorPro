@@ -1,8 +1,8 @@
 ﻿/**
  * @file main_debug.cpp
- * @brief Modo Debug simplificado - Solo Auto-Start para Serial Plotter
+ * @brief Auto-Start para Serial Plotter
  * @version 3.0.0
- * @date Diciembre 2024
+ * @date Diciembre 2025
  * 
  * Firmware ESP32 - BioSimulator Pro
  * 
@@ -38,21 +38,21 @@
 // --------------------------------------------------------------------------
 // TIPO DE SENAL: 0=ECG, 1=EMG, 2=PPG
 // --------------------------------------------------------------------------
-#define AUTO_SIGNAL_TYPE        2
+#define AUTO_SIGNAL_TYPE        1
 
 // --------------------------------------------------------------------------
 // CONDICIONES ECG (solo si AUTO_SIGNAL_TYPE==0):
 // 0=NORMAL, 1=TACHYCARDIA, 2=BRADYCARDIA, 3=ATRIAL_FIBRILLATION,
 // 4=VENTRICULAR_FIBRILLATION, 5=AV_BLOCK_1, 6=ST_ELEVATION, 7=ST_DEPRESSION
 // --------------------------------------------------------------------------
-#define AUTO_ECG_CONDITION      0
+#define AUTO_ECG_CONDITION      2
 
 // --------------------------------------------------------------------------
 // CONDICIONES EMG (solo si AUTO_SIGNAL_TYPE==1):
 // 0=REST, 1=LOW_CONTRACTION, 2=MODERATE_CONTRACTION, 
 // 3=HIGH_CONTRACTION, 4=TREMOR, 5=FATIGUE
 // --------------------------------------------------------------------------
-#define AUTO_EMG_CONDITION      3
+#define AUTO_EMG_CONDITION      0
 
 // --------------------------------------------------------------------------
 // CONDICIONES PPG (solo si AUTO_SIGNAL_TYPE==2):
@@ -88,13 +88,26 @@ float maxVal = -999.0f;
 
 // Contadores de muestras para downsampling
 uint32_t sampleCounter = 0;
-uint32_t plotCounter = 0;  // Contador para downsampling a Serial Plotter
+uint32_t timerTickCounter = 0;  // Contador de ticks del timer (para downsampling)
 
-// Downsampling para Serial Plotter (evita saturar el buffer serial)
-// ECG: 800Hz -> 200Hz (1:4), EMG: 2000Hz -> 100Hz (1:20), PPG: 200Hz -> 200Hz (1:1)
-#define PLOT_DOWNSAMPLE_ECG  (MODEL_SAMPLE_RATE_ECG / SERIAL_PLOTTER_RATE_ECG)   // 4
-#define PLOT_DOWNSAMPLE_EMG  (MODEL_SAMPLE_RATE_EMG / SERIAL_PLOTTER_RATE_EMG)   // 20
-#define PLOT_DOWNSAMPLE_PPG  (MODEL_SAMPLE_RATE_PPG / SERIAL_PLOTTER_RATE_PPG)   // 1
+// ============================================================================
+// ARQUITECTURA: Fs_timer = 4 kHz (igual que signal_engine.cpp)
+// ============================================================================
+// Timer tick interval en microsegundos
+const uint32_t TIMER_TICK_US = 1000000 / FS_TIMER_HZ;  // 250 us = 4 kHz
+
+// Variables para timing real e interpolación (igual que signal_engine)
+static uint32_t lastModelTick_us = 0;
+static uint8_t currentModelSample = 128;
+static uint8_t previousModelSample = 128;
+static uint16_t interpolationCounter = 0;
+static uint32_t lastTimerTick_us = 0;
+
+// Downsampling para Serial Plotter (respecto a Fs_timer, NO respecto al modelo)
+// Ratio = Fs_timer / Fds
+#define PLOT_DOWNSAMPLE_ECG  (FS_TIMER_HZ / FDS_ECG)   // 4000/200 = 20
+#define PLOT_DOWNSAMPLE_EMG  (FS_TIMER_HZ / FDS_EMG)   // 4000/100 = 40
+#define PLOT_DOWNSAMPLE_PPG  (FS_TIMER_HZ / FDS_PPG)   // 4000/100 = 40
 
 // ============================================================================
 // NOMBRES DE CONDICIONES
@@ -292,10 +305,6 @@ void setup() {
 void loop() {
     if (!isRunning) return;
     
-    static unsigned long lastTickECG = 0;
-    static unsigned long lastTickPPG = 0;
-    static unsigned long lastTickEMG = 0;
-    static unsigned long lastPlot = 0;
     static unsigned long lastStats = 0;
     
     unsigned long now_us = micros();
@@ -320,55 +329,102 @@ void loop() {
     }
     #endif
     
-    // ========== GENERACION DE SEÑAL (frecuencia del modelo) ==========
-    float value = 0.0f;
-    uint8_t dacValue = 128;
-    bool newSample = false;
+    // ========== ARQUITECTURA IGUAL A signal_engine.cpp ==========
+    // 1. Modelo genera a su propia Fs (con timing real)
+    // 2. Interpolación lineal llena muestras a Fs_timer
+    // 3. DAC escribe a Fs_timer (4 kHz)
+    // 4. Downsampling = Fs_timer / Fds
     
-    #if AUTO_SIGNAL_TYPE == 0  // ECG @ 750 Hz
-        if (now_us - lastTickECG >= MODEL_TICK_US_ECG) {
-            lastTickECG = now_us;
-            dacValue = ecgModel.getDACValue(MODEL_DT_ECG);
-            value = ecgModel.getCurrentValueMV();
-            dacWrite(DAC_SIGNAL_PIN, dacValue);
-            newSample = true;
-            sampleCounter++;
-        }
-    #elif AUTO_SIGNAL_TYPE == 1  // EMG @ 2000 Hz
-        if (now_us - lastTickECG >= MODEL_TICK_US_EMG) {
-            lastTickECG = now_us;
-            emgModel.tick(MODEL_DT_EMG);
-            dacValue = emgModel.getRawDACValue();
-            value = emgModel.getRawSample();
-            dacWrite(DAC_SIGNAL_PIN, dacValue);
-            newSample = true;
-            sampleCounter++;
-        }
-    #else  // PPG @ 100 Hz
-        if (now_us - lastTickPPG >= MODEL_TICK_US_PPG) {
-            lastTickPPG = now_us;
-            dacValue = ppgModel.getDACValue(MODEL_DT_PPG);
-            value = ppgModel.getLastACValue();  // Usar AC para tracking
-            dacWrite(DAC_SIGNAL_PIN, dacValue);
-            newSample = true;
-            sampleCounter++;
-        }
+    // Obtener parámetros según tipo de señal
+    uint32_t modelTickInterval_us;
+    uint8_t upsampleRatio;
+    float modelDeltaTime;
+    
+    #if AUTO_SIGNAL_TYPE == 0  // ECG
+        modelTickInterval_us = MODEL_TICK_US_ECG;  // 1333 us
+        upsampleRatio = UPSAMPLE_RATIO_ECG;        // 5
+        modelDeltaTime = MODEL_DT_ECG;             // 1.333 ms
+    #elif AUTO_SIGNAL_TYPE == 1  // EMG
+        modelTickInterval_us = MODEL_TICK_US_EMG;  // 500 us
+        upsampleRatio = UPSAMPLE_RATIO_EMG;        // 2
+        modelDeltaTime = MODEL_DT_EMG;             // 0.5 ms
+    #else  // PPG
+        modelTickInterval_us = MODEL_TICK_US_PPG;  // 10000 us
+        upsampleRatio = UPSAMPLE_RATIO_PPG;        // 40
+        modelDeltaTime = MODEL_DT_PPG;             // 10 ms
     #endif
     
-    // Track min/max
-    if (newSample) {
+    // ¿Es hora de generar nueva muestra del modelo? (timing real)
+    if (now_us - lastModelTick_us >= modelTickInterval_us) {
+        lastModelTick_us = now_us;
+        
+        // Guardar muestra anterior para interpolación
+        previousModelSample = currentModelSample;
+        
+        // Generar nueva muestra del modelo con su deltaTime correcto
+        #if AUTO_SIGNAL_TYPE == 0  // ECG
+            currentModelSample = ecgModel.getDACValue(modelDeltaTime);
+        #elif AUTO_SIGNAL_TYPE == 1  // EMG
+            emgModel.tick(modelDeltaTime);
+            currentModelSample = emgModel.getRawDACValue();
+        #else  // PPG
+            currentModelSample = ppgModel.getDACValue(modelDeltaTime);
+        #endif
+        
+        // Resetear contador de interpolación
+        interpolationCounter = 0;
+        sampleCounter++;  // Contador de muestras del modelo
+    }
+    
+    // ========== TIMER TICK @ 4 kHz (escribir DAC con interpolación) ==========
+    bool timerTick = false;
+    float value = 0.0f;
+    uint8_t dacValue = 128;
+    
+    if (now_us - lastTimerTick_us >= TIMER_TICK_US) {
+        lastTimerTick_us = now_us;
+        timerTick = true;
+        timerTickCounter++;
+        
+        // Interpolación lineal: sample = prev + (curr - prev) * t
+        float t = (float)interpolationCounter / (float)upsampleRatio;
+        int16_t interpolated = previousModelSample + 
+                               (int16_t)((currentModelSample - previousModelSample) * t);
+        
+        // Clamp a rango DAC
+        if (interpolated < 0) interpolated = 0;
+        if (interpolated > 255) interpolated = 255;
+        
+        dacValue = (uint8_t)interpolated;
+        dacWrite(DAC_SIGNAL_PIN, dacValue);
+        
+        // Avanzar contador de interpolación
+        interpolationCounter++;
+        if (interpolationCounter >= upsampleRatio) {
+            interpolationCounter = 0;
+        }
+        
+        // Obtener valor para tracking
+        #if AUTO_SIGNAL_TYPE == 0
+            value = ecgModel.getCurrentValueMV();
+        #elif AUTO_SIGNAL_TYPE == 1
+            value = emgModel.getRawSample();
+        #else
+            value = ppgModel.getLastACValue();
+        #endif
+        
+        // Track min/max
         if (value < minVal) minVal = value;
         if (value > maxVal) maxVal = value;
     }
     
-    // ========== ENVIO A SERIAL PLOTTER (con downsampling) ==========
+    // ========== ENVIO A SERIAL PLOTTER (con downsampling respecto a Fs_timer) ==========
     // Formato VS Code Serial Plotter: >var1:val,var2:val\r\n
-    // ECG: 800Hz -> 200Hz | EMG: 2000Hz -> 100Hz | PPG: 200Hz -> 200Hz
-    if (newSample) {
-        plotCounter++;
+    // Ratio = Fs_timer / Fds: ECG=20, EMG=40, PPG=40
+    if (timerTick) {
         
         #if AUTO_SIGNAL_TYPE == 0  // ECG @ 200 Hz efectivo
-        if (plotCounter % PLOT_DOWNSAMPLE_ECG == 0) {
+        if (timerTickCounter % PLOT_DOWNSAMPLE_ECG == 0) {
             ECGDisplayMetrics m = ecgModel.getDisplayMetrics();
             // Señal instantánea
             Serial.print(">ecg:");
@@ -405,7 +461,7 @@ void loop() {
         }
             
         #elif AUTO_SIGNAL_TYPE == 1  // EMG @ 100 Hz efectivo
-        if (plotCounter % PLOT_DOWNSAMPLE_EMG == 0) {
+        if (timerTickCounter % PLOT_DOWNSAMPLE_EMG == 0) {
             // EMG: raw bipolar ±5mV, env 0-4mV, rms 0-3.5mV
             Serial.print(">raw:");
             Serial.print(emgModel.getRawSample(), 2);  // mV bipolar
@@ -427,8 +483,8 @@ void loop() {
             Serial.println();
         }
             
-        #else  // PPG @ 200 Hz (sin downsampling)
-        if (plotCounter % PLOT_DOWNSAMPLE_PPG == 0) {
+        #else  // PPG @ 100 Hz efectivo (40:1 downsampling)
+        if (timerTickCounter % PLOT_DOWNSAMPLE_PPG == 0) {
             Serial.print(">ppg:");
             Serial.print(ppgModel.getDCBaseline() + ppgModel.getLastACValue(), 0);
             Serial.print(",ac:");

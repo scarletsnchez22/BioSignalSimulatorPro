@@ -90,7 +90,7 @@ enum class EMGCondition : uint8_t {
 //          Lima A, Bakker J. Intensive Care Med. 2005;31(10):1316-1326
 //          Jubran A. Crit Care. 2015;19:272
 // 
-// PI y SpO2 son valores dinámicos con variabilidad gaussiana natural.
+// PI es un valor dinámico con variabilidad gaussiana natural.
 // ============================================================================
 enum class PPGCondition : uint8_t {
     NORMAL = 0,                     // PI 1-5%, morfología estándar con muesca dicrótica

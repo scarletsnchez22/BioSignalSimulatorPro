@@ -67,8 +67,8 @@
     <text x="0" y="80" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• Superposición de gaussianas (sistólica + diastólica)</text>
     <text x="0" y="98" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• Muesca dicrótica configurable por condición</text>
     <text x="0" y="116" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• Índice de perfusión (PI) y SpO₂ dinámicos</text>
-    <text x="0" y="134" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• 6 condiciones: normal, arritmia, perfusión débil/fuerte,</text>
-    <text x="12" y="150" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">vasodilatación, vasoconstricción</text>
+    <text x="0" y="134" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">• 6 condiciones: normal, arritmia, perfusión débil,</text>
+    <text x="12" y="150" font-family="Comic Sans MS, cursive" font-size="13" fill="#222">perfusión fuerte, vasoconstricción, SpO₂ bajo</text>
     
     <!-- PPG Waveform -->
     <g transform="translate(480, 15)">
@@ -94,9 +94,8 @@
             stroke="#9b59b6" stroke-width="2.5" fill="none"/>
       
       <!-- Etiquetas de la onda -->
-      <text x="60" y="8" font-family="Comic Sans MS, cursive" font-size="9" fill="#555">Pico sistólico</text>
-      <text x="90" y="42" font-family="Comic Sans MS, cursive" font-size="9" fill="#555">Muesca</text>
-      <text x="95" y="70" font-family="Comic Sans MS, cursive" font-size="9" fill="#555">dicrótica</text>
+      <text x="55" y="5" font-family="Comic Sans MS, cursive" font-size="9" fill="#555">Sistólico</text>
+      <text x="100" y="68" font-family="Comic Sans MS, cursive" font-size="9" fill="#555">Dicrótico</text>
     </g>
   </g>
   

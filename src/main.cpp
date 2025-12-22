@@ -669,18 +669,38 @@ void handleStateChange(SystemState oldState, SystemState newState) {
 // ============================================================================
 void updateDisplay() {
     static unsigned long lastUpdate = 0;
-    static unsigned long lastWaveform = 0;
+    static uint32_t lastSampleCount = 0;
     
     unsigned long now = millis();
     
-    // Actualizar waveform a 100 Hz (enviar punto cada 10ms)
-    if (now - lastWaveform >= WAVEFORM_UPDATE_MS) {
-        if (signalEngine->getState() == SignalState::RUNNING) {
+    // =========================================================================
+    // WAVEFORM: Arquitectura unificada con signal_engine (contador de ticks)
+    // Downsampling respecto a Fs_timer (4kHz) usando NEXTION_DOWNSAMPLE_*
+    // ECG: 4000/200 = 20:1 → 200 Hz efectivo
+    // EMG: 4000/100 = 40:1 → 100 Hz efectivo
+    // PPG: 4000/100 = 40:1 → 100 Hz efectivo
+    // =========================================================================
+    if (signalEngine->getState() == SignalState::RUNNING) {
+        uint32_t currentSampleCount = signalEngine->getSignalData().sampleCount;
+        SignalType type = signalEngine->getCurrentType();
+        
+        // Determinar ratio de downsampling según tipo de señal
+        uint8_t downsampleRatio;
+        switch (type) {
+            case SignalType::ECG: downsampleRatio = NEXTION_DOWNSAMPLE_ECG; break;
+            case SignalType::EMG: downsampleRatio = NEXTION_DOWNSAMPLE_EMG; break;
+            case SignalType::PPG: downsampleRatio = NEXTION_DOWNSAMPLE_PPG; break;
+            default: downsampleRatio = 20; break;
+        }
+        
+        // Enviar punto solo cuando corresponde según el ratio
+        if (currentSampleCount != lastSampleCount && 
+            currentSampleCount % downsampleRatio == 0) {
+            
             uint8_t dacValue;
             
             // Para PPG usamos getWaveformValue() que escala solo la AC al rango 0-255
             // Para ECG/EMG usamos getLastDACValue() que ya tiene el escalado correcto
-            SignalType type = signalEngine->getCurrentType();
             if (type == SignalType::PPG) {
                 dacValue = signalEngine->getPPGModel().getWaveformValue();
             } else {
@@ -688,10 +708,7 @@ void updateDisplay() {
             }
             
             // Aplicar zoom visual (solo afecta display, no DAC)
-            // zoom 100% = normal, 200% = señal 2x más grande, 50% = señal más pequeña
-            int waveValue;
             float zoomFactor = 1.0f;
-            
             if (type == SignalType::ECG) {
                 zoomFactor = ecgSliderValues.zoom / 100.0f;
             } else if (type == SignalType::EMG) {
@@ -701,23 +718,15 @@ void updateDisplay() {
             }
             
             // Zoom visual: expandir/comprimir respecto al centro (127)
-            int centered = dacValue - 127;  // Centrar en 0
-            int zoomed = (int)(centered * zoomFactor) + 127;  // Aplicar zoom y recentrar
-            zoomed = constrain(zoomed, 0, 255);  // Clampear para evitar overflow
-            waveValue = map(zoomed, 0, 255, 10, NEXTION_WAVEFORM_HEIGHT - 10);
-            
-            // DEBUG: Mostrar primer punto
-            static bool firstPoint = true;
-            if (firstPoint) {
-                Serial.printf("[Waveform] DAC=%d, Wave=%d, Zoom=%.0f%%\n", 
-                              dacValue, waveValue, zoomFactor * 100);
-                firstPoint = false;
-            }
+            int centered = dacValue - 127;
+            int zoomed = (int)(centered * zoomFactor) + 127;
+            zoomed = constrain(zoomed, 0, 255);
+            int waveValue = map(zoomed, 0, 255, 10, NEXTION_WAVEFORM_HEIGHT - 10);
             
             // Enviar al waveform (ID=1, Canal=0)
             nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, WAVEFORM_CHANNEL, (uint8_t)waveValue);
         }
-        lastWaveform = now;
+        lastSampleCount = currentSampleCount;
     }
     
     // Actualizar métricas y valores en pantalla a 4 Hz
@@ -752,14 +761,10 @@ void updateDisplay() {
                 }
                 case SignalType::PPG: {
                     PPGModel& ppg = signalEngine->getPPGModel();
-                    int spo2 = 98; // SpO2 simulado basado en PI (simplificado)
-                    if (ppg.getPerfusionIndex() < 1.0f) spo2 = 90;
-                    else if (ppg.getPerfusionIndex() < 2.0f) spo2 = 95;
                     nextion->updatePPGValuesPage(
                         (int)ppg.getCurrentHeartRate(),          // BPM
                         (int)ppg.getCurrentRRInterval(),         // RR en ms
                         (int)(ppg.getPerfusionIndex() * 10),     // PI × 10 (5.2% → 52)
-                        spo2,                                    // SpO2 %
                         ppg.getBeatCount(),
                         ppg.getConditionName()
                     );
@@ -904,7 +909,6 @@ void loop() {
                 wsMetrics.hr = (int)ppg.getCurrentHeartRate();
                 wsMetrics.rr = (int)ppg.getCurrentRRInterval();
                 wsMetrics.pi = ppg.getPerfusionIndex();
-                wsMetrics.spo2 = 98;
                 break;
             }
             default:

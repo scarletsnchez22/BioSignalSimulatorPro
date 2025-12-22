@@ -711,14 +711,13 @@ void NextionDriver::updateEMGValuesPage(int rms_x100, int activeUnits, int freq_
 // ============================================================================
 // ACTUALIZAR PÁGINA VALORES PPG
 // ============================================================================
-void NextionDriver::updatePPGValuesPage(int hr, int rr_ms, int pi_x10, int spo2,
+void NextionDriver::updatePPGValuesPage(int hr, int rr_ms, int pi_x10,
                                          uint32_t beats, const char* condicion) {
     // Actualizar números en waveform_ppg (página 9)
     setNumber("n_hr", hr);                // ID 12: Frecuencia cardíaca (entero, vvs0=0)
     setNumber("n_rr", rr_ms);             // ID 13: Intervalo RR en ms (entero, vvs0=0)
     setNumber("n_pi", pi_x10);            // ID 14: Índice perfusión × 10 (5.2% → 52, vvs0=1)
-    setNumber("n_spo2", spo2);            // ID 15: SpO2 % (entero, vvs0=0)
-    setNumber("n_beats", (int)beats);     // ID 16: Contador de latidos
+    setNumber("n_beats", (int)beats);     // ID 15: Contador de latidos
     
     // Actualizar texto de condición
     setText("t_patol", condicion);        // ID 6: Nombre de condición

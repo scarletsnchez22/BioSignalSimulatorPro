@@ -217,7 +217,6 @@ String WiFiServer_BioSim::buildMetricsJson(const WSSignalMetrics& metrics) {
     m["exc"] = metrics.excitation;
     m["mus"] = metrics.activeUnits;
     m["pi"] = metrics.pi;
-    m["spo2"] = metrics.spo2;
     m["dc"] = metrics.dcLevel;
     
     String json;

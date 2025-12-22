@@ -187,7 +187,7 @@ public:
                               const char* condicion);
     
     // Actualizar valores en página valores_ppg
-    void updatePPGValuesPage(int hr, int rr_ms, int pi_x10, int spo2,
+    void updatePPGValuesPage(int hr, int rr_ms, int pi_x10,
                               uint32_t beats, const char* condicion);
     
     // Configurar página parametros_ecg con límites según patología

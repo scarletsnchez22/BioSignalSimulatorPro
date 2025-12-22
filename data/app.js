@@ -46,7 +46,7 @@ const state = {
     metrics: {
         hr: '--', rr: '--', qrs: '--', st: '--',
         rms: '--', exc: '--', mus: '--',
-        pi: '--', spo2: '--', dc: '--'
+        pi: '--', dc: '--'
     },
     
     // Estadísticas
@@ -257,7 +257,6 @@ function handleMetricsMessage(msg) {
         document.getElementById('metricMUs').textContent = m.mus !== undefined ? m.mus : '--';
     } else if (state.signalType === 'PPG') {
         document.getElementById('metricHRppg').textContent = m.hr !== undefined ? m.hr : '--';
-        document.getElementById('metricSpO2').textContent = m.spo2 !== undefined ? m.spo2 : '--';
         document.getElementById('metricPI').textContent = m.pi !== undefined ? m.pi.toFixed(1) : '--';
         document.getElementById('metricRRppg').textContent = m.rr !== undefined ? m.rr : '--';
     }

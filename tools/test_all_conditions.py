@@ -55,7 +55,6 @@ PPG_CONDITIONS = {
     2: ("WEAK_PERFUSION", "Perfusión Débil"),
     3: ("STRONG_PERFUSION", "Perfusión Fuerte"),
     4: ("VASOCONSTRICTION", "Vasoconstricción"),
-    5: ("LOW_SPO2", "SpO2 Bajo (Hipoxemia)"),
 }
 
 SIGNAL_TYPES = {
@@ -166,7 +165,7 @@ def run_single_test(port: str, baud: int, signal_type: str, condition: str,
     patterns = {
         'ECG': re.compile(r'>ecg:([-\d.]+),hr:([\d.]+),rr:([\d.]+),ramp:([\d.]+),st:([-\d.]+),qrs:([\d.]+),beats:(\d+)'),
         'EMG': re.compile(r'>emg:([-\d.]+),rms:([\d.]+),mus:(\d+),fr:([\d.]+),cont:([\d.]+)'),
-        'PPG': re.compile(r'>ppg:([-\d.]+),hr:([\d.]+),rr:([\d.]+),pi:([\d.]+),spo2:([\d.]+),beats:(\d+)'),
+        'PPG': re.compile(r'>ppg:([-\d.]+),hr:([\d.]+),rr:([\d.]+),pi:([\d.]+),beats:(\d+)'),
     }
     
     pattern = patterns[signal_type]
@@ -228,12 +227,11 @@ def run_single_test(port: str, baud: int, signal_type: str, condition: str,
                     'hr': float(match.group(2)),
                     'rr': float(match.group(3)),
                     'pi': float(match.group(4)),
-                    'spo2': float(match.group(5)),
-                    'beats': int(match.group(6))
+                    'beats': int(match.group(5))
                 }
                 results = validate_ppg_sample(
                     condition, data['hr'], data['rr'],
-                    data['pi'], data['spo2']
+                    data['pi']
                 )
             
             # Contar resultados
@@ -347,7 +345,7 @@ Para probar una condición específica:
   3. Ejecuta:
      python test_all_conditions.py --port COM4 --signal ecg --condition NORMAL
      python test_all_conditions.py --port COM4 --signal emg --condition STRONG_CONTRACTION
-     python test_all_conditions.py --port COM4 --signal ppg --condition LOW_SPO2
+     python test_all_conditions.py --port COM4 --signal ppg --condition VASOCONSTRICTION
 
 O usa el validador directamente:
   python signal_validator.py --port COM4 --signal ecg --condition NORMAL

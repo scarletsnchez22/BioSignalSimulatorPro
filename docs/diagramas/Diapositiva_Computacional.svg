@@ -14,61 +14,61 @@
   <rect x="45" y="115" width="410" height="25" fill="#555"/>
   <text x="100" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">Señal</text>
   <text x="180" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">fmax</text>
-  <text x="270" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">fs Nyquist</text>
-  <text x="370" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">fs Implementada</text>
+  <text x="270" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">fs Nyquist ×5</text>
+  <text x="370" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">fs Modelo</text>
   
   <rect x="45" y="140" width="410" height="22" fill="#e8e8e8"/>
   <text x="100" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">ECG</text>
-  <text x="180" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">150 Hz</text>
-  <text x="270" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">300 Hz</text>
+  <text x="180" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">50 Hz</text>
+  <text x="270" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">250 Hz</text>
   <text x="370" y="156" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">750 Hz ✓</text>
   
   <rect x="45" y="162" width="410" height="22" fill="white"/>
   <text x="100" y="178" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">EMG</text>
   <text x="180" y="178" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">500 Hz</text>
-  <text x="270" y="178" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">1000 Hz</text>
+  <text x="270" y="178" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">2500 Hz</text>
   <text x="370" y="178" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">2000 Hz ✓</text>
   
   <rect x="45" y="184" width="410" height="22" fill="#e8e8e8"/>
   <text x="100" y="200" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">PPG</text>
   <text x="180" y="200" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">10 Hz</text>
-  <text x="270" y="200" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">20 Hz</text>
+  <text x="270" y="200" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">50 Hz</text>
   <text x="370" y="200" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">100 Hz ✓</text>
   
-  <text x="250" y="235" text-anchor="middle" font-family="Comic Sans MS, cursive" font-size="12" fill="#7f8c8d">DAC unificado: 1 kHz para todas las señales</text>
+  <text x="250" y="235" text-anchor="middle" font-family="Comic Sans MS, cursive" font-size="12" fill="#7f8c8d">Timer maestro: 4 kHz para salida DAC</text>
   
   <!-- Sección 2: Downsampling Nextion -->
   <rect x="480" y="55" width="440" height="200" rx="8" fill="#f5f5f5" stroke="#999" stroke-width="2"/>
   <text x="700" y="80" text-anchor="middle" font-family="Comic Sans MS, cursive" font-size="18" font-weight="bold" fill="#333">Downsampling para Nextion</text>
   
-  <text x="495" y="105" font-family="Comic Sans MS, cursive" font-size="13" fill="#333">Tasa display: 100 Hz (límite percepción visual)</text>
+  <text x="495" y="105" font-family="Comic Sans MS, cursive" font-size="13" fill="#333">Downsampling respecto a Fs_timer (4 kHz)</text>
   
   <!-- Tabla downsampling -->
   <rect x="495" y="115" width="410" height="25" fill="#555"/>
   <text x="555" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">Señal</text>
-  <text x="645" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">fs modelo</text>
-  <text x="735" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">fs display</text>
-  <text x="840" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">Decimación</text>
+  <text x="645" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">Fs_timer</text>
+  <text x="735" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">Fds</text>
+  <text x="840" y="133" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="white">Ratio</text>
   
   <rect x="495" y="140" width="410" height="22" fill="#eee"/>
   <text x="555" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">ECG</text>
-  <text x="645" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">750 Hz</text>
-  <text x="735" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">100 Hz</text>
-  <text x="840" y="156" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">7.5:1</text>
+  <text x="645" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">4000 Hz</text>
+  <text x="735" y="156" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">200 Hz</text>
+  <text x="840" y="156" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">20:1</text>
   
   <rect x="495" y="162" width="410" height="22" fill="white"/>
   <text x="555" y="178" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">EMG</text>
-  <text x="645" y="178" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">2000 Hz</text>
+  <text x="645" y="178" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">4000 Hz</text>
   <text x="735" y="178" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">100 Hz</text>
-  <text x="840" y="178" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">20:1</text>
+  <text x="840" y="178" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">40:1</text>
   
   <rect x="495" y="184" width="410" height="22" fill="#eee"/>
   <text x="555" y="200" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">PPG</text>
-  <text x="645" y="200" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">100 Hz</text>
+  <text x="645" y="200" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">4000 Hz</text>
   <text x="735" y="200" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">100 Hz</text>
-  <text x="840" y="200" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">1:1</text>
+  <text x="840" y="200" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">40:1</text>
   
-  <text x="700" y="235" text-anchor="middle" font-family="Comic Sans MS, cursive" font-size="12" fill="#7f8c8d">Método: última muestra disponible (sample-and-hold)</text>
+  <text x="700" y="235" text-anchor="middle" font-family="Comic Sans MS, cursive" font-size="12" fill="#7f8c8d">Ratio = Fs_timer / Fds</text>
   
   <!-- Sección 3: Escalado DAC y Nextion -->
   <rect x="30" y="270" width="885" height="120" rx="8" fill="#f5f5f5" stroke="#999" stroke-width="2"/>

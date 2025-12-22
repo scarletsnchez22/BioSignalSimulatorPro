@@ -24,6 +24,12 @@ DRAM_ATTR static volatile uint32_t isrMaxTime = 0;
 DRAM_ATTR static volatile uint32_t bufferUnderruns = 0;
 DRAM_ATTR static volatile uint8_t lastDACValue = 128;
 
+// Variables para timing real e interpolación
+static uint32_t lastModelTick_us = 0;          // Último tick del modelo
+static uint8_t currentModelSample = 128;       // Muestra actual del modelo
+static uint8_t previousModelSample = 128;      // Muestra anterior (para interpolación)
+static uint16_t interpolationCounter = 0;      // Contador para interpolación
+
 // ============================================================================
 // CONSTRUCTOR
 // ============================================================================
@@ -82,11 +88,15 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
             stopTimer();
         }
         
-        // Reset buffers
+        // Reset buffers y variables de timing
         bufferReadIndex = 0;
         bufferWriteIndex = 0;
         isrCount = 0;
         bufferUnderruns = 0;
+        lastModelTick_us = micros();
+        currentModelSample = DAC_CENTER_VALUE;
+        previousModelSample = DAC_CENTER_VALUE;
+        interpolationCounter = 0;
         
         // Configurar tipo de señal
         currentSignal.type = type;
@@ -169,10 +179,11 @@ bool SignalEngine::resumeSignal() {
 // TIMER
 // ============================================================================
 void SignalEngine::setupTimer() {
-    // Timer a 1 kHz
+    // Timer a Fs_timer (4 kHz)
+    // Criterio: Fs_timer >= Fs_modelo_máximo (EMG=2000) con margen 2×
     signalTimer = timerBegin(0, 80, true);  // 80 prescaler = 1 MHz
     timerAttachInterrupt(signalTimer, &timerISR, true);
-    timerAlarmWrite(signalTimer, 1000, true);  // 1000 us = 1 kHz
+    timerAlarmWrite(signalTimer, 1000000 / FS_TIMER_HZ, true);  // 250 us = 4 kHz
     timerAlarmEnable(signalTimer);
 }
 
@@ -209,51 +220,116 @@ void IRAM_ATTR SignalEngine::timerISR() {
 }
 
 // ============================================================================
-// TAREA DE GENERACIÓN
+// TAREA DE GENERACIÓN CON TIMING REAL
 // ============================================================================
+// Arquitectura correcta:
+// 1. Cada modelo genera a su propia Fs (ECG@750, EMG@2000, PPG@100 Hz)
+// 2. Las muestras se interpolan linealmente para llenar buffer a Fs_timer
+// 3. Timer ISR consume buffer a Fs_timer (4 kHz)
+// 4. Downsampling para display = Fs_timer / Fds
 void SignalEngine::generationTask(void* parameter) {
     SignalEngine* engine = (SignalEngine*)parameter;
-    const float deltaTime = 1.0f / SAMPLE_RATE_HZ;
+    
+    // Inicializar timing
+    lastModelTick_us = micros();
+    interpolationCounter = 0;
     
     while (true) {
         if (engine->currentSignal.state == SignalState::RUNNING) {
-            // Calcular espacio disponible en buffer
+            uint32_t now_us = micros();
+            
+            // Obtener parámetros según tipo de señal
+            uint32_t modelTickInterval_us;
+            uint8_t upsampleRatio;
+            float modelDeltaTime;
+            
+            switch (engine->currentSignal.type) {
+                case SignalType::ECG:
+                    modelTickInterval_us = MODEL_TICK_US_ECG;
+                    upsampleRatio = UPSAMPLE_RATIO_ECG;
+                    modelDeltaTime = MODEL_DT_ECG;
+                    break;
+                case SignalType::EMG:
+                    modelTickInterval_us = MODEL_TICK_US_EMG;
+                    upsampleRatio = UPSAMPLE_RATIO_EMG;
+                    modelDeltaTime = MODEL_DT_EMG;
+                    break;
+                case SignalType::PPG:
+                    modelTickInterval_us = MODEL_TICK_US_PPG;
+                    upsampleRatio = UPSAMPLE_RATIO_PPG;
+                    modelDeltaTime = MODEL_DT_PPG;
+                    break;
+                default:
+                    modelTickInterval_us = 1000;
+                    upsampleRatio = 1;
+                    modelDeltaTime = 0.001f;
+            }
+            
+            // ¿Es hora de generar nueva muestra del modelo?
+            if (now_us - lastModelTick_us >= modelTickInterval_us) {
+                lastModelTick_us = now_us;
+                
+                // Guardar muestra anterior para interpolación
+                previousModelSample = currentModelSample;
+                
+                // Generar nueva muestra del modelo con su deltaTime correcto
+                switch (engine->currentSignal.type) {
+                    case SignalType::ECG:
+                        currentModelSample = engine->ecgModel.getDACValue(modelDeltaTime);
+                        break;
+                    case SignalType::EMG:
+                        currentModelSample = engine->emgModel.getDACValue(modelDeltaTime);
+                        break;
+                    case SignalType::PPG:
+                        currentModelSample = engine->ppgModel.getDACValue(modelDeltaTime);
+                        break;
+                    default:
+                        currentModelSample = DAC_CENTER_VALUE;
+                }
+                
+                // Resetear contador de interpolación
+                interpolationCounter = 0;
+            }
+            
+            // Llenar buffer con muestras interpoladas a Fs_timer
             uint16_t readIdx = bufferReadIndex;
             uint16_t writeIdx = bufferWriteIndex;
             uint16_t available = (readIdx - writeIdx - 1 + SIGNAL_BUFFER_SIZE) % SIGNAL_BUFFER_SIZE;
             
-            // Generar muestras si hay espacio
             while (available > 0) {
-                uint8_t sample = engine->generateSample();
-                signalBuffer[writeIdx] = sample;
+                // Interpolación lineal: sample = prev + (curr - prev) * t
+                float t = (float)interpolationCounter / (float)upsampleRatio;
+                int16_t interpolated = previousModelSample + 
+                                       (int16_t)((currentModelSample - previousModelSample) * t);
+                
+                // Clamp a rango DAC
+                if (interpolated < 0) interpolated = 0;
+                if (interpolated > 255) interpolated = 255;
+                
+                signalBuffer[writeIdx] = (uint8_t)interpolated;
                 writeIdx = (writeIdx + 1) % SIGNAL_BUFFER_SIZE;
                 bufferWriteIndex = writeIdx;
                 available--;
                 engine->currentSignal.sampleCount++;
+                
+                // Avanzar contador de interpolación
+                interpolationCounter++;
+                if (interpolationCounter >= upsampleRatio) {
+                    interpolationCounter = 0;
+                }
             }
         }
         
-        // Pequeño delay para no saturar
+        // Pequeño delay para no saturar CPU
         vTaskDelay(1);
     }
 }
 
 // ============================================================================
-// GENERACIÓN DE MUESTRA
+// GENERACIÓN DE MUESTRA (legacy, para compatibilidad)
 // ============================================================================
 uint8_t SignalEngine::generateSample() {
-    const float deltaTime = 1.0f / SAMPLE_RATE_HZ;
-    
-    switch (currentSignal.type) {
-        case SignalType::ECG:
-            return ecgModel.getDACValue(deltaTime);
-        case SignalType::EMG:
-            return emgModel.getDACValue(deltaTime);
-        case SignalType::PPG:
-            return ppgModel.getDACValue(deltaTime);
-        default:
-            return DAC_CENTER_VALUE;
-    }
+    return currentModelSample;
 }
 
 // ============================================================================

@@ -1,4 +1,4 @@
-# Metodología de Generación de Señales Fisiológicas Sintéticas
+# Metodología de Arquitectura Computacional del Sistema
 
 **BioSimulator Pro v1.0.0**  
 **Fecha:** 18 de Diciembre de 2025  
@@ -9,784 +9,803 @@
 ## Índice
 
 1. [Introducción](#1-introducción)
-2. [Principios de Modelado](#2-principios-de-modelado)
-3. [Modelo ECG (McSharry ECGSYN)](#3-modelo-ecg-mcsharry-ecgsyn)
-4. [Modelo EMG (Reclutamiento de Unidades Motoras)](#4-modelo-emg-reclutamiento-de-unidades-motoras)
-5. [Modelo PPG (Pulso Gaussiano)](#5-modelo-ppg-pulso-gaussiano)
-6. [Validación de Señales](#6-validación-de-señales)
-7. [Resultados y Métricas](#7-resultados-y-métricas)
-8. [Referencias](#8-referencias)
-
-> **Nota:** La arquitectura computacional del sistema (ESP32, FreeRTOS, comunicación Nextion, WiFi/WebSocket) se documenta en el archivo separado `METODOLOGIA_ARQUITECTURA_COMPUTACIONAL.md`.
+2. [Arquitectura de Hardware](#2-arquitectura-de-hardware)
+3. [Arquitectura de Software Embebido](#3-arquitectura-de-software-embebido)
+4. [Motor de Generación de Señales](#4-motor-de-generación-de-señales)
+5. [Subsistema de Visualización Nextion](#5-subsistema-de-visualización-nextion)
+6. [Subsistema de Comunicación WiFi](#6-subsistema-de-comunicación-wifi)
+7. [Flujo de Datos Integrado](#7-flujo-de-datos-integrado)
+8. [Cálculos Computacionales Representativos](#8-cálculos-computacionales-representativos)
+9. [Referencias](#9-referencias)
 
 ---
 
 ## 1. Introducción
 
-Este documento presenta la metodología de generación de señales fisiológicas sintéticas implementada en el BioSimulator Pro. El sistema genera tres tipos de señales biomédicas: electrocardiograma (ECG), electromiograma de superficie (sEMG) y fotopletismograma (PPG), cada una basada en modelos matemáticos validados en la literatura científica.
+Este documento describe la arquitectura computacional del sistema BioSimulator Pro, abarcando desde la distribución de tareas en el microcontrolador ESP32 hasta la comunicación con interfaces externas (pantalla Nextion táctil y aplicación web vía WiFi). El objetivo fue diseñar un sistema capaz de generar señales biológicas sintéticas en tiempo real con determinismo temporal, mientras se mantenía una interfaz de usuario responsiva y se habilitaba el streaming de datos hacia dispositivos externos.
 
-El objetivo fue producir señales con morfología y métricas clínicamente representativas, permitiendo simular tanto condiciones normales como diversas patologías. Cada modelo se diseñó para operar en tiempo real sobre un microcontrolador ESP32, entregando muestras discretas a demanda mediante una interfaz uniforme `getDACValue(deltaTime)`.
+La arquitectura se fundamentó en tres principios:
 
-**Señales implementadas:**
+1. **Separación de dominios temporales**: La generación de señales operó en tiempo real estricto (ISR + Core 1), mientras que la interfaz de usuario y comunicaciones operaron con requisitos de tiempo más relajados (Core 0).
 
-| Señal | Condiciones | Modelo Base | Referencia Principal |
-|-------|-------------|-------------|---------------------|
-| ECG | 8 condiciones cardíacas | McSharry ECGSYN | McSharry et al. 2003 [1] |
-| EMG | 6 condiciones musculares | Reclutamiento MU | Fuglevand et al. 1993 [2] |
-| PPG | 6 condiciones vasculares | Pulso gaussiano | Allen 2007 [6] |
+2. **Buffering para desacoplamiento**: Un buffer circular en RAM rápida permitió que la generación de muestras y la salida DAC operaran de forma asíncrona, absorbiendo variaciones temporales.
+
+3. **Downsampling selectivo**: Las interfaces de visualización recibieron datos a tasas reducidas respecto a la generación interna, optimizando el ancho de banda sin comprometer la fidelidad perceptual.
 
 ---
 
-## 2. Principios de Modelado
+## 2. Arquitectura de Hardware
 
-### 2.1 Criterio de Muestreo
+### 2.1 Plataforma de Procesamiento
 
-Se adoptó el criterio de Nyquist con factor de seguridad 5× para garantizar la preservación de la morfología de las señales:
+Se seleccionó el **ESP32-WROOM-32** como unidad de procesamiento central por las siguientes características:
 
-$$f_s \geq 5 \times f_{max}$$
+| Característica | Valor | Justificación |
+|----------------|-------|---------------|
+| CPU | Dual-core Xtensa LX6 @ 240 MHz | Procesamiento paralelo: UI en Core 0, señales en Core 1 |
+| SRAM | 520 KB | Buffers de señal (2048 × 3 bytes) y estados de modelos |
+| Flash | 4 MB | Firmware, tablas precalculadas y configuración |
+| DAC | 2 canales × 8-bit | Salida analógica 0–3.3 V en GPIO25 |
+| UART | 3 puertos | UART0 (debug), UART2 (Nextion) |
+| WiFi | 802.11 b/g/n | Access Point para streaming WebSocket |
+| FreeRTOS | Integrado | Gestión de tareas con prioridades |
 
-**Tabla 2.1: Frecuencias de muestreo por señal**
+### 2.2 Periféricos del Sistema
 
-| Señal | $f_{max}$ fisiológica | $f_s$ implementada | Justificación |
-|-------|----------------------|-------------------|---------------|
-| ECG | 150 Hz (QRS) | 750 Hz | Preservación complejo QRS |
-| EMG | 400 Hz (MUAP) | 2000 Hz | Captura potenciales de acción |
-| PPG | 20 Hz (pulso) | 100 Hz | Morfología de onda de pulso |
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PERIFÉRICOS DEL SISTEMA                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────┐   │
+│  │   ESP32-WROOM   │     │  Nextion 7"     │     │   Cliente WiFi      │   │
+│  │   (MCU Central) │     │  NX8048T070     │     │   (Navegador Web)   │   │
+│  └────────┬────────┘     └────────┬────────┘     └──────────┬──────────┘   │
+│           │                       │                         │              │
+│           │ GPIO25 (DAC)          │ UART2                   │ WiFi AP      │
+│           │ 0-3.3V, 8-bit         │ 115200 baud             │ WebSocket    │
+│           ▼                       ▼                         ▼              │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────┐   │
+│  │  TL072 Buffer   │     │  Waveform       │     │   App Web           │   │
+│  │  + Conector BNC │     │  700×380 px     │     │   (React/HTML5)     │   │
+│  │  Salida 0-3.3V  │     │  Táctil         │     │   Tiempo Real       │   │
+│  └─────────────────┘     └─────────────────┘     └─────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-### 2.2 Principio de Fidelidad Fisiológica
+---
 
-Cada modelo se basó en literatura científica validada, priorizando:
+## 3. Arquitectura de Software Embebido
 
-1. **Morfología correcta**: Forma de onda característica de cada señal
-2. **Rangos clínicos**: Amplitudes y tiempos dentro de valores fisiológicos
-3. **Variabilidad natural**: Incorporación de variabilidad latido-a-latido (HRV, PI)
-4. **Condiciones patológicas**: Modificaciones morfológicas específicas por patología
+### 3.1 Diagrama de Arquitectura Completa
 
-### 2.3 Interfaz Uniforme de Generación
+El siguiente diagrama muestra la arquitectura computacional completa del sistema, incluyendo la distribución de tareas entre núcleos, el flujo de datos hacia el DAC, la pantalla Nextion y los clientes WiFi:
 
-Todos los modelos implementaron una interfaz común para integración con el motor de señales:
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                           BioSimulator Pro v1.0.0 - ARQUITECTURA COMPLETA                    │
+│                              ESP32 Dual-Core + WiFi AP + Nextion                             │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                             │
+│  ┌─────────────────────────────────────┐    ┌─────────────────────────────────────────────┐ │
+│  │           CORE 0 (PRO)              │    │              CORE 1 (APP)                   │ │
+│  │     Interfaz y Comunicación         │    │        Generación Tiempo Real              │ │
+│  │         Prioridad: 1-2              │    │            Prioridad: 5                    │ │
+│  ├─────────────────────────────────────┤    ├─────────────────────────────────────────────┤ │
+│  │                                     │    │                                             │ │
+│  │  ┌───────────────────────────────┐  │    │  ┌─────────────────────────────────────┐    │ │
+│  │  │   loop() - Main Task          │  │    │  │   generationTask (FreeRTOS)         │    │ │
+│  │  │   Prioridad: 1                │  │    │  │   Prioridad: 5 (máxima)             │    │ │
+│  │  │                               │  │    │  │   Stack: 4096 bytes                 │    │ │
+│  │  │   Cada 10 ms:                 │  │    │  │   Bucle continuo:                   │    │ │
+│  │  │   • nextion.process()         │  │    │  │   • Verificar estado RUNNING        │    │ │
+│  │  │   • Parsear eventos táctiles  │  │    │  │   • Calcular espacio en buffer      │    │ │
+│  │  │   • stateMachine.update()     │  │    │  │   • Generar muestras + interpolar   │    │ │
+│  │  │                               │  │    │  │   • Escribir en buffer circular     │    │ │
+│  │  │   Waveform (contador ticks):  │  │    │  │   • vTaskDelay(1) yield             │    │ │
+│  │  │   • sampleCount % ratio == 0  │  │    │  └─────────────────────────────────────┘    │ │
+│  │  │   • addWaveformPoint()        │  │    │                    │                        │ │
+│  │  │                               │  │    │                    ▼                        │ │
+│  │  │   Cada METRICS_UPDATE_MS:     │  │    │  ┌─────────────────────────────────────┐    │ │
+│  │  │   • updateMetrics()           │  │    │  │   Modelos de Señal                  │    │ │
+│  │  └───────────────────────────────┘  │    │  │                                     │    │ │
+│  │              │                      │    │  │   ECGModel   EMGModel   PPGModel    │    │ │
+│  │              ▼                      │    │  │   ┌──────┐   ┌──────┐   ┌──────┐    │    │ │
+│  │  ┌───────────────────────────────┐  │    │  │   │RK4   │   │MU    │   │Gauss │    │    │ │
+│  │  │   WiFiServer_BioSim           │  │    │  │   │McSharry│ │Fugle-│   │Allen │    │    │ │
+│  │  │   (WiFi AP + WebSocket)       │  │    │  │   │      │   │vand  │   │      │    │    │ │
+│  │  │                               │  │    │  │   └──────┘   └──────┘   └──────┘    │    │ │
+│  │  │   AP: BioSimulator_Pro        │  │    │  └─────────────────────────────────────┘    │ │
+│  │  │   Pass: biosignal123          │  │    │                    │                        │ │
+│  │  │   IP: 192.168.4.1             │  │    │                    ▼                        │ │
+│  │  │   Puerto WS: 81               │  │    │  ┌─────────────────────────────────────┐    │ │
+│  │  │                               │  │    │  │   Buffer Circular (DRAM_ATTR)       │    │ │
+│  │  │   Cada WS_SEND_INTERVAL_MS:   │  │    │  │   Tamaño: 2048 muestras             │    │ │
+│  │  │   • sendSignalData() (100 Hz) │  │    │  │   Tipo: uint8_t (0-255)             │    │ │
+│  │  └───────────────────────────────┘  │    │  │                                     │    │ │
+│  │                                     │    │  │   writeIndex ──► [████████░░░░]     │    │ │
+│  │                                     │    │  │                   readIndex ──┘     │    │ │
+│  │                                     │    │  │   Acceso ISR-safe (volátil)         │    │ │
+│  │                                     │    │  └─────────────────────────────────────┘    │ │
+│  └─────────────────────────────────────┘    │                    │                        │ │
+│                                             │                    ▼                        │ │
+│                                             │  ┌─────────────────────────────────────┐    │ │
+│                                             │  │   Timer ISR (hw_timer_t)            │    │ │
+│                                             │  │   Período: 0.25 ms (4 kHz)          │    │ │
+│                                             │  │   IRAM_ATTR (ejecución rápida)      │    │ │
+│                                             │  │                                     │    │ │
+│                                             │  │   timerISR():                       │    │ │
+│                                             │  │   • Leer buffer[readIndex]          │    │ │
+│                                             │  │   • dacWrite(GPIO25, value)         │    │ │
+│                                             │  │   • readIndex = (readIndex+1) % N   │    │ │
+│                                             │  │   • Detectar underruns              │    │ │
+│                                             │  └─────────────────────────────────────┘    │ │
+│                                             └─────────────────────────────────────────────┘ │
+│                                                                                             │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                    SALIDAS DEL SISTEMA                                      │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                             │
+│  ┌───────────────────────┐   ┌───────────────────────┐   ┌─────────────────────────────┐   │
+│  │   DAC (GPIO25)        │   │   NEXTION UART2       │   │   WiFi WebSocket            │   │
+│  │   Salida Analógica    │   │   Display Táctil      │   │   Streaming Remoto          │   │
+│  ├───────────────────────┤   ├───────────────────────┤   ├─────────────────────────────┤   │
+│  │                       │   │                       │   │                             │   │
+│  │  Actualización: 4 kHz │   │  Waveform: 100-200 Hz │   │  Señal: 100 Hz (10 ms)      │   │
+│  │  Resolución: 8-bit    │   │  Métricas: 4 Hz       │   │  Métricas: 4 Hz (250 ms)    │   │
+│  │  Rango: 0-3.3 V       │   │  Baudios: 115200      │   │  Formato: JSON              │   │
+│  │  Jitter: < ±50 µs     │   │  Área: 700×380 px     │   │  Max clientes: 4            │   │
+│  │                       │   │                       │   │                             │   │
+│  │  Función:             │   │  Funciones:           │   │  Funciones:                 │   │
+│  │  dacWrite(pin, val)   │   │  addWaveformPoint()   │   │  sendSignalData()           │   │
+│  │                       │   │  updateMetrics()      │   │  sendMetrics()              │   │
+│  │                       │   │  goToPage()           │   │  broadcastState()           │   │
+│  └───────────────────────┘   └───────────────────────┘   └─────────────────────────────┘   │
+│           │                           │                             │                      │
+│           ▼                           ▼                             ▼                      │
+│  ┌───────────────────────┐   ┌───────────────────────┐   ┌─────────────────────────────┐   │
+│  │   Conector BNC        │   │   Pantalla 7"         │   │   Navegador Web             │   │
+│  │   → Osciloscopio      │   │   800×480 px          │   │   http://192.168.4.1        │   │
+│  │   → Equipo médico     │   │   Táctil capacitivo   │   │   Waveform Canvas           │   │
+│  │   → ADC externo       │   │   Controles UI        │   │   Métricas tiempo real      │   │
+│  └───────────────────────┘   └───────────────────────┘   └─────────────────────────────┘   │
+│                                                                                             │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 Distribución de Tareas por Núcleo
+
+La distribución de tareas entre los dos núcleos del ESP32 se diseñó para aislar completamente las operaciones de tiempo real de las operaciones de interfaz:
+
+**Tabla 3.1: Asignación de tareas por núcleo**
+
+| Núcleo | Tarea | Función Principal | Período | Prioridad | Stack |
+|--------|-------|-------------------|---------|-----------|-------|
+| Core 0 | loop() | Nextion, UI, WiFi | Continuo | 1 | Default |
+| Core 0 | WiFi | AP + WebSocket server | Asíncrono | 1 | 4096 |
+| Core 1 | generationTask | Generación de muestras | 1 ms | 5 | 4096 |
+| Core 1 | Timer ISR | Salida DAC | 1 ms (1 kHz) | Máxima | ISR |
+
+**Tabla 3.2: Constantes de configuración (config.h)**
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `CORE_SIGNAL_GENERATION` | 1 | Núcleo para generación |
+| `CORE_UI_COMMUNICATION` | 0 | Núcleo para UI/WiFi |
+| `TASK_PRIORITY_SIGNAL` | 5 | Prioridad máxima de tarea |
+| `STACK_SIZE_SIGNAL` | 4096 | Stack de tarea de señal |
+| `SAMPLE_RATE_HZ` | 1000 | Timer maestro DAC (1 kHz) |
+| `SIGNAL_BUFFER_SIZE` | 2048 | Tamaño buffer circular |
+
+### 3.3 Recursos Compartidos y Sincronización
+
+Los recursos compartidos entre tareas se protegieron mediante semáforos FreeRTOS:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    RECURSOS COMPARTIDOS                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────┐ │
+│  │  StateMachine    │  │  ParamController │  │  SignalEngine  │ │
+│  │                  │  │                  │  │                │ │
+│  │  Estados:        │  │  Parámetros:     │  │  Singleton     │ │
+│  │  • INIT          │  │  • Tipo A (inm)  │  │  getInstance() │ │
+│  │  • PORTADA       │  │  • Tipo B (diff) │  │                │ │
+│  │  • MENU          │  │                  │  │  Mutex:        │ │
+│  │  • SELECT_COND   │  │  Validación:     │  │  signalMutex   │ │
+│  │  • SIMULATING    │  │  • Rangos        │  │                │ │
+│  │  • PAUSED        │  │  • Límites       │  │                │ │
+│  └──────────────────┘  └──────────────────┘  └────────────────┘ │
+│                                                                 │
+│  Sincronización:                                                │
+│  • Buffer circular: índices volátiles (ISR-safe)                │
+│  • Parámetros: aplicación diferida en fin de ciclo              │
+│  • Estado: transiciones atómicas con mutex                      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. Motor de Generación de Señales
+
+### 4.1 Arquitectura del SignalEngine
+
+El `SignalEngine` se implementó como un singleton que coordina la generación de muestras y la salida DAC:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      SignalEngine (Singleton)                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Entrada:                         Salida:                       │
+│  ┌─────────────────┐              ┌─────────────────┐           │
+│  │ startSignal()   │              │ DAC GPIO25      │           │
+│  │ stopSignal()    │              │ 0-255 (8-bit)   │           │
+│  │ setParameters() │              │ 4 kHz update    │           │
+│  └────────┬────────┘              └────────▲────────┘           │
+│           │                                │                    │
+│           ▼                                │                    │
+│  ┌─────────────────────────────────────────┴──────────────────┐ │
+│  │                    generationTask()                         │ │
+│  │                                                             │ │
+│  │   while (true) {                                            │ │
+│  │       if (state == RUNNING) {                               │ │
+│  │           available = calcBufferSpace();                    │ │
+│  │           while (available > 0) {                           │ │
+│  │               sample = generateSample();  // Modelo activo  │ │
+│  │               buffer[writeIdx] = sample;                    │ │
+│  │               writeIdx = (writeIdx + 1) % BUFFER_SIZE;      │ │
+│  │               available--;                                  │ │
+│  │           }                                                 │ │
+│  │       }                                                     │ │
+│  │       vTaskDelay(1);  // Yield a otras tareas               │ │
+│  │   }                                                         │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │              Buffer Circular (DRAM_ATTR)                    │ │
+│  │              uint8_t signalBuffer[2048]                     │ │
+│  │                                                             │ │
+│  │   [0][1][2][3]...[writeIdx]...[readIdx]...[2047]           │ │
+│  │                      ▲              │                       │ │
+│  │                      │              ▼                       │ │
+│  │               generationTask    timerISR                    │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │                      timerISR() @ 4 kHz                     │ │
+│  │                                                             │ │
+│  │   void IRAM_ATTR timerISR() {                               │ │
+│  │       if (readIdx != writeIdx) {                            │ │
+│  │           dacWrite(GPIO25, buffer[readIdx]);                │ │
+│  │           readIdx = (readIdx + 1) % BUFFER_SIZE;            │ │
+│  │       } else {                                              │ │
+│  │           bufferUnderruns++;  // Estadística                │ │
+│  │       }                                                     │ │
+│  │   }                                                         │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 Timer de Hardware y ISR
+
+El timer de hardware se configuró para generar interrupciones a 4 kHz (Fs_timer):
 
 ```cpp
-// Interfaz común de los modelos
-float generateSample(float deltaTime);  // Genera muestra en mV
-uint8_t getDACValue(float deltaTime);   // Genera muestra escalada a 0-255
-uint8_t getWaveformValue();             // Valor para visualización Nextion
+// Configuración del timer (signal_engine.cpp)
+void SignalEngine::setupTimer() {
+    // Timer a Fs_timer (4 kHz)
+    // Criterio: Fs_timer >= Fs_modelo_máximo (EMG=2000) con margen 2×
+    signalTimer = timerBegin(0, 80, true);  // Timer 0, prescaler 80 (1 µs)
+    timerAttachInterrupt(signalTimer, &timerISR, true);
+    timerAlarmWrite(signalTimer, 250, true);  // 250 µs = 4 kHz
+    timerAlarmEnable(signalTimer);
+}
 ```
+
+**Características del ISR:**
+- Atributo `IRAM_ATTR`: código en RAM para ejecución rápida
+- Tiempo de ejecución típico: < 5 µs
+- Detección de buffer underruns para diagnóstico
+- Sin operaciones bloqueantes ni asignación dinámica
+
+### 4.3 Gestión del Buffer Circular
+
+El buffer circular de 2048 muestras proporcionó aproximadamente 0.5 segundos de autonomía a 4 kHz, suficiente para absorber variaciones temporales de la tarea de generación:
+
+**Cálculo de autonomía del buffer:**
+$$T_{buffer} = \frac{N_{muestras}}{f_s} = \frac{2048}{4000\,Hz} = 0.512\,s$$
+
+**Nivel de llenado óptimo:**
+- Mínimo: 25% (512 muestras) para evitar underruns
+- Máximo: 75% (1536 muestras) para permitir escritura
+- Target: 50% (1024 muestras) en operación normal
 
 ---
 
-## 3. Modelo ECG (McSharry ECGSYN)
+## 5. Subsistema de Visualización Nextion
 
-El modelo ECG constituye el corazón del simulador de señales cardíacas. Se basó en el trabajo seminal de McSharry et al. (2003), que propone un sistema dinámico capaz de generar señales electrocardiográficas sintéticas con morfología PQRST realista y variabilidad fisiológica controlada.
+### 5.1 Comunicación Serial con Nextion
 
-### 3.1 Fundamento Teórico
+La pantalla Nextion NX8048T070 se comunicó con el ESP32 mediante UART2:
 
-#### 3.1.1 Modelo Matemático ECGSYN
+| Parámetro | Valor |
+|-----------|-------|
+| Baudios | 115200 |
+| Bits de datos | 8 |
+| Paridad | Ninguna |
+| Bits de parada | 1 |
+| TX (ESP32) | GPIO17 |
+| RX (ESP32) | GPIO16 |
+| Terminador comando | 0xFF 0xFF 0xFF |
 
-El modelo describe la trayectoria de un punto $(x, y, z)$ en el espacio de estados, donde $z(t)$ representa la amplitud del ECG. Las ecuaciones diferenciales son:
+### 5.2 Tasas de Actualización
 
-$$\frac{dx}{dt} = \alpha x - \omega y$$
+Se definieron dos tasas de actualización independientes para optimizar el ancho de banda serial:
 
-$$\frac{dy}{dt} = \alpha y + \omega x$$
+**Tabla 5.1: Tasas de actualización Nextion**
 
-$$\frac{dz}{dt} = -\sum_{i \in \{P,Q,R,S,T\}} a_i \Delta\theta_i \exp\left(-\frac{\Delta\theta_i^2}{2b_i^2}\right) - (z - z_0)$$
+| Componente | Tasa | Período | Justificación |
+|------------|------|---------|---------------|
+| Waveform | 100 Hz | 10 ms | Fluidez visual, límite percepción |
+| Métricas | 4 Hz | 250 ms | Legibilidad de números |
+| Escalas | 1 Hz | 1000 ms | Cambios infrecuentes |
 
-Donde:
-- $\omega = 2\pi / RR$ es la velocidad angular (función del intervalo RR)
-- $\alpha = 1 - \sqrt{x^2 + y^2}$ es el término de atracción al círculo unitario
-- $\theta = \arctan2(y, x)$ es el ángulo actual en el ciclo cardíaco
-- $\Delta\theta_i = (\theta - \theta_i) \mod 2\pi$ es la diferencia angular respecto al pico $i$
-- $a_i, b_i, \theta_i$ son amplitud, ancho y posición angular de cada onda PQRST
+### 5.3 Downsampling para Waveform
 
-**Tabla 5.1: Parámetros PQRST base (McSharry 2003)**
-
-| Onda | $\theta_i$ (rad) | $a_i$ | $b_i$ |
-|------|------------------|-------|-------|
-| P | -1.22 (-70°) | 0.25 | 0.25 |
-| Q | -0.26 (-15°) | -0.05 | 0.10 |
-| R | 0.00 (0°) | 1.00 | 0.10 |
-| S | 0.26 (15°) | -0.10 | 0.10 |
-| T | 1.75 (100°) | 0.35 | 0.40 |
-
-*Fuente: McSharry PE et al. IEEE Trans Biomed Eng. 2003 [1]*
-
-### 3.2 Justificación del Método
-
-Se seleccionó el modelo ECGSYN por las siguientes razones:
-
-1. **Validación científica**: Modelo citado más de 2000 veces en literatura biomédica
-2. **Flexibilidad paramétrica**: Permite modificar HR, morfología y agregar patologías
-3. **Eficiencia computacional**: Integración RK4 con bajo costo computacional
-4. **Variabilidad fisiológica**: Incorporación nativa de HRV mediante proceso RR
-
-#### 3.2.1 Alternativas Descartadas
-
-| Método | Razón de descarte |
-|--------|-------------------|
-| Bases de datos reales | Limitación de condiciones, problemas éticos |
-| Interpolación tabular | Pobre variabilidad, morfología rígida |
-| Modelos de Markov | Complejidad excesiva, difícil parametrización |
-| Redes neuronales | Requiere entrenamiento, no determinista |
-
-### 3.3 Diagrama de Flujo - Generación ECG
+El downsampling se calcula **respecto a Fs_timer (4 kHz)**, no respecto al modelo:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    INICIO generateSample()                       │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  ¿Condición = VENTRICULAR_FIBRILLATION?                         │
-└─────────────────────────────────────────────────────────────────┘
-          │ SÍ                              │ NO
-          ▼                                 ▼
-┌──────────────────┐              ┌──────────────────────────────┐
-│ generateVFibSample()           │  Calcular ω = 2π/currentRR    │
-│ (modelo espectral)             │                                │
-└──────────────────┘              └──────────────────────────────┘
-          │                                 │
-          │                                 ▼
-          │                       ┌──────────────────────────────┐
-          │                       │  Integración RK4:            │
-          │                       │  rungeKutta4Step(dt, ω)      │
-          │                       │                               │
-          │                       │  k1 = f(state)               │
-          │                       │  k2 = f(state + dt/2 × k1)   │
-          │                       │  k3 = f(state + dt/2 × k2)   │
-          │                       │  k4 = f(state + dt × k3)     │
-          │                       │  state += dt/6 × (k1+2k2+2k3+k4) │
-          │                       └──────────────────────────────┘
-          │                                 │
-          │                                 ▼
-          │                       ┌──────────────────────────────┐
-          │                       │  ¿Cruce θ = 0 (nuevo latido)?│
-          │                       └──────────────────────────────┘
-          │                                 │ SÍ
-          │                                 ▼
-          │                       ┌──────────────────────────────┐
-          │                       │  detectNewBeat():            │
-          │                       │  - Actualizar beatCount      │
-          │                       │  - Generar nuevo RR (HRV)    │
-          │                       │  - Medir métricas PQRST      │
-          │                       │  - Aplicar parámetros pending│
-          │                       └──────────────────────────────┘
-          │                                 │
-          └─────────────────────────────────┤
-                                            ▼
-                              ┌──────────────────────────────┐
-                              │  ¿isCalibrated = true?       │
-                              └──────────────────────────────┘
-                                   │ NO              │ SÍ
-                                   ▼                 ▼
-                    ┌──────────────────┐  ┌──────────────────────┐
-                    │ updateCalibration│  │ z_mV = applyScaling()│
-                    │ Buffer()         │  │ = (z-baseline) × G   │
-                    └──────────────────┘  └──────────────────────┘
-                                            │
-                                            ▼
-                              ┌──────────────────────────────┐
-                              │  Agregar ruido gaussiano     │
-                              │  z_mV += noise × gaussian()  │
-                              └──────────────────────────────┘
-                                            │
-                                            ▼
-                              ┌──────────────────────────────┐
-                              │  Clampear a rango fisiológico│
-                              │  [-0.5, +1.5] mV             │
-                              └──────────────────────────────┘
-                                            │
-                                            ▼
-                              ┌──────────────────────────────┐
-                              │  RETORNAR z_mV               │
-                              │  Rango: [-0.5, +1.5] mV      │
-                              └──────────────────────────────┘
-                                            │
-                 ┌──────────────────────────┴──────────────────────────┐
-                 ▼                                                     ▼
-┌─────────────────────────────────┐             ┌─────────────────────────────────┐
-│  SALIDA DAC (GPIO25)            │             │  SALIDA NEXTION WAVEFORM        │
-│  Función: getDACValue()         │             │  Función: getWaveformValue()    │
-│  Rango: 0-255 (8-bit)           │             │  Rango: 0-255 (8-bit)           │
-│  Voltaje: 0-3.3V                │             │  Altura: 10-370 px              │
-│                                 │             │                                 │
-│  Fórmula:                       │             │  Fórmula:                       │
-│  DAC = (mV + 0.5) / 2.0 × 255   │             │  val = (mV + 0.5) / 2.0 × 255   │
-│                                 │             │  px = map(val, 0, 255, 10, 370) │
-│  Ejemplo (R = +1.0 mV):         │             │  Ejemplo (R = +1.0 mV):         │
-│  DAC = 1.5/2.0 × 255 = 191      │             │  val = 191 → px = 279           │
-│  Vout = 191/255 × 3.3V = 2.47V  │             │                                 │
-└─────────────────────────────────┘             └─────────────────────────────────┘
-```
-
-### 3.4 Implementación de Condiciones Patológicas
-
-**Tabla 3.2: Modificaciones por condición ECG**
-
-| Condición | HR (BPM) | Modificación Morfológica |
-|-----------|----------|--------------------------|
-| NORMAL | 60-100 | Parámetros base McSharry |
-| TACHYCARDIA | 100-180 | HR elevado, QT acortado |
-| BRADYCARDIA | 40-60 | HR reducido, QT prolongado |
-| ATRIAL_FIBRILLATION | 60-160 | Sin onda P, RR muy irregular (±30%) |
-| VENTRICULAR_FIBRILLATION | N/A | Modelo espectral caótico 4-10 Hz |
-| AV_BLOCK_1 | 50-80 | PR > 200 ms |
-| ST_ELEVATION | 60-100 | ST elevado +0.2 mV (STEMI) |
-| ST_DEPRESSION | 60-100 | ST deprimido -0.15 mV (isquemia) |
-
-### 3.5 Calibración Automática
-
-El modelo implementó calibración automática por pico R para garantizar amplitudes fisiológicas:
-
-1. **Fase de calibración** (3 latidos iniciales):
-   - Se detectan picos R crudos del modelo
-   - Se calcula $R_{model}$ = promedio de picos R detectados
-
-2. **Cálculo de ganancia fisiológica**:
-   $$G = \frac{R_{objetivo}}{R_{model}} = \frac{1.0 \text{ mV}}{R_{model}}$$
-
-3. **Aplicación de escalado**:
-   $$z_{mV} = (z_{raw} - baseline) \times G$$
-
----
-
-## 4. Modelo EMG (Reclutamiento de Unidades Motoras)
-
-El modelo EMG reproduce la actividad eléctrica muscular mediante la simulación del reclutamiento de unidades motoras (MUs). Se basó en el trabajo de Fuglevand et al. (1993) y el principio de Henneman, que describen cómo las unidades motoras se activan progresivamente según el nivel de excitación muscular.
-
-### 4.1 Fundamento Teórico
-
-El modelo EMG de superficie (sEMG) se basó en el trabajo de Fuglevand et al. [2], que describe el reclutamiento de unidades motoras (MUs) y la generación de potenciales de acción de unidades motoras (MUAPs).
-
-#### 4.1.1 Principio de Reclutamiento de Henneman
-
-El reclutamiento sigue el principio del tamaño de Henneman [3]: las unidades motoras se activan en orden ascendente de umbral, desde las más pequeñas (tipo I, resistentes a fatiga) hasta las más grandes (tipo II, fatigables).
-
-$$threshold_i = \frac{i}{N} \times RR$$
-
-Donde $i$ es el índice de la MU, $N$ es el número total de MUs y $RR$ es el rango de reclutamiento.
-
-#### 4.1.2 Modelo de Disparo
-
-La frecuencia de disparo de cada MU sigue una relación lineal con la excitación:
-
-$$FR_i = FR_{min} + (FR_{max} - FR_{min}) \times \frac{E - threshold_i}{1 - threshold_i}$$
-
-Donde $E$ es el nivel de excitación (0-1), $FR_{min}$ = 8 Hz y $FR_{max}$ = 35 Hz.
-
-#### 4.1.3 Forma del MUAP
-
-Se utilizó la wavelet Mexican Hat (Ricker) como aproximación al MUAP trifásico:
-
-$$MUAP(t) = A_i \left(1 - \frac{t^2}{\sigma^2}\right) \exp\left(-\frac{t^2}{2\sigma^2}\right)$$
-
-Donde:
-- $A_i$ = amplitud de la MU (distribución exponencial: 0.05-1.5 mV)
-- $\sigma$ = ancho temporal (~3-8 ms)
-
-**Tabla 4.1: Parámetros del pool de MUs**
-
-| Parámetro | Valor | Fuente |
-|-----------|-------|--------|
-| Número de MUs | 100 | Fuglevand 1993 |
-| Rango de reclutamiento | 30× | Adaptado para sEMG |
-| Amplitud mínima | 0.05 mV | De Luca 1997 |
-| Frecuencia disparo min | 8 Hz | Fuglevand 1993 |
-| Frecuencia disparo max | 35 Hz | Fuglevand 1993 |
-
-*Fuentes: Fuglevand AJ et al. [2], De Luca CJ [4]*
-
-### 4.2 Justificación del Método
-
-Se seleccionó el modelo de Fuglevand por:
-
-1. **Base fisiológica sólida**: Describe mecanismos reales de contracción muscular
-2. **Escalabilidad**: Permite simular desde reposo hasta MVC
-3. **Condiciones especiales**: Soporta temblor y fatiga mediante modificadores
-4. **Salida bipolar**: Genera señal AC centrada en 0 mV (característico de sEMG)
-
-### 4.3 Diagrama de Flujo - Generación EMG
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                       INICIO tick(deltaTime)                     │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Actualizar tiempo acumulado: accumulatedTime += deltaTime      │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  ¿Hay rampa de excitación activa?                               │
-└─────────────────────────────────────────────────────────────────┘
-          │ SÍ                              │ NO
-          ▼                                 │
-┌──────────────────────────────┐            │
-│  Interpolar excitación:      │            │
-│  E = lerp(base, target, t/T) │            │
-└──────────────────────────────┘            │
-          │                                 │
-          └─────────────────────────────────┤
-                                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  updateMotorUnitRecruitment():                                  │
-│  FOR cada MU[i] en pool:                                        │
-│    IF excitation >= MU[i].threshold:                            │
-│      MU[i].isActive = true                                      │
-│      MU[i].firingRate = calcFiringRate(excitation)              │
-│    ELSE:                                                        │
-│      MU[i].isActive = false                                     │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Generar muestra cruda:                                         │
-│  sample = 0                                                     │
-│  FOR cada MU[i] activa:                                         │
-│    IF accumulatedTime >= MU[i].nextFiringTime:                  │
-│      sample += generateMUAP(timeSinceFiring, amplitude)         │
-│      MU[i].nextFiringTime += 1/firingRate + jitter              │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Aplicar modificadores de condición:                            │
-│  - TREMOR: sample *= sin(2π × 5Hz × t) × modulación             │
-│  - FATIGUE: sample *= rmsDecayFactor (decay exponencial)        │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Agregar ruido y escalar:                                       │
-│  sample += noise × gaussian()                                   │
-│  sample *= amplitudeGain                                        │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Clampear a rango: [-5.0, +5.0] mV                              │
-│  Almacenar en caché: cachedRawSample = sample                   │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Procesamiento para canal envolvente:                           │
-│  1. Filtro pasa-banda (20-450 Hz)                               │
-│  2. Rectificación: |sample|                                     │
-│  3. Filtro pasa-bajos (15 Hz) → Envolvente RMS                  │
-│  Función: getEnvelopeValue()                                    │
-│  Rango envolvente: [0.0, +2.0] mV (solo positivo)               │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-        ┌──────────────────────┴──────────────────────┐
-        │                                             │
-        ▼                                             ▼
-┌───────────────────────────────┐     ┌───────────────────────────────┐
-│  SEÑAL RAW (Canal 1)          │     │  SEÑAL ENVOLVENTE (Canal 2)   │
-│  cachedRawSample              │     │  cachedEnvelopeSample         │
-│  Rango: [-5.0, +5.0] mV       │     │  Rango: [0.0, +2.0] mV        │
-└───────────────────────────────┘     └───────────────────────────────┘
-        │                                             │
-        ▼                                             ▼
-┌───────────────────────────────────────────────────────────────────┐
-│  SALIDA DAC (GPIO25) - Solo canal RAW                             │
-│  Función: getDACValue()                                           │
-│  Rango: 0-255 (8-bit)                                             │
-│  Voltaje: 0-3.3V                                                  │
-│                                                                   │
-│  Fórmula: DAC = (mV + 5.0) / 10.0 × 255                           │
-│  Ejemplo (pico +2.5 mV): DAC = 7.5/10.0 × 255 = 191               │
-│  Vout = 191/255 × 3.3V = 2.47V                                    │
-└───────────────────────────────────────────────────────────────────┘
-        │                                             │
-        ▼                                             ▼
-┌───────────────────────────────────────────────────────────────────┐
-│  SALIDA NEXTION WAVEFORM (2 canales)                              │
-│  Funciones: getWaveformValue(), getEnvelopeWaveformValue()        │
-│                                                                   │
-│  Canal RAW (ch0):                   Canal ENV (ch1):              │
-│  Rango: 0-255                       Rango: 0-255                  │
-│  Fórmula:                           Fórmula:                      │
-│  val = (mV+5)/10 × 255              val = mV/2.0 × 255            │
-│  px = map(val, 0,255, 10,370)       px = map(val, 0,255, 10,370)  │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-### 4.4 Implementación de Condiciones
-
-**Tabla 4.2: Condiciones EMG y parámetros**
-
-| Condición | Excitación | RMS esperado | Características |
-|-----------|------------|--------------|-----------------|
-| REST | 0-5% | 0.02-0.05 mV | Pocas MUs activas, FR bajo |
-| LOW | 5-20% | 0.1-0.2 mV | Reclutamiento parcial |
-| MODERATE | 20-50% | 0.3-0.8 mV | Reclutamiento progresivo |
-| HIGH | 50-100% | 1.0-5.0 mV | Máximo reclutamiento |
-| TREMOR | 20-40% | 0.1-0.5 mV | Modulación sinusoidal 5 Hz |
-| FATIGUE | 50% sostenido | 1.5→0.4 mV | Decay exponencial de RMS |
-
-### 4.5 Modelo de Fatiga Muscular
-
-La fatiga se modeló según Cifrek et al. [5] con tres componentes:
-
-1. **Descenso de frecuencia mediana (MDF)**:
-   $$MDF(t) = MDF_0 + (MDF_f - MDF_0)(1 - e^{-t/\tau_{MDF}})$$
-   
-   Con $MDF_0$ = 95 Hz, $MDF_f$ = 60 Hz, $\tau_{MDF}$ = 10 s
-
-2. **Descenso de amplitud RMS**:
-   $$RMS(t) = RMS_0 \times e^{-t/\tau_{RMS}}$$
-   
-   Con factor de decay de 1.5 → 0.6 mV en 10 s
-
-3. **Nivel de fatiga muscular (MFL)**:
-   $$MFL(t) = \min\left(1.0, \frac{t}{T_{fatiga}}\right)$$
-   
-   Con $T_{fatiga}$ = 15 s
-
----
-
-## 5. Modelo PPG (Pulso Gaussiano)
-
-El modelo PPG simula la señal de fotopletismografía, que refleja las variaciones de volumen sanguíneo arterial durante el ciclo cardíaco. A diferencia del ECG (modelo dinámico) y el EMG (modelo estocástico), el PPG se implementó como una forma de pulso determinista basada en funciones gaussianas, siguiendo la caracterización de Allen (2007).
-
-### 5.1 Fundamento Teórico
-
-El modelo PPG se basó en la morfología descrita por Allen [6], implementando la onda de pulso como superposición de componentes gaussianas que representan eventos fisiológicos del ciclo cardíaco.
-
-#### 5.1.1 Componentes de la Onda PPG
-
-La señal PPG se compone de:
-
-1. **Componente DC**: Absorción constante por tejido estático (~1000 mV)
-2. **Componente AC**: Modulación pulsátil por volumen sanguíneo arterial (1-200 mV)
-
-$$PPG(t) = DC + AC \times pulseShape(t)$$
-
-#### 5.1.2 Forma de Onda Normalizada
-
-La forma de pulso se construyó como:
-
-$$pulseShape(\phi) = G_s(\phi) + d_r \times G_d(\phi) - n_d \times G_n(\phi)$$
-
-Donde:
-- $G_s(\phi)$ = gaussiana sistólica (pico principal)
-- $G_d(\phi)$ = gaussiana diastólica (onda reflejada)
-- $G_n(\phi)$ = gaussiana de muesca dicrótica
-- $d_r$ = ratio diastólico/sistólico (≈0.4)
-- $n_d$ = profundidad de muesca dicrótica (≈0.25)
-- $\phi$ = fase normalizada en el ciclo (0-1)
-
-**Tabla 5.1: Parámetros de forma PPG (Allen 2007)**
-
-| Componente | Posición ($\phi$) | Ancho ($\sigma$) | Amplitud |
-|------------|-------------------|------------------|----------|
-| Sistólico | 0.15 | 0.055 | 1.0 (ref) |
-| Diastólico | 0.40 | 0.10 | 0.4 |
-| Muesca | 0.30 | 0.02 | -0.25 |
-
-*Fuente: Allen J. Physiol Meas. 2007 [6]*
-
-### 5.2 Justificación del Método
-
-El modelo gaussiano fue seleccionado por:
-
-1. **Simplicidad matemática**: Funciones analíticas de bajo costo computacional
-2. **Flexibilidad morfológica**: Cada componente se ajusta independientemente
-3. **Base fisiológica**: Pico sistólico, muesca dicrótica y pico diastólico son eventos reales
-4. **Parametrización clínica**: PI, HR y forma de onda se controlan directamente
-
-### 5.3 Diagrama de Flujo - Generación PPG
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                   INICIO generateSample(deltaTime)               │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Avanzar fase en el ciclo:                                      │
-│  phaseInCycle += deltaTime / currentRR                          │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  ¿phaseInCycle >= 1.0? (nuevo latido)                           │
-└─────────────────────────────────────────────────────────────────┘
-          │ SÍ                              │ NO
-          ▼                                 │
-┌──────────────────────────────┐            │
-│  detectBeatAndApplyPending():│            │
-│  - phaseInCycle -= 1.0       │            │
-│  - beatCount++               │            │
-│  - currentHR = generateDynamicHR()        │
-│  - currentPI = generateDynamicPI()        │
-│  - currentRR = 60 / currentHR             │
-│  - Aplicar parámetros pending│            │
-└──────────────────────────────┘            │
-          │                                 │
-          └─────────────────────────────────┤
-                                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Calcular fracción sistólica según HR:                          │
-│  systoleFraction = 0.3 - 0.1×(HR-60)/120  (compresión diástole) │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Generar forma de pulso normalizada [0,1]:                      │
-│  pulse = computePulseShape(phaseInCycle)                        │
+│                    DOWNSAMPLING PARA NEXTION                     │
+├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Gs = exp(-(φ - 0.15)² / (2×0.055²))      // Sistólica         │
-│  Gd = exp(-(φ - 0.40)² / (2×0.10²))       // Diastólica        │
-│  Gn = exp(-(φ - 0.30)² / (2×0.02²))       // Muesca            │
-│  pulse = Gs + 0.4×Gd - 0.25×Gn                                  │
-│  pulse = normalize(pulse)  // escalar a [0,1]                   │
+│  Timer @ 4 kHz ────┬──► Decimación 20:1 ──► Nextion ECG 200 Hz   │
+│                    │                                            │
+│                    ├──► Decimación 40:1 ──► Nextion EMG 100 Hz   │
+│                    │                                            │
+│                    └──► Decimación 40:1 ──► Nextion PPG 100 Hz   │
+│                                                                 │
+│  Fórmula: Ratio = Fs_timer / Fds                                │
+│                                                                 │
+│  Implementación (config.h):                                     │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  const uint16_t FS_TIMER_HZ = 4000;                      │    │
+│  │  const uint16_t FDS_ECG = 200;                          │    │
+│  │  const uint16_t FDS_EMG = 100;                          │    │
+│  │  const uint16_t FDS_PPG = 100;                          │    │
+│  │  const uint8_t NEXTION_DOWNSAMPLE_ECG = 4000/200 = 20;  │    │
+│  │  const uint8_t NEXTION_DOWNSAMPLE_EMG = 4000/100 = 40;  │    │
+│  │  const uint8_t NEXTION_DOWNSAMPLE_PPG = 4000/100 = 40;  │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Aplicar modificadores de condición:                            │
-│  - WEAK_PERFUSION: dicroticDepth → 0, diastolicAmpl reducido    │
-│  - VASOCONSTRICTION: forma afilada, muesca atenuada             │
-│  - VASODILATION: muesca prominente, diástole marcada            │
-│  - ARRHYTHMIA: HR muy variable (CV > 15%)                       │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Calcular amplitud AC según PI:                                 │
-│  AC = currentPI × 15.0 mV/%                                     │
-│  (PI=3% → AC=45 mV, PI=10% → AC=150 mV)                         │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Construir señal final:                                         │
-│  signal = dcBaseline + pulse × AC                               │
-│  signal += noise × AC × gaussian()                              │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Almacenar métricas medidas:                                    │
-│  - lastACValue = pulse × AC  (para waveform Nextion)            │
-│  - Detectar picos/valles para métricas                          │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  RETORNAR signal (mV)                                           │
-│  Rango señal completa: [800, 1200] mV (DC + AC)                 │
-│  Rango AC puro: [-100, +100] mV (para waveform)                 │
-└─────────────────────────────────────────────────────────────────┘
-                               │
-        ┌──────────────────────┴──────────────────────┐
-        ▼                                             ▼
-┌───────────────────────────────────┐   ┌───────────────────────────────────┐
-│  SALIDA DAC (GPIO25)              │   │  SALIDA NEXTION WAVEFORM          │
-│  Función: getDACValue()           │   │  Función: getWaveformValue()      │
-│  Rango: 0-255 (8-bit)             │   │  Rango: 0-255 (8-bit)             │
-│  Voltaje: 0-3.3V                  │   │  Altura: 10-370 px                │
-│                                   │   │                                   │
-│  Fórmula (señal completa):        │   │  Fórmula (solo AC):               │
-│  DAC = (mV - 800) / 400 × 255     │   │  val = (AC + 100) / 200 × 255     │
-│                                   │   │  px = map(val, 0, 255, 10, 370)   │
-│  Ejemplo (DC=1000, AC=+50 mV):    │   │  Ejemplo (AC = +50 mV):           │
-│  signal = 1050 mV                 │   │  val = 150/200 × 255 = 191        │
-│  DAC = 250/400 × 255 = 159        │   │  px = 279                         │
-│  Vout = 159/255 × 3.3V = 2.06V    │   │                                   │
-└───────────────────────────────────┘   └───────────────────────────────────┘
 ```
 
-### 5.4 Variabilidad Fisiológica
+**Tabla 5.2: Parámetros de downsampling por señal**
 
-Se implementó variabilidad latido-a-latido para HR y PI según Sun et al. [7]:
+| Señal | Fs_timer | Fds | Ratio = Fs_timer/Fds | Muestras/s enviadas |
+|-------|----------|-----|----------------------|---------------------|
+| ECG | 4000 Hz | 200 Hz | 20:1 | 200 |
+| EMG | 4000 Hz | 100 Hz | 40:1 | 200 (2 canales) |
+| PPG | 4000 Hz | 100 Hz | 40:1 | 100 |
 
-$$HR_{beat} = HR_{mean} + CV_{HR} \times HR_{mean} \times \mathcal{N}(0,1)$$
-$$PI_{beat} = PI_{mean} + CV_{PI} \times PI_{mean} \times \mathcal{N}(0,1)$$
+### 5.4 Formato de Comandos Waveform
 
-**Tabla 5.2: Condiciones PPG y rangos clínicos**
+El componente waveform de Nextion acepta comandos `add` para agregar puntos:
 
-| Condición | HR (BPM) | PI (%) | CV_HR | CV_PI | Morfología |
-|-----------|----------|--------|-------|-------|------------|
-| NORMAL | 60-100 | 2-5 | 5% | 10% | Muesca visible |
-| ARRHYTHMIA | 60-180 | 1-5 | 20% | 15% | RR muy irregular |
-| WEAK_PERFUSION | 90-140 | 0.1-0.5 | 8% | 20% | Sin muesca |
-| VASODILATION | 50-80 | 5-10 | 5% | 12% | Muesca prominente |
-| STRONG_PERFUSION | 60-90 | 10-20 | 5% | 10% | AC muy alto |
-| VASOCONSTRICTION | 60-100 | 0.2-0.8 | 7% | 15% | Forma afilada |
+```
+Formato: add <id>,<canal>,<valor>\xFF\xFF\xFF
+
+Ejemplos:
+  add 1,0,128    // Waveform ID=1, canal 0, valor 128
+  add 1,1,64     // Waveform ID=1, canal 1, valor 64 (envolvente EMG)
+
+Código:
+  void NextionDriver::addWaveformPoint(uint8_t id, uint8_t ch, uint8_t val) {
+      char cmd[20];
+      sprintf(cmd, "add %d,%d,%d", id, ch, val);
+      sendCommand(cmd);
+  }
+```
+
+### 5.5 Actualización de Métricas
+
+Las métricas numéricas se actualizaron a 4 Hz (250 ms) para permitir legibilidad:
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│                    MÉTRICAS POR TIPO DE SEÑAL                      │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ECG:                    EMG:                    PPG:             │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────┐  │
+│  │ HR: 75 bpm      │     │ RMS: 0.45 mV    │     │ HR: 72 bpm  │  │
+│  │ RR: 800 ms      │     │ MUs: 45         │     │ PI: 3.2%    │  │
+│  │ QRS: 1.05 mV    │     │ Exc: 35%        │     │ Beats: 142  │  │
+│  │ ST: +0.02 mV    │     │ FR: 22 Hz       │     │ RR: 833 ms  │  │
+│  └─────────────────┘     └─────────────────┘     └─────────────┘  │
+│                                                                   │
+│  Actualización: 4 Hz (250 ms)                                     │
+│  Comando: t_hr.txt="75"                                           │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 6. Validación de Señales
+## 6. Subsistema de Comunicación WiFi
 
-### 6.1 Entorno de Validación
+### 6.1 Configuración del Access Point
 
-Previo a la integración con la pantalla Nextion, todas las señales fueron validadas utilizando el archivo `main_debug.cpp` junto con el **Serial Plotter de VSCode/PlatformIO**. Este proceso permitió verificar:
+El ESP32 se configuró como Access Point WiFi para permitir conexiones directas sin infraestructura de red:
 
-1. **Morfología de las ondas**: Forma correcta de PQRST (ECG), MUAPs (EMG) y pulso (PPG)
-2. **Rangos de amplitud**: Valores en mV dentro de los rangos fisiológicos esperados
-3. **Temporización**: Frecuencias cardíacas, intervalos RR y duraciones correctas
-4. **Condiciones patológicas**: Diferenciación clara entre condiciones normales y patológicas
+**Tabla 6.1: Configuración WiFi AP**
 
-### 6.2 Escalado DAC
+| Parámetro | Valor |
+|-----------|-------|
+| SSID | `BioSimulator_Pro` |
+| Password | `biosignal123` |
+| IP del AP | `192.168.4.1` |
+| Canal | 1 |
+| Máx. clientes | 4 |
+| Modo | SoftAP |
 
-**Tabla 6.1: Escalado DAC por señal**
+### 6.2 Servidor WebSocket
 
-| Señal | Rango entrada (mV) | Centro | Fórmula DAC |
-|-------|-------------------|--------|-------------|
-| ECG | -0.5 a +1.5 | 0.5 mV | $DAC = \frac{(mV + 0.5)}{2.0} \times 255$ |
-| EMG | -5.0 a +5.0 | 0.0 mV | $DAC = \frac{(mV + 5.0)}{10.0} \times 255$ |
-| PPG | 800 a 1200 | 1000 mV | $DAC = \frac{(mV - 800)}{400} \times 255$ |
+Se implementó un servidor WebSocket en el puerto 81 para streaming bidireccional:
 
-**Cálculos representativos de escalado DAC:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ARQUITECTURA WiFi/WebSocket                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ESP32 (192.168.4.1)                                            │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  WiFi AP (BioSimulator_Pro)                             │    │
+│  │  ├── HTTP Server (puerto 80)                            │    │
+│  │  │   └── Sirve index.html, app.js, styles.css           │    │
+│  │  │                                                      │    │
+│  │  └── WebSocket Server (puerto 81)                       │    │
+│  │      ├── Streaming señal: 100 Hz (cada 10 ms)           │    │
+│  │      ├── Streaming métricas: 4 Hz (cada 250 ms)         │    │
+│  │      └── Recepción comandos: asíncrono                  │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              │                                  │
+│                              │ WiFi 802.11n                     │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  Cliente (Navegador Web)                                │    │
+│  │  http://192.168.4.1                                     │    │
+│  │                                                         │    │
+│  │  ┌─────────────────────────────────────────────────┐    │    │
+│  │  │  App Web (React/HTML5 Canvas)                   │    │    │
+│  │  │  • Waveform en tiempo real                      │    │    │
+│  │  │  • Panel de métricas                            │    │    │
+│  │  │  • Controles de parámetros                      │    │    │
+│  │  │  • Selector de condición                        │    │    │
+│  │  └─────────────────────────────────────────────────┘    │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-**ECG - Pico R (+1.0 mV):**
+### 6.3 Formato de Mensajes WebSocket
+
+**Mensaje de señal (100 Hz):**
+```json
+{
+  "type": "signal",
+  "signal": "ECG",
+  "value": 0.85,
+  "dac": 172,
+  "timestamp": 123456789
+}
+```
+
+**Mensaje de métricas (4 Hz):**
+```json
+{
+  "type": "metrics",
+  "signal": "ECG",
+  "data": {
+    "hr": 75,
+    "rr": 800,
+    "qrsAmplitude": 1.05,
+    "stDeviation": 0.02
+  }
+}
+```
+
+### 6.4 Tasas de Envío y Ancho de Banda
+
+**Tabla 6.2: Análisis de ancho de banda WebSocket**
+
+| Tipo mensaje | Tamaño | Frecuencia | Bytes/s | Bits/s |
+|--------------|--------|------------|---------|--------|
+| Señal | ~80 bytes | 100 Hz | 8000 | 64 kbps |
+| Métricas | ~150 bytes | 4 Hz | 600 | 4.8 kbps |
+| **Total** | - | - | **8600** | **~69 kbps** |
+
+El ancho de banda requerido (~69 kbps) fue muy inferior al disponible en WiFi 802.11n (~50 Mbps), garantizando latencia mínima.
+
+### 6.5 Control de Streaming
+
+El streaming se habilitó/deshabilitó según el estado de simulación:
+
+```cpp
+// En handleUIEvent() - main.cpp
+case UIEvent::BUTTON_START:
+    stateMachine.processEvent(SystemEvent::START_SIMULATION);
+    wifiServer.setStreamingEnabled(true);  // Habilitar streaming
+    break;
+
+case UIEvent::BUTTON_STOP:
+    stateMachine.processEvent(SystemEvent::STOP);
+    wifiServer.setStreamingEnabled(false);  // Deshabilitar streaming
+    break;
+```
+
+---
+
+## 7. Flujo de Datos Integrado
+
+### 7.1 Diagrama de Flujo Completo
+
+El siguiente diagrama muestra el flujo de datos desde la generación hasta las tres salidas del sistema:
+
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                  GENERACIÓN (Core 1, 4 kHz) + INTERPOLACIÓN              │
+│  │                                                                     │
+│  │   Condición ──► Modelo Activo ──► sample_mV ──► getDACValue()      │
+│  │   (ECG/EMG/PPG)   (RK4/MU/Gauss)   (float)      (uint8_t 0-255)    │
+│  │                                                                     │
+│  └───────────────────────────────┬─────────────────────────────────────┘    │
+│                                  │                                          │
+│                                  ▼                                          │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                    BUFFER CIRCULAR (2048 muestras)                  │
+│  │                    Tiempo de buffer: ~0.5 segundos                   │
+│  └───────────────────────────────┬─────────────────────────────────────┘    │
+│                                  │                                          │
+│          ┌───────────────────────┼───────────────────────┐                  │
+│          │                       │                       │                  │
+│          ▼                       ▼                       ▼                  │
+│  ┌───────────────┐      ┌───────────────┐      ┌───────────────┐           │
+│  │  SALIDA DAC   │      │  NEXTION      │      │  WebSocket    │           │
+│  │  (ISR 4 kHz)  │      │  (100-200 Hz) │      │  (100 Hz)     │           │
+│  ├───────────────┤      ├───────────────┤      ├───────────────┤           │
+│  │               │      │               │      │               │           │
+│  │ timerISR():   │      │ updateDisplay │      │ sendSignal    │           │
+│  │ dacWrite()    │      │ ()            │      │ Data()        │           │
+│  │               │      │               │      │               │           │
+│  │ Cada 0.25 ms  │      │ Cada 5-10 ms  │      │ Cada 10 ms    │           │
+│  │ Sin filtro    │      │ Downsampled   │      │ JSON format   │           │
+│  │               │      │               │      │               │           │
+│  └───────┬───────┘      └───────┬───────┘      └───────┬───────┘           │
+│          │                      │                      │                    │
+│          ▼                      ▼                      ▼                    │
+│  ┌───────────────┐      ┌───────────────┐      ┌───────────────┐           │
+│  │  GPIO25       │      │  Waveform     │      │  Canvas       │           │
+│  │  0-3.3V       │      │  700×380 px   │      │  HTML5        │           │
+│  │  Analógico    │      │  + Métricas   │      │  + Métricas   │           │
+│  └───────────────┘      └───────────────┘      └───────────────┘           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 7.2 Latencias del Sistema
+
+**Tabla 7.1: Análisis de latencias**
+
+| Ruta | Latencia típica | Latencia máxima |
+|------|-----------------|-----------------|
+| Modelo → Buffer | < 1 ms | 2 ms |
+| Buffer → DAC | 0.25 ms (fijo) | 0.25 ms + jitter (±50 µs) |
+| Buffer → Nextion | 10-20 ms | 30 ms |
+| Buffer → WebSocket | 10-50 ms | 100 ms (red) |
+
+**Latencia total modelo-a-DAC:** 2-3 ms (determinista)
+**Latencia total modelo-a-display:** 20-50 ms (aceptable para visualización)
+
+---
+
+## 8. Cálculos Computacionales Representativos
+
+### 8.1 Memoria RAM Utilizada
+
+**Tabla 8.1: Desglose de uso de RAM**
+
+| Componente | Tamaño | Cálculo |
+|------------|--------|---------|
+| Buffer señal | 2048 bytes | `SIGNAL_BUFFER_SIZE × sizeof(uint8_t)` |
+| ECGModel | ~2 KB | Estado RK4, parámetros PQRST |
+| EMGModel | ~12 KB | 100 MUs × 120 bytes + buffers RMS |
+| PPGModel | ~1 KB | Estado de fase, parámetros gaussianos |
+| FreeRTOS stacks | 8 KB | 2 tareas × 4096 bytes |
+| WiFi buffer | ~4 KB | Buffers TX/RX WebSocket |
+| **Total** | **~30 KB** | < 520 KB disponibles ✓ |
+
+### 8.2 Carga de CPU
+
+**Tabla 8.2: Estimación de carga por núcleo**
+
+| Núcleo | Tarea | Tiempo/ciclo | Período | Carga |
+|--------|-------|--------------|---------|-------|
+| Core 1 | generationTask | ~0.2 ms | 0.25 ms | ~80% |
+| Core 1 | Timer ISR | ~5 µs | 0.25 ms | ~2% |
+| Core 0 | loop() + Nextion | ~2 ms | 10 ms | ~20% |
+| Core 0 | WiFi | ~1 ms | 10 ms | ~10% |
+
+### 8.3 Ancho de Banda Serial (Nextion)
+
+**Cálculo de bytes/segundo para waveform:**
+
+```
+Comando típico: "add 1,0,128" + 0xFF×3 = 14 bytes
+Frecuencia: 100 Hz
+Canales EMG: 2
+
+Bytes/s ECG = 14 × 100 = 1400 B/s
+Bytes/s EMG = 14 × 100 × 2 = 2800 B/s
+Bytes/s PPG = 14 × 100 = 1400 B/s
+
+Capacidad @ 115200 baud ≈ 11520 B/s
+Utilización máxima (EMG) = 2800/11520 = 24% ✓
+```
+
+### 8.4 Escalado DAC por Señal
+
+El mapeo de valores en mV a valores DAC (0-255) se realizó con las siguientes fórmulas:
+
+**Tabla 8.3: Fórmulas de escalado DAC**
+
+| Señal | Rango entrada (mV) | Fórmula DAC |
+|-------|-------------------|-------------|
+| ECG | [-0.5, +1.5] | `DAC = (mV + 0.5) / 2.0 × 255` |
+| EMG | [-5.0, +5.0] | `DAC = (mV + 5.0) / 10.0 × 255` |
+| PPG | [800, 1200] | `DAC = (mV - 800) / 400 × 255` |
+
+**Ejemplo cálculo ECG (pico R = +1.0 mV):**
 $$DAC = \frac{(1.0 + 0.5)}{2.0} \times 255 = \frac{1.5}{2.0} \times 255 = 191$$
 $$V_{out} = \frac{191}{255} \times 3.3V = 2.47V$$
 
-**EMG - Pico contracción (+2.5 mV):**
-$$DAC = \frac{(2.5 + 5.0)}{10.0} \times 255 = \frac{7.5}{10.0} \times 255 = 191$$
-$$V_{out} = \frac{191}{255} \times 3.3V = 2.47V$$
+### 8.5 Tiempo Visible en Waveform
 
-**PPG - Pico sistólico (DC=1000, AC=+50 mV → 1050 mV):**
-$$DAC = \frac{(1050 - 800)}{400} \times 255 = \frac{250}{400} \times 255 = 159$$
-$$V_{out} = \frac{159}{255} \times 3.3V = 2.06V$$
+**Cálculo del tiempo visible en pantalla:**
 
-### 6.3 Proceso de Validación
+```
+Ancho waveform: 700 px
+Frecuencia display: 100 Hz (1 punto cada 10 ms)
+Tiempo visible: T = 700 px × 10 ms/px = 7000 ms = 7 s
+
+Latidos visibles @ 75 BPM:
+Período RR = 60/75 = 0.8 s
+Latidos = 7 s / 0.8 s = 8.75 ≈ 9 latidos
+```
+
+---
+
+## 9. Metodología de Diseño de Frecuencias
+
+Esta sección documenta la metodología sistemática utilizada para seleccionar las frecuencias de integración del modelo, downsampling y visualización.
+
+### 9.1 Frecuencia Natural de la Señal (fmax)
+
+**Tabla 9.1: Contenido espectral de las señales**
+
+| Señal | fmax (Hz) | Justificación |
+|-------|-----------|---------------|
+| ECG | 50 | Componentes QRS hasta 50 Hz |
+| EMG | 500 | sEMG frecuencias hasta 500 Hz |
+| PPG | 10 | Señal cardiovascular lenta |
+
+### 9.2 Frecuencia de Integración del Modelo (Fs)
+
+**Criterio:** Fs ≥ 5 × fmax (Nyquist con margen)
+
+**Tabla 9.2: Frecuencias de integración interna**
+
+| Señal | fmax (Hz) | Fs mínima (5×fmax) | Fs elegido |
+|-------|-----------|---------------------|------------|
+| ECG | 50 | 250 Hz | 750 Hz |
+| EMG | 500 | 2500 Hz | 2000 Hz |
+| PPG | 10 | 50 Hz | 100 Hz |
+
+### 9.3 Timer Maestro (FS_TIMER_HZ)
+
+**Criterios de selección:**
+1. Fs_timer ≥ 2 × fmax (Nyquist para reconstrucción)
+2. Fs_timer ≥ Fs_modelo_máximo (para no perder muestras del modelo)
+3. Fs_timer divisible por Fds (para ratios de downsampling enteros)
+4. Margen de seguridad 2× sobre Fs_modelo_máximo
+
+**Tabla 9.3: Configuración del timer maestro**
+
+| Parámetro | Valor | Justificación |
+|-----------|-------|--------------|
+| FS_TIMER_HZ | 4000 Hz | 2× EMG (2000 Hz) con margen |
+| Buffer circular | 2048 muestras | ~0.5 s de autonomía |
+| Jitter esperado | < 0.25 ms | 1 tick de timer |
+
+### 9.4 Frecuencias de Salida a Display (Fds)
+
+**Criterio:** Fds basado en ventana mínima visible y capacidad de pantalla (≤250 Hz)
+
+**Tabla 9.4: Ventana visible y frecuencias de display**
+
+| Señal | Ventana mín (ms) | Fds calculado | Fds propuesto | Ciclos visibles |
+|-------|------------------|---------------|---------------|-----------------|
+| ECG | 2250 | 311 Hz | 200 Hz | 4.67 |
+| EMG | 800 | 87.5 Hz | 100 Hz | 1.75 |
+| PPG | 2400 | 292 Hz | 100 Hz | 8.75 |
+
+### 9.5 Ratios de Downsampling
+
+**IMPORTANTE:** Los ratios se calculan respecto a **Fs_timer**, NO respecto al modelo.
+
+**Tabla 9.5: Ratios de downsampling**
+
+| Señal | Fs_timer | Fds | Ratio = Fs_timer/Fds |
+|-------|----------|-----|----------------------|
+| ECG | 4000 Hz | 200 Hz | **20:1** |
+| EMG | 4000 Hz | 100 Hz | **40:1** |
+| PPG | 4000 Hz | 100 Hz | **40:1** |
+
+### 9.6 Escalado y Visualización
+
+**Tabla 9.6: Parámetros de visualización**
+
+| Señal | Rango (mV) | Div. vert. | mV/div | Fds (Hz) | T_pantalla (ms) | ms/div |
+|-------|------------|------------|--------|----------|-----------------|--------|
+| ECG | −0.5 a 1.5 | 10 | 0.2 | 200 | 3500 | 350 |
+| EMG | ±5 | 10 | 1.0 | 100 | 7000 | 700 |
+| PPG | 0–150 | 10 | 15 | 100 | 7000 | 700 |
+
+### 9.7 Resumen Metodológico
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    FLUJO DE VALIDACIÓN                          │
+│           METODOLOGÍA DE FRECUENCIAS - RESUMEN                   │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  1. Compilar main_debug.cpp (en lugar de main.cpp)             │
+│  1. Determinar fmax de cada señal (Tabla 9.1)                  │
+│  2. Seleccionar Fs del modelo ≥ 5× fmax (Tabla 9.2)            │
+│  3. Definir Fs_timer ≥ Fs_modelo_máximo (Tabla 9.3)            │
+│  4. Definir ventana mínima visible y calcular Fds (Tabla 9.4)  │
+│  5. Calcular ratios = Fs_timer / Fds (Tabla 9.5)               │
+│  6. Calcular T_pantalla, ms/div y mV/div (Tabla 9.6)           │
 │                                                                 │
-│  2. Cargar firmware de debug al ESP32                          │
-│                                                                 │
-│  3. Abrir Serial Plotter en VSCode (115200 baud)               │
-│                                                                 │
-│  4. Observar morfología y métricas en tiempo real:             │
-│     • Formato ECG: >ecg:VALUE,hr:VALUE,rr:VALUE,...            │
-│     • Formato EMG: >emg:VALUE,rms:VALUE,exc:VALUE,...          │
-│     • Formato PPG: >ppg:VALUE,hr:VALUE,pi:VALUE,...            │
-│                                                                 │
-│  5. Verificar rangos y formas de onda                          │
-│                                                                 │
-│  6. Si OK → Compilar main.cpp para producción con Nextion      │
+│  Implementación en código (config.h):                          │
+│  • FS_TIMER_HZ = 4000                                          │
+│  • NEXTION_DOWNSAMPLE_ECG = 4000 / 200 = 20                    │
+│  • NEXTION_DOWNSAMPLE_EMG = 4000 / 100 = 40                    │
+│  • NEXTION_DOWNSAMPLE_PPG = 4000 / 100 = 40                    │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 6.4 Salidas de Debug
+---
 
-**Tabla 6.2: Formato de salida serial para validación**
+## 10. Referencias
 
-| Señal | Formato Serial | Variables |
-|-------|----------------|-----------|
-| ECG | `>ecg:V,hr:H,rr:R,qrs:Q,st:S` | Valor mV, HR, RR ms, QRS mV, ST mV |
-| EMG | `>emg:V,rms:R,exc:E,mus:M` | Valor mV, RMS mV, Excitación %, MUs activas |
-| PPG | `>ppg:V,hr:H,pi:P,spo2:S` | Valor mV, HR, PI %, SpO2 % |
+[1] Espressif Systems, "ESP32 Technical Reference Manual," Version 4.5, 2022.
 
-> **Nota:** El archivo `main_debug.cpp` está excluido de la compilación de producción. Solo se utiliza durante el desarrollo para validar las señales antes de integrar con Nextion.
+[2] FreeRTOS, "FreeRTOS Reference Manual," Version 10.4.3, 2021.
+
+[3] ITEAD Studio, "Nextion Instruction Set," Version 1.0, 2023.
+
+[4] WebSocket Protocol, RFC 6455, IETF, 2011.
 
 ---
 
-## 7. Resultados y Métricas
-
-### 7.1 Resumen de Señales Implementadas
-
-**Tabla 7.1: Características de las señales generadas**
-
-| Característica | ECG | EMG | PPG |
-|----------------|-----|-----|-----|
-| **Modelo base** | McSharry ECGSYN | Fuglevand MU | Allen Gaussiano |
-| **Tipo de modelo** | EDOs (RK4) | Estocástico | Determinista |
-| **fs generación** | 750 Hz | 2000 Hz | 100 Hz |
-| **fs display** | 200 Hz | 100 Hz | 100 Hz |
-| **Rango salida** | -0.5 a +1.5 mV | -5.0 a +5.0 mV | 800-1200 mV |
-| **Condiciones** | 8 | 6 | 6 |
-| **Canales waveform** | 1 | 2 (raw + env) | 1 |
-| **HRV** | Sí | N/A | Sí |
-| **Calibración** | Automática (3 lat) | N/A | N/A |
-
-### 7.2 Métricas Clínicas Obtenidas
-
-**Tabla 7.2: Métricas ECG por condición**
-
-| Condición | HR (BPM) | PR (ms) | QRS (ms) | QTc (ms) | ST (mV) |
-|-----------|----------|---------|----------|----------|---------|
-| NORMAL | 60-100 | 120-200 | 60-100 | 350-440 | 0 |
-| TACHYCARDIA | 100-180 | 100-160 | 60-100 | 320-400 | 0 |
-| BRADYCARDIA | 40-60 | 140-220 | 80-120 | 380-480 | 0 |
-| ATRIAL_FIB | 60-160 | - | 60-100 | Variable | 0 |
-| ST_ELEVATION | 60-100 | 120-200 | 60-100 | 350-440 | +0.2 |
-| ST_DEPRESSION | 60-100 | 120-200 | 60-100 | 350-440 | -0.15 |
-
-**Tabla 7.3: Métricas EMG por condición**
-
-| Condición | Excitación | MUs activas | FR medio (Hz) | RMS (mV) |
-|-----------|------------|-------------|---------------|----------|
-| REST | 0-5% | 0-5 | 8-10 | 0.02-0.05 |
-| LOW | 5-20% | 10-30 | 10-15 | 0.1-0.2 |
-| MODERATE | 20-50% | 30-60 | 15-25 | 0.3-0.8 |
-| HIGH | 50-100% | 60-100 | 25-35 | 1.0-5.0 |
-| TREMOR | 20-40% | 20-40 | 12-20 | 0.1-0.5 |
-| FATIGUE | 50% → decay | 50-80 | 25 → 15 | 1.5 → 0.4 |
-
-**Tabla 7.4: Métricas PPG por condición**
-
-| Condición | HR (BPM) | PI (%) | AC (mV) | Sístole (ms) | Diástole (ms) |
-|-----------|----------|--------|---------|--------------|---------------|
-| NORMAL | 60-100 | 2-5 | 30-75 | 280-320 | 480-720 |
-| ARRHYTHMIA | 60-180 | 1-5 | 15-75 | Variable | Variable |
-| WEAK_PERF | 90-140 | 0.1-0.5 | 1.5-7.5 | 260-300 | 130-370 |
-| VASODILATION | 50-80 | 5-10 | 75-150 | 300-350 | 400-900 |
-| STRONG_PERF | 60-90 | 10-20 | 150-300 | 290-330 | 380-710 |
-| VASOCONSTR | 60-100 | 0.2-0.8 | 3-12 | 280-320 | 280-720 |
-
-### 7.3 Rendimiento del Sistema
-
-**Tabla 7.5: Métricas de rendimiento**
-
-| Métrica | Valor medido | Requerimiento |
-|---------|--------------|---------------|
-| Latencia generación ECG | 0.8 ms | < 2 ms ✓ |
-| Latencia generación EMG | 1.2 ms | < 2 ms ✓ |
-| Latencia generación PPG | 0.3 ms | < 2 ms ✓ |
-| Jitter temporal | ±20 µs | < ±50 µs ✓ |
-| Uso RAM | ~45 KB | < 520 KB ✓ |
-| Uso Flash | ~180 KB | < 4 MB ✓ |
-| Refresh Nextion | 100 Hz | ≥ 50 Hz ✓ |
-
----
-
-## 8. Referencias
-
-[1] P. E. McSharry, G. D. Clifford, L. Tarassenko, and L. A. Smith, "A dynamical model for generating synthetic electrocardiogram signals," *IEEE Trans. Biomed. Eng.*, vol. 50, no. 3, pp. 289-294, Mar. 2003. DOI: 10.1109/TBME.2003.808805
-
-[2] A. J. Fuglevand, D. A. Winter, and A. E. Patla, "Models of recruitment and rate coding organization in motor-unit pools," *J. Neurophysiol.*, vol. 70, no. 6, pp. 2470-2488, Dec. 1993.
-
-[3] E. Henneman, G. Somjen, and D. O. Carpenter, "Functional significance of cell size in spinal motoneurons," *J. Neurophysiol.*, vol. 28, pp. 560-580, 1965.
-
-[4] C. J. De Luca, "The use of surface electromyography in biomechanics," *J. Appl. Biomech.*, vol. 13, no. 2, pp. 135-163, 1997.
-
-[5] M. Cifrek, V. Medved, S. Tonković, and S. Ostojić, "Surface EMG based muscle fatigue evaluation in biomechanics," *Clin. Biomech.*, vol. 24, no. 4, pp. 327-340, May 2009.
-
-[6] J. Allen, "Photoplethysmography and its application in clinical physiological measurement," *Physiol. Meas.*, vol. 28, no. 3, pp. R1-R39, Mar. 2007.
-
-[7] X. Sun et al., "Beat-to-beat variability of perfusion index," *J. Clin. Monit. Comput.*, 2024.
-
-[8] Task Force of the European Society of Cardiology and the North American Society of Pacing and Electrophysiology, "Heart rate variability: Standards of measurement, physiological interpretation, and clinical use," *Circulation*, vol. 93, no. 5, pp. 1043-1065, Mar. 1996.
-
-[9] R. H. Clayton, A. Murray, and R. W. F. Campbell, "Frequency analysis of human ventricular fibrillation," *IEEE Trans. Biomed. Eng.*, vol. 40, no. 7, pp. 651-657, Jul. 1993.
-
-[10] R. Merletti and P. A. Parker, *Electromyography: Physiology, Engineering, and Noninvasive Applications*. IEEE Press/Wiley-Interscience, 2004.
-
----
-
-*Documento generado para BioSimulator Pro v1.0.0*  
+*Documento de arquitectura computacional para BioSimulator Pro v1.0.0*  
 *18 de Diciembre de 2025*

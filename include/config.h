@@ -59,43 +59,56 @@
 // ============================================================================
 
 // ============================================================================
-// FRECUENCIAS DE MUESTREO DE MODELOS (Nyquist 5x)
+// FRECUENCIAS DE MUESTREO - METODOLOGÍA DE DISEÑO
 // ============================================================================
-// Criterio: fs >= 5 * fmax_fisiologica
-// ECG: fmax=150Hz -> fs=750Hz | PPG: fmax=20Hz -> fs=100Hz | EMG: fmax=400Hz -> fs=2000Hz
+// Criterios para Fs_timer:
+// 1. Fs_timer >= 2 × fmax (Nyquist) - EMG: 2×500=1000 Hz mínimo
+// 2. Fs_timer >= Fs_modelo_máximo - EMG: 2000 Hz
+// 3. Fs_timer divisible por Fds (200, 100) para downsampling entero
+// 4. Margen de seguridad 2× sobre Fs_modelo_máximo
+// Conclusión: Fs_timer = 4000 Hz
 
-const uint16_t MODEL_SAMPLE_RATE_ECG = 750;    // Hz - QRS hasta 150Hz (5x)
-const uint16_t MODEL_SAMPLE_RATE_PPG = 100;    // Hz - Pulso hasta 20Hz  (5x)
-const uint16_t MODEL_SAMPLE_RATE_EMG = 2000;   // Hz - sEMG hasta 400Hz
+// Timer maestro (frecuencia de salida DAC)
+const uint16_t FS_TIMER_HZ = 4000;             // Hz - Timer ISR @ 4 kHz
+const uint16_t SAMPLE_RATE_HZ = FS_TIMER_HZ;   // Alias legacy
 
-// Alias para compatibilidad con codigo legacy (signal_engine, serial_handler)
-const uint16_t SAMPLE_RATE_HZ = 1000;          // Hz - frecuencia base legacy
+// Frecuencias internas de cada modelo (Fs >= 5×fmax)
+const uint16_t MODEL_SAMPLE_RATE_ECG = 750;    // Hz - ECG fmax=50Hz (15×)
+const uint16_t MODEL_SAMPLE_RATE_PPG = 100;    // Hz - PPG fmax=10Hz (10×)
+const uint16_t MODEL_SAMPLE_RATE_EMG = 2000;   // Hz - EMG fmax=500Hz (4×)
 
 // deltaTime para cada modelo (segundos)
 const float MODEL_DT_ECG = 1.0f / MODEL_SAMPLE_RATE_ECG;  // 1.333 ms
 const float MODEL_DT_PPG = 1.0f / MODEL_SAMPLE_RATE_PPG;  // 10 ms
 const float MODEL_DT_EMG = 1.0f / MODEL_SAMPLE_RATE_EMG;  // 0.5 ms
 
-// Intervalo de tick en microsegundos
+// Intervalo de tick en microsegundos (para timing real)
 const uint32_t MODEL_TICK_US_ECG = 1000000 / MODEL_SAMPLE_RATE_ECG;  // 1333 us
 const uint32_t MODEL_TICK_US_PPG = 1000000 / MODEL_SAMPLE_RATE_PPG;  // 10000 us
 const uint32_t MODEL_TICK_US_EMG = 1000000 / MODEL_SAMPLE_RATE_EMG;  // 500 us
 
-// ============================================================================
-// FRECUENCIAS DE ENVIO A DISPLAYS
-// ============================================================================
-// Nextion 7" Basic: alineamos downsampling con Serial Plotter
-const uint16_t NEXTION_SEND_RATE = 200;         // Hz efectivo solicitado
-const uint16_t SERIAL_PLOTTER_RATE_ECG = 200;   // Hz - ver 3-4 latidos
-const uint16_t SERIAL_PLOTTER_RATE_PPG = 100;   // Hz - igual al modelo (sin downsample)
-const uint16_t SERIAL_PLOTTER_RATE_EMG = 100;   // Hz - ver ~2 ciclos de secuencia
+// Ratios de upsampling: cuántas muestras del timer por cada muestra del modelo
+// Ratio = Fs_timer / Fs_modelo
+const uint8_t UPSAMPLE_RATIO_ECG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_ECG;  // 4000/750 ≈ 5
+const uint8_t UPSAMPLE_RATIO_PPG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_PPG;  // 4000/100 = 40
+const uint8_t UPSAMPLE_RATIO_EMG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_EMG;  // 4000/2000 = 2
 
-// Ratios de downsampling para Nextion
-const uint8_t NEXTION_DOWNSAMPLE_ECG = MODEL_SAMPLE_RATE_ECG / SERIAL_PLOTTER_RATE_ECG;  // 4
-const uint8_t NEXTION_DOWNSAMPLE_PPG = (MODEL_SAMPLE_RATE_PPG >= NEXTION_SEND_RATE)
-                                       ? (MODEL_SAMPLE_RATE_PPG / NEXTION_SEND_RATE)
-                                       : 1;  // Mantener al menos 1
-const uint8_t NEXTION_DOWNSAMPLE_EMG = MODEL_SAMPLE_RATE_EMG / NEXTION_SEND_RATE;  // 20
+// Frecuencias de salida a displays
+const uint16_t FDS_ECG = 200;                  // Hz - display ECG
+const uint16_t FDS_EMG = 100;                  // Hz - display EMG
+const uint16_t FDS_PPG = 100;                  // Hz - display PPG
+
+// Ratios de downsampling para display (respecto a Fs_timer)
+// Ratio = Fs_timer / Fds
+const uint8_t NEXTION_DOWNSAMPLE_ECG = FS_TIMER_HZ / FDS_ECG;   // 4000/200 = 20
+const uint8_t NEXTION_DOWNSAMPLE_PPG = FS_TIMER_HZ / FDS_PPG;   // 4000/100 = 40
+const uint8_t NEXTION_DOWNSAMPLE_EMG = FS_TIMER_HZ / FDS_EMG;   // 4000/100 = 40
+
+// Alias para compatibilidad
+const uint16_t NEXTION_SEND_RATE = 200;
+const uint16_t SERIAL_PLOTTER_RATE_ECG = FDS_ECG;
+const uint16_t SERIAL_PLOTTER_RATE_PPG = FDS_PPG;
+const uint16_t SERIAL_PLOTTER_RATE_EMG = FDS_EMG;
 
 // ============================================================================
 // CONFIGURACIÓN DAC
@@ -127,11 +140,15 @@ const uint8_t NEXTION_DOWNSAMPLE_EMG = MODEL_SAMPLE_RATE_EMG / NEXTION_SEND_RATE
 #define TASK_PRIORITY_MONITOR   1       // Baja prioridad
 
 // ============================================================================
-// CONFIGURACIÓN DE TIEMPOS
+// CONFIGURACIÓN DE TIEMPOS (UI - basado en millis(), NO en timer)
 // ============================================================================
-#define UI_UPDATE_INTERVAL_MS   100     // 10 Hz refresh UI
-#define METRICS_UPDATE_MS       250     // 4 Hz actualización métricas
-#define WAVEFORM_UPDATE_MS      10      // 100 Hz refresh waveform
+// Las métricas de TEXTO (HR, RR, PI, etc.) se actualizan a baja frecuencia
+// porque los humanos no perciben cambios de texto >5 Hz y ahorrar serial.
+// Esto NO tiene relación con Fs_timer ni downsampling de waveform.
+#define METRICS_UPDATE_MS       250     // 4 Hz actualización métricas texto
+
+// NOTA: El WAVEFORM usa contador de ticks del timer @ 4kHz
+// con los ratios NEXTION_DOWNSAMPLE_* (ECG 20:1, EMG/PPG 40:1)
 
 // ============================================================================
 // CONFIGURACION NEXTION WAVEFORM (7" Basic)
@@ -141,8 +158,13 @@ const uint8_t NEXTION_DOWNSAMPLE_EMG = MODEL_SAMPLE_RATE_EMG / NEXTION_SEND_RATE
 #define WAVEFORM_COMPONENT_ID   1       // ID del componente waveform
 #define WAVEFORM_CHANNEL        0       // Canal del waveform (solo usamos 1)
 
-// Tiempo visible en Nextion a 50 Hz: 700px / 50Hz = 14 segundos
-// A 75 BPM (800ms/latido): ~17 latidos visibles
+// Tiempo visible en Nextion (depende de Fds):
+// - ECG @ 200 Hz: 700px / 200Hz = 3.5 segundos (~4 latidos @ 75 BPM)
+// - EMG @ 100 Hz: 700px / 100Hz = 7.0 segundos
+// - PPG @ 100 Hz: 700px / 100Hz = 7.0 segundos (~9 latidos @ 75 BPM)
+// 
+// NOTA: Los ratios de downsampling (NEXTION_DOWNSAMPLE_*) se calculan
+// respecto a FS_TIMER_HZ (4kHz), NO respecto a WAVEFORM_UPDATE_MS.
 
 // ============================================================================
 // CONFIGURACIÓN DE DEBUG

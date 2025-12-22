@@ -80,7 +80,7 @@ El siguiente diagrama ilustra la estructura jerárquica completa del producto, d
 │  │  │  McSharry 2003  │ │ Fuglevand 1993  │ │   Allen 2007    │           │   │
 │  │  │  ODE + RK4      │ │ Motor Units     │ │ Double Gaussian │           │   │
 │  │  │  8 condiciones  │ │ Mexican Hat     │ │  6 condiciones  │           │   │
-│  │  │  clínicas       │ │ 9 condiciones   │ │  PI/SpO2 dinám. │           │   │
+│  │  │  clínicas       │ │ 9 condiciones   │ │  PI dinámico    │           │   │
 │  │  └────────┬────────┘ └────────┬────────┘ └────────┬────────┘           │   │
 │  └───────────┼───────────────────┼───────────────────┼─────────────────────┘   │
 │              │                   │                   │                         │
@@ -163,7 +163,7 @@ La especificación de requerimientos se realizó mediante entrevistas con potenc
 
 **RF-02: Generación de señal EMG.** El sistema debía generar señales de electromiografía superficial con amplitud proporcional al nivel de contracción muscular (0-100%), frecuencia de contenido espectral entre 20-500 Hz, y condiciones patológicas como miopatía, neuropatía y fasciculaciones. El modelo debía reflejar el principio de reclutamiento de Henneman.
 
-**RF-03: Generación de señal PPG.** El sistema debía generar señales de fotopletismografía con morfología de pulso realista incluyendo onda dicrótica, índice de perfusión (PI) dinámico entre 0.1-20%, saturación de oxígeno (SpO2) simulada entre 70-100%, y condiciones como arritmia, vasoconstricción y perfusión débil.
+**RF-03: Generación de señal PPG.** El sistema debía generar señales de fotopletismografía con morfología de pulso realista incluyendo onda dicrótica, índice de perfusión (PI) dinámico entre 0.1-20%, y condiciones como arritmia, vasoconstricción y perfusión débil.
 
 **RF-04: Salida analógica calibrada.** El dispositivo debía proporcionar una salida de voltaje analógica en el rango 0-1.65V, compatible con osciloscopios y sistemas de adquisición de datos estándar, con impedancia de salida menor a 1 kΩ.
 
@@ -171,7 +171,7 @@ La especificación de requerimientos se realizó mediante entrevistas con potenc
 
 **RF-06: Control remoto WiFi.** Una aplicación web accesible mediante conexión WiFi directa debía replicar todas las funcionalidades de la pantalla táctil, incluyendo visualización de waveforms y control de parámetros.
 
-**RF-07: Métricas en tiempo real.** El sistema debía calcular y mostrar métricas derivadas: frecuencia cardíaca (HR), intervalo RR, índice de perfusión, SpO2, y amplitud RMS para EMG.
+**RF-07: Métricas en tiempo real.** El sistema debía calcular y mostrar métricas derivadas: frecuencia cardíaca (HR), intervalo RR, índice de perfusión (PI), y amplitud RMS para EMG.
 
 #### Requerimientos No Funcionales
 

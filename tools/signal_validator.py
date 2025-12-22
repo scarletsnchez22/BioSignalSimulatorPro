@@ -69,7 +69,6 @@ class SignalValidator:
             self.history['fr'] = deque(maxlen=100)
         elif self.signal_type == 'PPG':
             self.history['pi'] = deque(maxlen=100)
-            self.history['spo2'] = deque(maxlen=100)
         
         # Resultados de validación
         self.validation_results = {}
@@ -145,9 +144,9 @@ class SignalValidator:
     
     def parse_ppg_line(self, line: str) -> Optional[Dict]:
         """Parsea una línea de datos PPG."""
-        # Formato: >ppg:VALUE,hr:VALUE,rr:VALUE,pi:VALUE,spo2:VALUE,beats:VALUE
+        # Formato: >ppg:VALUE,hr:VALUE,rr:VALUE,pi:VALUE,beats:VALUE
         match = re.match(
-            r'>ppg:([-\d.]+),hr:([\d.]+),rr:([\d.]+),pi:([\d.]+),spo2:([\d.]+),beats:(\d+)',
+            r'>ppg:([-\d.]+),hr:([\d.]+),rr:([\d.]+),pi:([\d.]+),beats:(\d+)',
             line
         )
         if match:
@@ -156,8 +155,7 @@ class SignalValidator:
                 'hr': float(match.group(2)),
                 'rr': float(match.group(3)),
                 'pi': float(match.group(4)),
-                'spo2': float(match.group(5)),
-                'beats': int(match.group(6))
+                'beats': int(match.group(5))
             }
         return None
     
@@ -189,8 +187,7 @@ class SignalValidator:
                 self.condition,
                 hr=data['hr'],
                 rr_ms=data['rr'],
-                pi_pct=data['pi'],
-                spo2_pct=data.get('spo2', None)
+                pi_pct=data['pi']
             )
         
         return {}
@@ -239,7 +236,6 @@ class SignalValidator:
             print(f"  HR:     {r.hr_min:.0f} - {r.hr_max:.0f} BPM")
             print(f"  RR:     {r.rr_min_ms:.0f} - {r.rr_max_ms:.0f} ms")
             print(f"  PI:     {r.pi_min_pct:.2f} - {r.pi_max_pct:.2f}%")
-            print(f"  SpO2:   {r.spo2_min_pct:.0f} - {r.spo2_max_pct:.0f}%")
             print(f"\n  Notas: {r.clinical_notes}")
     
     def print_validation_result(self, data: Dict, results: Dict):
@@ -258,7 +254,7 @@ class SignalValidator:
                    f"MUs: {data['mus']} | FR: {data['fr']:.1f}Hz | Cont: {data.get('cont', 0):.0f}%")
         elif self.signal_type == 'PPG':
             line = (f"{status} PPG: {data['ppg']:.4f} | HR: {data['hr']:.1f} | "
-                   f"RR: {data['rr']:.0f}ms | PI: {data['pi']:.2f}% | SpO2: {data.get('spo2', 0):.1f}%")
+                   f"RR: {data['rr']:.0f}ms | PI: {data['pi']:.2f}%")
         
         # Mostrar parámetros fuera de rango
         out_of_range = [k for k, v in results.items() if isinstance(v, tuple) and not v[0]]
@@ -437,7 +433,7 @@ def main():
 Ejemplos:
   python signal_validator.py --port COM4 --signal ecg --condition NORMAL
   python signal_validator.py --port COM4 --signal emg --condition STRONG
-  python signal_validator.py --port COM4 --signal ppg --condition LOW_SPO2
+  python signal_validator.py --port COM4 --signal ppg --condition VASOCONSTRICTION
   python signal_validator.py --list-ports
   python signal_validator.py --show-ranges
 
@@ -448,7 +444,7 @@ Condiciones EMG:
   REST, LOW, MODERATE, HIGH, TREMOR, MYOPATHY, NEUROPATHY, FASCICULATION
 
 Condiciones PPG:
-  NORMAL, ARRHYTHMIA, WEAK_PERFUSION, STRONG_PERFUSION, VASOCONSTRICTION, LOW_SPO2
+  NORMAL, ARRHYTHMIA, WEAK_PERFUSION, STRONG_PERFUSION, VASOCONSTRICTION
         """
     )
     

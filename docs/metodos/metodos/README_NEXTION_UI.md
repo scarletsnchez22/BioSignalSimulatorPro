@@ -337,7 +337,7 @@ Mapeo de condiciones:
 │  bt_atras              bt_ir           │
 │                                        │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐│
-│  │  Normal  │ │ Arritmia │ │SPO2 Bajo ││
+│  │  Normal  │ │ Arritmia │ │Perf.Débil││
 │  │  ID: 1   │ │  ID: 3   │ │  ID: 4   ││
 │  └──────────┘ └──────────┘ └──────────┘│
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐│
@@ -354,7 +354,7 @@ Mapeo de condiciones:
 Mapeo de condiciones:
   ID 1 → Condición 0 (Normal)
   ID 3 → Condición 1 (Arritmia)
-  ID 4 → Condición 2 (SPO2 Bajo)
+  ID 4 → Condición 2 (Perfusión Débil)
   ID 5 → Condición 3 (Perfusión Débil)
   ID 6 → Condición 4 (Perfusión Fuerte)
   ID 7 → Condición 5 (Vasoconstricción)
@@ -603,7 +603,7 @@ if(sel_ecg.val>=0)
 - **Botones condición (dual-state)**: Solo `sel_*.val=X` y `printh 65 0X 0X 01 FF FF FF` (SIN page, SIN lógica extra)
   - ECG (página 2): **bt_norm** (ID 4), bt_taq (5), bt_bra (6), bt_fa (7), bt_fv (8), bt_pvc (9), bt_brb (10), bt_stup (11), bt_stdn (12)
   - EMG (página 3): bt_reposo (1), bt_leve (2), bt_moderada (3), bt_fuerte (4), bt_maxima (5), bt_temblor (6), bt_miopatia (7), bt_neuropatia (8), bt_fasc (9), bt_fatiga (10)
-  - PPG (página 4): **bt_norm** (1), bt_arr (2), bt_spo2 (3), bt_lowp (4), bt_highp (5), bt_vasc (6), bt_art (7)
+  - PPG (página 4): **bt_norm** (1), bt_arr (2), bt_lowp (3), bt_vasod (4), bt_highp (5), bt_vasc (6)
 - **bt_atras** → `page menu`
 - **bt_ir** → `if(sel_*.val>=0){printh 65 0X 0X 01 FF FF FF}` (ESP32 decide página destino)
 - **✅ Selección única validada**: ESP32 limpia todos los botones por ID (b1..bX) y por nombre (bt_*) antes de marcar el seleccionado.

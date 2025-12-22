@@ -381,8 +381,6 @@ class PPGClinicalRange:
     rr_max_ms: float            # Intervalo RR máximo (ms)
     pi_min_pct: float           # Índice de perfusión mínimo (%)
     pi_max_pct: float           # Índice de perfusión máximo (%)
-    spo2_min_pct: float         # SpO2 mínimo (%)
-    spo2_max_pct: float         # SpO2 máximo (%)
     description: str
     clinical_notes: str
 
@@ -395,7 +393,6 @@ PPG_CLINICAL_RANGES: Dict[str, PPGClinicalRange] = {
         hr_min=60.0, hr_max=100.0,
         rr_min_ms=600.0, rr_max_ms=1000.0,
         pi_min_pct=2.0, pi_max_pct=5.0,
-        spo2_min_pct=95.0, spo2_max_pct=100.0,
         description="PPG normal en reposo",
         clinical_notes="Muesca dicrótica visible, PI 2-5%"
     ),
@@ -408,7 +405,6 @@ PPG_CLINICAL_RANGES: Dict[str, PPGClinicalRange] = {
         hr_min=60.0, hr_max=180.0,
         rr_min_ms=333.0, rr_max_ms=1500.0,  # Muy variable
         pi_min_pct=1.0, pi_max_pct=5.0,
-        spo2_min_pct=92.0, spo2_max_pct=100.0,
         description="Arritmia con RR irregular",
         clinical_notes="Variabilidad RR >20%, amplitud variable"
     ),
@@ -421,7 +417,6 @@ PPG_CLINICAL_RANGES: Dict[str, PPGClinicalRange] = {
         hr_min=90.0, hr_max=140.0,  # Taquicardia compensatoria
         rr_min_ms=428.0, rr_max_ms=667.0,
         pi_min_pct=0.1, pi_max_pct=0.5,
-        spo2_min_pct=88.0, spo2_max_pct=98.0,
         description="Hipoperfusión periférica",
         clinical_notes="PI <0.5%, señal débil, posible shock"
     ),
@@ -434,38 +429,21 @@ PPG_CLINICAL_RANGES: Dict[str, PPGClinicalRange] = {
         hr_min=60.0, hr_max=90.0,
         rr_min_ms=667.0, rr_max_ms=1000.0,
         pi_min_pct=5.0, pi_max_pct=20.0,
-        spo2_min_pct=96.0, spo2_max_pct=100.0,
         description="Vasodilatación/hiperperfusión",
         clinical_notes="PI >5%, fiebre, ejercicio, vasodilatadores"
     ),
     
     # -------------------------------------------------------------------------
     # VASOCONSTRICCIÓN - Allen 2007, Reisner 2008
-    # Vasoconstricción marcada: PI muy bajo, amplitud reducida, SpO2 variable
+    # Vasoconstricción marcada: PI muy bajo, amplitud reducida
     # -------------------------------------------------------------------------
     "VASOCONSTRICTION": PPGClinicalRange(
         condition="Vasoconstricción",
         hr_min=60.0, hr_max=100.0,
         rr_min_ms=600.0, rr_max_ms=1000.0,
         pi_min_pct=0.2, pi_max_pct=0.8,      # PI muy bajo (0.3-0.5% típico)
-        spo2_min_pct=91.0, spo2_max_pct=100.0,  # Tolerancia: puede bajar a 91%
         description="Vasoconstricción periférica marcada",
-        clinical_notes="PI <1%, amplitud reducida, muesca atenuada, SpO2 variable"
-    ),
-    
-    # -------------------------------------------------------------------------
-    # SpO2 BAJO (Hipoxemia) - Jubran 2015 [15]
-    # Ref: Jubran A. Crit Care. 2015;19(1):272. DOI: 10.1186/s13054-015-0984-8
-    # Tolerancia añadida para variabilidad natural del modelo
-    # -------------------------------------------------------------------------
-    "LOW_SPO2": PPGClinicalRange(
-        condition="SpO2 Bajo",
-        hr_min=90.0, hr_max=130.0,  # Taquicardia compensatoria
-        rr_min_ms=462.0, rr_max_ms=667.0,
-        pi_min_pct=0.5, pi_max_pct=3.5,       # Tolerancia: hasta 3.5%
-        spo2_min_pct=70.0, spo2_max_pct=90.0,  # Tolerancia: hasta 90% (era 89%)
-        description="Hipoxemia (SpO2 <90%)",
-        clinical_notes="SpO2 <90%, taquicardia refleja, EMERGENCIA si <80%"
+        clinical_notes="PI <1%, amplitud reducida, muesca atenuada"
     ),
 }
 
@@ -587,7 +565,7 @@ def validate_emg_sample(condition: str, rms_mV: float, motor_units: int,
 
 
 def validate_ppg_sample(condition: str, hr: float, rr_ms: float,
-                        pi_pct: float, spo2_pct: float = None) -> Dict[str, Tuple[bool, str]]:
+                        pi_pct: float) -> Dict[str, Tuple[bool, str]]:
     """
     Valida una muestra de PPG contra rangos clínicos.
     """
@@ -609,11 +587,6 @@ def validate_ppg_sample(condition: str, hr: float, rr_ms: float,
     # PI
     pi_ok = ref.pi_min_pct <= pi_pct <= ref.pi_max_pct
     results["pi"] = (pi_ok, f"{pi_pct:.2f}% {'✓' if pi_ok else '✗'} [{ref.pi_min_pct:.2f}-{ref.pi_max_pct:.2f}]")
-    
-    # SpO2 (si se proporciona)
-    if spo2_pct is not None:
-        spo2_ok = ref.spo2_min_pct <= spo2_pct <= ref.spo2_max_pct
-        results["spo2"] = (spo2_ok, f"{spo2_pct:.1f}% {'✓' if spo2_ok else '✗'} [{ref.spo2_min_pct:.1f}-{ref.spo2_max_pct:.1f}]")
     
     return results
 
@@ -649,7 +622,6 @@ PPG_CONDITION_MAP = {
     "WEAK_PERFUSION": "WEAK_PERFUSION",
     "STRONG_PERFUSION": "STRONG_PERFUSION",
     "VASOCONSTRICTION": "VASOCONSTRICTION",
-    "LOW_SPO2": "LOW_SPO2",
 }
 
 
@@ -684,13 +656,12 @@ def print_all_ranges():
     print("\n" + "-"*80)
     print("PPG - FOTOPLETISMOGRAFÍA")
     print("-"*80)
-    print(f"{'Condición':<25} {'HR (BPM)':<15} {'RR (ms)':<15} {'PI (%)':<12} {'SpO2 (%)':<12}")
+    print(f"{'Condición':<25} {'HR (BPM)':<15} {'RR (ms)':<15} {'PI (%)':<12}")
     print("-"*80)
     for key, r in PPG_CLINICAL_RANGES.items():
         print(f"{r.condition:<25} {r.hr_min:.0f}-{r.hr_max:.0f}{'':>5} "
               f"{r.rr_min_ms:.0f}-{r.rr_max_ms:.0f}{'':>5} "
-              f"{r.pi_min_pct:.1f}-{r.pi_max_pct:.1f}{'':>4} "
-              f"{r.spo2_min_pct:.0f}-{r.spo2_max_pct:.0f}")
+              f"{r.pi_min_pct:.1f}-{r.pi_max_pct:.1f}")
     
     print("\n" + "="*80)
 

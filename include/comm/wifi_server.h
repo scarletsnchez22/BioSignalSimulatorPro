@@ -77,7 +77,6 @@ struct WSSignalMetrics {
     
     // PPG
     float pi;                   // Perfusion Index (%)
-    int spo2;                   // SpO2 (%)
     float dcLevel;              // DC baseline (mV)
 };
 
