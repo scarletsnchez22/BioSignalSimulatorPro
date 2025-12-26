@@ -79,7 +79,7 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 
 | Requisito | Implementación |
 |-----------|----------------|
-| Protección sobrecarga | TP4056 corte a 4.2V ±1% |
+| Protección sobrecarga | IP5306 corte a 4.2V ±0.5% |
 | Protección sobredescarga | DW01 corte a 2.5V |
 | Protección cortocircuito | DW01 límite 3A |
 | Ventilación | Orificios en carcasa para disipación térmica |
@@ -100,7 +100,7 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 | Seguridad intrínseca | Diseño inherentemente seguro | Voltajes SELV, corrientes limitadas |
 | Eficiencia energética | Maximizar autonomía | Regulador XL6009 η≈88-92% |
 | Modularidad | Facilitar mantenimiento | Conectores desmontables, PCB separada |
-| Bajo ruido | Señales limpias para osciloscopio | Buffer TL072 JFET, resistencias de precisión |
+| Bajo ruido | Señales limpias para osciloscopio | Buffer MCP6002 rail-to-rail, resistencias de precisión |
 
 #### 2.3.2 Criterios de Selección de Componentes
 
@@ -135,17 +135,18 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 
 **Justificación:** Nextion incluye procesador propio, liberando recursos del ESP32 y permitiendo interfaz táctil rica.
 
-#### 2.4.3 Buffer de Salida: TL072
+#### 2.4.3 Buffer de Salida: MCP6002-E/SN
 
-| Característica | MCP6002 | TL072 | Decisión |
-|----------------|---------|-------|----------|
-| Slew Rate | 0.6 V/µs | **13 V/µs** | TL072 superior |
-| GBW | 1 MHz | **3 MHz** | TL072 superior |
-| Ruido | 29 nV/√Hz | **18 nV/√Hz** | TL072 superior |
-| Consumo | 100 µA | 2.5 mA | MCP6002 mejor |
-| Alimentación | 1.8-6V | ±2.5-18V | Ambos OK |
+| Característica | MCP6002 | TL072 | Comentario |
+|----------------|---------|-------|------------|
+| Slew Rate | 0.6 V/µs | 13 V/µs | MCP6002 es suficiente para 5 kHz (slew requerido <0.1 V/µs) |
+| GBW | 1 MHz | 3 MHz | 1 MHz cubre el ancho de banda educativo (0‑5 kHz) |
+| Ruido | 29 nV/√Hz | 18 nV/√Hz | Incremento marginal, imperceptible en el BNC |
+| Consumo | **1 mA típico** | 2.5 mA | MCP6002 reduce el consumo total |
+| Alimentación | **1.8‑6V, rail-to-rail** | ±2.5‑18V | MCP6002 opera directo a 5 V |
+| Encapsulado local | **SOIC-8 disponible** | DIP-8 importado | MCP6002 se consigue en Novatronic |
 
-**Justificación:** El TL072 ofrece mejor rendimiento para señales biológicas gracias a su entrada JFET de bajo ruido y mayor slew rate. El consumo adicional (5 mA total) es aceptable.
+**Justificación:** El simulador entrega señales de hasta 5 kHz y 3.3 Vpp, por lo que el MCP6002 (rail-to-rail, bajo consumo y disponible localmente) cubre todo el rango sin necesidad de un TL072. Además, al usar el MCP6002 se elimina la conversión de encapsulado y se reduce el consumo de la etapa analógica, mejorando la autonomía.
 
 #### 2.4.4 Sistema de Alimentación
 
@@ -188,7 +189,7 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 | Eficiencia @ 0.8A | 92% |
 | Eficiencia @ 1.2A | 88% |
 
-**Cadena energética:** USB 5V (IP5306) → BMS 1S 3A → Pack 2×18650 → Switch → XL6009 → ESP32/Nextion/TL072. El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 gestiona el perfil CC/CV y el XL6009 entrega 5V estable al sistema.
+**Cadena energética:** USB 5V (IP5306) → BMS 1S 3A → Pack 2×18650 → Switch → XL6009 → ESP32/Nextion/MCP6002. El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 gestiona el perfil CC/CV y el XL6009 entrega 5V estable al sistema.
 
 ### 2.5 Proceso y Arquitectura
 
@@ -235,29 +236,34 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 │                                               │                  │
 │                            ┌───────────────────┼────────────────┐│
 │                            ▼                   ▼                ▼│
-│                         ESP32               NEXTION        TL072 │
+│                         ESP32               NEXTION       MCP6002│
 │                       WROOM-32            7" 800×480       Buffer│
 │                                                          └─► BNC │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
-```
 
 #### 2.5.3 Acondicionamiento de la salida analógica
 
-Para asegurar que la forma de onda enviada al BNC mantenga la banda útil (0‑5 kHz) y llegue libre de conmutaciones del XL6009 o del DAC del ESP32, se añadió un filtro pasabajos local justo a la salida del MCP6002:
+Para asegurar que la forma de onda enviada al BNC mantenga la banda útil (0‑500 Hz) y llegue suavizada (sin escalones del DAC), se añadió un filtro pasabajos RC a la salida del MCP6002:
 
-- **Resistencia serie:** 100 Ω ubicada entre la salida del MCP6002 y la bornera “BNC_OUT”. Además de colaborar con el filtrado, protege al op-amp ante cortos o cargas capacitivas externas.
-- **Capacitor de desacople:** 100 nF cerámico conectado entre el nodo filtrado y GND.
+- **Resistencia serie:** 100 Ω ubicada entre la salida del MCP6002 y la bornera "BNC_OUT". Además de definir fc junto con el capacitor, protege al op-amp ante cortos o cargas capacitivas externas.
+- **Capacitor de filtrado:** 1 µF cerámico X7R conectado entre el nodo filtrado y GND.
 
 El punto de corte del filtro viene dado por:
 
 ```
-f_c = 1 / (2π · R · C)
-    = 1 / (2π · 100 Ω · 100 nF)
-    ≈ 15.9 kHz
+f_c = 1 / (2π × R × C)
+    = 1 / (2π × 100 Ω × 1 µF)
+    ≈ 1.59 kHz
 ```
 
-De este modo, las señales biomédicas (ECG/EMG/PPG), que se encuentran muy por debajo de 5 kHz, pasan sin atenuación apreciable, mientras que el ruido de alta frecuencia (≈100‑400 kHz) queda atenuado entre 20 y 30 dB antes de salir por el BNC.
+**Justificación del diseño:**
+
+- **Señales biomédicas:** ECG (0-50 Hz), EMG (0-500 Hz), PPG (0-10 Hz) pasan sin atenuación apreciable (fc >> fmax).
+- **Stepping del DAC:** El DAC del ESP32 opera a 4 kHz (Fs_timer). Con fc = 1.59 kHz, los armónicos del stepping se atenúan ~8 dB a 4 kHz y ~20 dB a 16 kHz, suavizando visualmente la señal en el osciloscopio.
+- **Ripple residual del XL6009:** A 400 kHz, la atenuación es >48 dB, eliminando cualquier componente de conmutación que haya pasado el filtro π.
+
+> **Nota:** Se eligió 1 µF (en lugar de 100 nF) para colocar fc entre la frecuencia máxima de las señales biomédicas (500 Hz) y la frecuencia de muestreo del DAC (4 kHz), cumpliendo el criterio de filtro de reconstrucción: fmax < fc < Fs/2.
 
 #### 2.5.4 Consumos y Autonomía
 
@@ -267,10 +273,10 @@ De este modo, las señales biomédicas (ECG/EMG/PPG), que se encuentran muy por 
 |------------|------------|----------------|--------|------------|------------|
 | Nextion NX8048T070 | 510 mA | 2.55 W | 650 mA | 3.25 W | Datasheet Basic Series [1] |
 | ESP32-WROOM-32 (WiFi AP) | 240 mA | 1.20 W | 350 mA | 1.75 W | ESP32 Datasheet v5.2, Tabla 5-4 [2] |
-| TL072 Buffer (2 canales) | 5 mA | 0.025 W | 5 mA | 0.025 W | TI TL072 Datasheet [3] |
+| MCP6002 Buffer (2 canales) | **1 mA** | **0.005 W** | **1 mA** | **0.005 W** | Microchip MCP6002 Datasheet [3] |
 | LED RGB + divisor UART | 32 mA | 0.16 W | 32 mA | 0.16 W | Cálculo: Vf≈2.0V (R), 3.0V (G/B) |
 | XL6009 (pérdidas) | 70 mA equiv. | 0.35 W | 163 mA equiv. | 0.82 W | XL6009 Datasheet, η≈92%/88% [4] |
-| **TOTAL** | **857 mA** | **4.29 W** | **1200 mA** | **6.00 W** | |
+| **TOTAL** | **853 mA** | **4.27 W** | **1196 mA** | **6.00 W** | |
 
 **Nota:** El consumo pico representa un escenario extremo donde todos los subsistemas demandan simultáneamente (brillo 100%, WiFi TX continuo, LED RGB encendido). En uso normal, el sistema opera en modo promedio.
 
@@ -379,7 +385,7 @@ El sistema se divide en tres etapas funcionales ordenadas cronológicamente seg�
 | 5 | Portapilas 18650 doble (2P paralelo) | 1 | $1.80 | $1.80 | Novatronic |
 | 6 | Switch deslizante SPST | 1 | $0.35 | $0.35 | Novatronic |
 | 7 | Bornera 2 pines paso 8.05 mm | 3 | $0.50 | $1.50 | Novatronic |
-| 8 | Cable sólido AWG22 rojo/negro 1 m | 1 | $0.80 | $0.80 | Novatronic [12] |
+| 8 | Cable sólido AWG22 rojo/negro 1 m | 1 | $0.80 | $0.80 | Novatronic |
 | 9 | Tornillos M3×10 mm (4 uds, fijación XL6009) | 1 | $0.40 | $0.40 | Ferretería local |
 | | **Subtotal pasivos/mecánicos potencia** | | | **$4.85** | |
 
@@ -391,11 +397,11 @@ El sistema se divide en tres etapas funcionales ordenadas cronológicamente seg�
 | 11 | Fusible vidrio 5×20 mm 1.5 A | 1 | $0.30 | $0.30 | Novatronic |
 | 12 | Inductor 22 µH / 3 A (9×12 mm, pitch 5 mm) | 1 | $0.60 | $0.60 | Novatronic |
 | 13 | Capacitor electrolítico 470 µF / 25 V (8×14 mm, pitch 3.5 mm) | 1 | $0.35 | $0.35 | Novatronic |
-| 14 | Capacitor cerámico 100 nF / 50 V | 1 | $0.05 | $0.05 | Novatronic |
+| 14 | Capacitor cerámico 1 µF / 16 V X7R (0805) | 1 | $0.10 | $0.10 | Novatronic |
 | 15 | Conector 2 pines paso 8.05 mm (PWR_XL6009 / PWR_BNC) | 2 | $0.50 | $1.00 | Novatronic |
 | 16 | PCB perforada 5×7 cm (plaquita filtrado) | 1 | $0.80 | $0.80 | Novatronic |
 | 17 | Tornillos M1.6×6 mm (4 uds, montaje plaquita) | 1 | $0.40 | $0.40 | Ferretería local |
-| | **Subtotal etapa de filtrado** | | | **$4.20** | |
+| | **Subtotal etapa de filtrado** | | | **$4.25** | |
 
 #### 3.1.4 Etapa de Control — Módulos Activos
 
@@ -416,7 +422,7 @@ El sistema se divide en tres etapas funcionales ordenadas cronológicamente seg�
 | 24 | Resistencia 2 kΩ 1/4 W | 1 | $0.05 | $0.05 | Novatronic |
 | 25 | Resistencia 1 kΩ 1/4 W | 1 | $0.05 | $0.05 | Novatronic |
 | 26 | Resistencia 100 Ω 1/4 W | 2 | $0.05 | $0.10 | Novatronic |
-| 27 | Capacitor cerámico 100 nF / 50 V (filtro BNC) | 1 | $0.05 | $0.05 | Novatronic |
+| 27 | Capacitor cerámico 1 µF / 16 V X7R (filtro BNC) | 1 | $0.10 | $0.10 | Novatronic |
 | 28 | Conector BNC hembra | 1 | $1.20 | $1.20 | Novatronic |
 | 29 | Header macho 4 pines | 1 | $0.20 | $0.20 | Novatronic |
 | 30 | Conector JST-XH 4 pines (Nextion) | 1 | $0.60 | $0.60 | Novatronic |
@@ -425,11 +431,11 @@ El sistema se divide en tres etapas funcionales ordenadas cronológicamente seg�
 | 33 | PCB perforada 10×15 cm (placa control) | 1 | $2.00 | $2.00 | Novatronic |
 | 34 | Tornillos M3×10 mm (4 uds, montaje placa control) | 1 | $0.40 | $0.40 | Ferretería local |
 | 35 | Tornillos M4×12 mm (6 uds, soporte chasis) | 1 | $0.60 | $0.60 | Ferretería local |
-| | **Subtotal pasivos/conectores control** | | | **$8.00** | |
+| | **Subtotal pasivos/conectores control** | | | **$8.05** | |
 
 ---
 
-**TOTAL SISTEMA ELECTRÓNICO:** $26.00 + $4.85 + $4.20 + $111.20 + $8.00 = **$154.25**
+**TOTAL SISTEMA ELECTRÓNICO:** $26.00 + $4.85 + $4.25 + $111.20 + $8.05 = **$154.35**
 
 ### 3.2 Filtro y Protección de la Etapa Elevadora
 
@@ -446,20 +452,28 @@ Para minimizar el rizado del XL6009 y salvaguardar la placa de control se añadi
              [L1]  Inductor 22 µH / 3 A (9×12 mm)
                │─────── +5 V_CTRL hacia placa de control
                │
-               └── C15 = 100 nF (cerámico) → GND
+               └── C15 = 1 µF (cerámico X7R) → GND
 ```
 
 - **F1 (portafusible BLX-A + fusible 5×20 mm 1.5 A)** se abre ante sobrecorriente >1.5 A, protegiendo el bus de 5 V antes de que llegue a los módulos sensibles. Es reemplazable y accesible desde la plaquita de filtrado.  
 - **C14** absorbe los picos de corriente del elevador antes de la bobina.  
-- **L1** y **C15** conforman un filtro π que atenúa el rizado de conmutación y mantiene limpio el bus que alimenta el MCP6002 y el ESP32. La frecuencia de corte aproximada es:
+- **L1** y **C15** conforman un filtro LC de segundo orden que atenúa el rizado de conmutación y mantiene limpio el bus que alimenta el MCP6002 y el ESP32. La frecuencia de corte aproximada es:
 
 ```
-f_c ≈ 1 / (2π √(L · C_eq)) ≈ 1 / (2π √(22 µH · 100 nF)) ≈ 3.4 kHz
+f_c = 1 / (2π √(L × C15))
+f_c = 1 / (2π √(22 µH × 1 µF))
+f_c ≈ 34 kHz
 ```
 
-Como el XL6009 conmuta alrededor de 100 kHz, el filtro proporciona >20 dB de atenuación del rizado mientras mantiene la caída DC por debajo de 0.1 V (solo la resistencia del fusible y la DCR de la bobina).
+El XL6009 conmuta a **400 kHz** según su datasheet [4]. Con f_c = 34 kHz, la relación es 400/34 ≈ 11.8× (1.07 décadas). Un filtro LC de segundo orden atenúa a -40 dB/década, por lo que a 400 kHz se obtiene:
 
-> **Nota sobre la frecuencia real del XL6009:** aunque el datasheet indica un oscilador típico de 400 kHz, los módulos comerciales basados en XL6009 (alimentados con 3.7 V y cargados a ~1 A) suelen operar en la práctica a 100‑150 kHz. Esta frecuencia menor se verificó en el prototipo y se debe al modo de control interno cuando la relación Vout/Vin es baja. Por eso, dimensionar el filtro con \(f_c ≈ 3.4 kHz\) garantiza >20 dB de atenuación tanto para las oscilaciones reales (~100 kHz) como para el worst-case de 400 kHz (dos décadas por encima).
+```
+Atenuación ≈ 1.07 décadas × 40 dB/década ≈ 43 dB
+```
+
+Esto reduce un ripple típico de 50-100 mV a menos de **1 mV** en la salida, suficiente para la etapa analógica del MCP6002. La caída DC se mantiene por debajo de 0.1 V (solo la resistencia del fusible y la DCR del inductor).
+
+> **Nota de diseño:** Se eligió C15 = 1 µF cerámico X7R para colocar f_c a ~1/10 de la frecuencia de switching, cumpliendo la recomendación de Texas Instruments para filtros LC en convertidores DC-DC [TI SLVA462]. El capacitor electrolítico C14 (470 µF) actúa como reserva de energía y su ESR (50-200 mΩ típico) proporciona amortiguamiento natural que evita resonancias.
 
 #### 3.2.1 Ubicación Física
 
@@ -514,7 +528,7 @@ El submódulo de filtrado se implementa en una plaquita dedicada (PCB 5×7 cm) q
 
 [2] Espressif Systems. (2023). *ESP32 Series Datasheet v5.2*. Tabla 5-4: Consumo de corriente WiFi. Recuperado de https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf
 
-[3] Texas Instruments. (2023). *TL072 Low-Noise JFET-Input Operational Amplifier Datasheet*. Recuperado de https://www.ti.com/lit/ds/symlink/tl072.pdf
+[3] Microchip Technology. (2023). *MCP6001/1R/1U/2/4 1 MHz, Low-Power Op Amp Datasheet*. Recuperado de https://ww1.microchip.com/downloads/en/DeviceDoc/MCP6001-1R-1U-2-4-1-MHz-Low-Power-Op-Amp-DS20001733L.pdf
 
 [4] XLSEMI. (2023). *XL6009 400kHz 4A 40V Buck DC to DC Converter Datasheet*. Recuperado de https://www.xlsemi.com/datasheet/XL6009%20datasheet.pdf
 
@@ -531,6 +545,8 @@ El submódulo de filtrado se implementa en una plaquita dedicada (PCB 5×7 cm) q
 [10] Kiwi Ecuador. (2024). *Bornera P/Cable H 60A 25mm - WRT*. Precio: $3.10. Recuperado de tienda física Kiwi, Ecuador.
 
 [11] AV Electronics. (2024). *Protector BMS 1S 3A 3.7V (Modelo 8205A)*. Precio: $2.00. Recuperado de https://avelectronics.cc/producto/protector-bms-1s-3a-3-7v/
+
+[12] Texas Instruments. (2011). *SLVA462: Input and Output Capacitor Selection for Voltage Regulators*. Recuperado de https://www.ti.com/lit/an/slva462/slva462.pdf
 
 ---
 
