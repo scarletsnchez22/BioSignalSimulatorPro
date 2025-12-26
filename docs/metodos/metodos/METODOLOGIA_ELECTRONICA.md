@@ -319,6 +319,19 @@ El dispositivo está diseñado para cubrir **dos clases consecutivas de 1.5 hora
 - Condición: dispositivo apagado durante carga para respetar perfil CC/CV del IP5306.
 - **Advertencia:** El cargador IP5306 comparte los nodos B+/B− con el elevador. Siempre apagar el switch antes de conectar el USB para evitar corrientes inestables y posibles daños.
 
+#### 2.5.6 Principios aplicados al diseño de la PCB
+
+| Principio | Implementación en la placa de control |
+|-----------|---------------------------------------|
+| Plano de tierra dedicado | Toda la cara inferior se vierte como plano GND continuo, con clearance uniforme al borde y conexión a cada pad mediante termales. Esto reduce ruido e inductancia de retorno. |
+| Cosido de GND (stitching vias) | Se añadieron 11 vías distribuidas junto al BNC, NodeMCU, conectores P1/P2/P3 y el perímetro de la placa para unir el plano inferior con la cara superior y formar un blindaje efectivo. |
+| Ruteo 0°/45° | Las pistas se trazaron con segmentos ortogonales y giros de 45° para mejorar manufacturabilidad y mantener distancias constantes entre nets. |
+| Separación de potencia y señal | Las pistas VCC/GND se mantienen en la cara inferior (ancho ≥ 1.5 mm), mientras que las señales (LED RGB, Nextion, DAC) van por la cara superior para minimizar acoples. |
+| Control de anchos | Se fijó 1.2 mm para alimentación/retornos críticos y 1.0 mm para señales, manteniendo resistencia baja y respetando el clearance frente a pads y tornillos. |
+| Keepouts mecánicos | Se definieron zonas de exclusión alrededor de los cuatro tornillos y a lo largo del contorno para evitar que las arandelas o la base metálica toquen cobre expuesto. |
+| Etiquetado funcional | Todas las borneras y conectores se rotularon (VCC, GND, BNC, LED, NEXTION) en serigrafía amarilla para facilitar montaje y mantenimiento. |
+| Filtro RC situado en el borde | El resistor serie de 100 Ω y el capacitor de 1 µF X7R se colocaron a <5 mm del BNC para minimizar inductancias parásitas y garantizar la fc calculada (1.59 kHz). |
+
 ### 2.6 Limitaciones del Diseño Electrónico
 
 | Limitación | Descripción | Mitigación |
@@ -402,6 +415,14 @@ El sistema se divide en tres etapas funcionales ordenadas cronológicamente seg�
 | 16 | PCB perforada 5×7 cm (plaquita filtrado) | 1 | $0.80 | $0.80 | Novatronic |
 | 17 | Tornillos M1.6×6 mm (4 uds, montaje plaquita) | 1 | $0.40 | $0.40 | Ferretería local |
 | | **Subtotal etapa de filtrado** | | | **$4.25** | |
+
+**Principios aplicados a la plaquita de filtrado**
+
+1. **Cara única (Top layer) para ruteo compacto:** todos los trazos se colocaron en la misma cara para facilitar el montaje en protoboard perforada y reducir el cableado entre fusible, inductor y conectores.
+2. **Anchos diferenciados:** pistas de potencia (VIN_CTRL, +5 V_CTRL) con ancho ≥1.2 mm; señales de sensado/monitorización a 1.0 mm para mantener resistencia baja sin complicar el ruteo.
+3. **Componentes agrupados:** F1, C14, L1 y C15 se ubicaron a menos de 15 mm entre sí para minimizar lazo de alta frecuencia y asegurar la atenuación calculada (43 dB @ 400 kHz).
+4. **Conectores enfrentados:** las borneras PWR_XL6009/PWR_BNC se alinearon para que los cables entren y salgan en línea recta, reduciendo tensión mecánica sobre el filtro.
+5. **Ruta corta a chasis:** los orificios de montaje M1.6 se colocaron junto a la entrada VIN_CTRL para atornillar la plaquita directamente al chasis metálico y mantener el cableado ordenado.
 
 #### 3.1.4 Etapa de Control — Módulos Activos
 
