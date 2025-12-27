@@ -99,7 +99,7 @@ void WiFiServer_BioSim::setupRoutes() {
     // API de estado
     _server->on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
         StaticJsonDocument<256> doc;
-        doc["device"] = "BioSimulator Pro";
+        doc["device"] = "BioSignalSimulator Pro";
         doc["version"] = "1.0.0";
         doc["clients"] = _ws->count();
         doc["streaming"] = _streamingEnabled;
@@ -129,7 +129,7 @@ void WiFiServer_BioSim::onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
             {
                 StaticJsonDocument<128> doc;
                 doc["type"] = "welcome";
-                doc["message"] = "Conectado a BioSimulator Pro";
+                doc["message"] = "Conectado a BioSignalSimulator Pro";
                 doc["clientId"] = client->id();
                 String msg;
                 serializeJson(doc, msg);

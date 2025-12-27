@@ -4,7 +4,7 @@
  * @version 3.0.0
  * @date Diciembre 2025
  * 
- * Firmware ESP32 - BioSimulator Pro
+ * Firmware ESP32 - BioSignalSimulator Pro
  * 
  * Configuracion via #defines:
  * - Tipo de senal (ECG, EMG, PPG)
@@ -248,7 +248,7 @@ void setup() {
     // Banner de inicio
     Serial.println();
     Serial.println("------------------------------------------------------------");
-    Serial.println("  BIOSIMULATOR PRO - DEBUG MODE v3.0");
+    Serial.println("  BIOSIGNALSIMULATOR PRO - DEBUG MODE v3.0");
     Serial.println("------------------------------------------------------------");
     
     // Configurar senal segun tipo seleccionado

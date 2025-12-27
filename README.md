@@ -148,7 +148,8 @@ Ver metodología completa: [`docs/APP_WEB_METODOLOGIA.md`](docs/APP_WEB_METODOLO
 ## 📚 Documentación
 
 - [`docs/METODOLOGIA_COMPUTACIONAL.md`](docs/METODOLOGIA_COMPUTACIONAL.md) - Metodología y modelos matemáticos
-- [`docs/info/HARDWARE_ELECTRONICS_v2.md`](docs/info/HARDWARE_ELECTRONICS_v2.md) - Diseño electrónico
+- [`docs/metodos/metodos/METODOLOGIA_ELECTRONICA.md`](docs/metodos/metodos/METODOLOGIA_ELECTRONICA.md) - Diseño electrónico detallado
+- [`docs/metodos/metodos/METODOLOGIA_MECANICA.md`](docs/metodos/metodos/METODOLOGIA_MECANICA.md) - Diseño mecánico y carcasa
 - [`docs/info/README_NEXTION_UI.md`](docs/info/README_NEXTION_UI.md) - Interfaz Nextion
 - [`docs/APP_WEB_METODOLOGIA.md`](docs/APP_WEB_METODOLOGIA.md) - Aplicación web WiFi
 

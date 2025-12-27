@@ -22,7 +22,7 @@
 // CONFIGURACIÓN WiFi AP
 // ============================================================================
 
-#define WIFI_SSID           "BioSimulator_Pro"
+#define WIFI_SSID           "BioSignalSimulator_Pro"
 #define WIFI_PASSWORD       "biosignal123"
 #define WIFI_CHANNEL        1
 #define WIFI_MAX_CLIENTS    6

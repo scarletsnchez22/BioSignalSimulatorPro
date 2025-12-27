@@ -1,6 +1,6 @@
 /**
  * @file config.h
- * @brief Configuración global del sistema BioSimulator Pro
+ * @brief Configuración global del sistema BioSignalSimulator Pro
  * @version 1.0.0
  * @date 18 Diciembre 2025
  * 
@@ -18,7 +18,7 @@
 // ============================================================================
 // IDENTIFICACIÓN DEL SISTEMA
 // ============================================================================
-#define DEVICE_NAME             "BioSimulator Pro"
+#define DEVICE_NAME             "BioSignalSimulator Pro"
 #define FIRMWARE_VERSION        "1.0.0"
 #define FIRMWARE_DATE           "18 Diciembre 2025"
 #define HARDWARE_MODEL          "ESP32-WROOM-32"
@@ -44,9 +44,9 @@
 // CONFIGURACIÓN DE PINES - LED RGB
 // ============================================================================
 #define LED_RGB_ENABLED         true
-#define LED_RGB_RED             4       // GPIO4
-#define LED_RGB_GREEN           5       // GPIO5
-#define LED_RGB_BLUE            18      // GPIO18
+#define LED_RGB_RED             21      // GPIO21
+#define LED_RGB_GREEN           22      // GPIO22
+#define LED_RGB_BLUE            23      // GPIO23
 #define LED_RGB_COMMON_ANODE    false   // false = cátodo común
 
 // ============================================================================

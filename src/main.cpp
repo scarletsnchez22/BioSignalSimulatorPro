@@ -1,6 +1,6 @@
 /**
  * @file main.cpp
- * @brief BioSimulator Pro - Punto de entrada principal
+ * @brief BioSignalSimulator Pro - Punto de entrada principal
  * @version 1.0.0
  * @date 18 Diciembre 2025
  * 
@@ -826,7 +826,7 @@ void setup() {
     Serial.println("\n[WiFi] Iniciando servidor web...");
     if (wifiServer.begin()) {
         Serial.println("[WiFi] Servidor iniciado correctamente");
-        Serial.println("[WiFi] SSID: BioSimulator_Pro");
+        Serial.println("[WiFi] SSID: BioSignalSimulator_Pro");
         Serial.println("[WiFi] Pass: biosignal123");
         Serial.println("[WiFi] URL: http://192.168.4.1");
     } else {

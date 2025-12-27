@@ -323,10 +323,11 @@ El dispositivo está diseñado para cubrir **dos clases consecutivas de 1.5 hora
 
 | Principio | Implementación en la placa de control |
 |-----------|---------------------------------------|
-| Plano de tierra dedicado | Toda la cara inferior se vierte como plano GND continuo, con clearance uniforme al borde y conexión a cada pad mediante termales. Esto reduce ruido e inductancia de retorno. |
-| Cosido de GND (stitching vias) | Se añadieron 11 vías distribuidas junto al BNC, NodeMCU, conectores P1/P2/P3 y el perímetro de la placa para unir el plano inferior con la cara superior y formar un blindaje efectivo. |
+| Plano de tierra dedicado | Todo el cobre se concentró en la cara inferior: allí se vierte el plano GND y se rutearon las pistas, dejando la cara superior únicamente con pads de componentes para facilitar la soldadura. |
+| Cosido de GND (stitching vias) | Se eliminó el cosido porque el nuevo enfoque es monocapa efectiva (solo bottom). El plano inferior mantiene continuidad y baja impedancia mediante spokes amplios alrededor de cada pad. |
 | Ruteo 0°/45° | Las pistas se trazaron con segmentos ortogonales y giros de 45° para mejorar manufacturabilidad y mantener distancias constantes entre nets. |
-| Separación de potencia y señal | Las pistas VCC/GND se mantienen en la cara inferior (ancho ≥ 1.5 mm), mientras que las señales (LED RGB, Nextion, DAC) van por la cara superior para minimizar acoples. |
+| Separación de potencia y señal | Aunque todas las pistas van por la cara inferior, se organizaron en zonas: los buses de potencia/retorno ocupan el contorno (ancho ≥ 1.5 mm) y las señales se mantienen al centro con clearances de 1.0 mm para evitar acoples. |
+| Componentes en top layer | Todos los módulos, headers y borneras permanecen en la cara superior; al no tener cobre en top, la soldadura se realiza desde abajo sin riesgo de puentes accidentales. |
 | Control de anchos | Se fijó 1.2 mm para alimentación/retornos críticos y 1.0 mm para señales, manteniendo resistencia baja y respetando el clearance frente a pads y tornillos. |
 | Keepouts mecánicos | Se definieron zonas de exclusión alrededor de los cuatro tornillos y a lo largo del contorno para evitar que las arandelas o la base metálica toquen cobre expuesto. |
 | Etiquetado funcional | Todas las borneras y conectores se rotularon (VCC, GND, BNC, LED, NEXTION) en serigrafía amarilla para facilitar montaje y mantenimiento. |
@@ -418,11 +419,11 @@ El sistema se divide en tres etapas funcionales ordenadas cronológicamente seg�
 
 **Principios aplicados a la plaquita de filtrado**
 
-1. **Cara única (Top layer) para ruteo compacto:** todos los trazos se colocaron en la misma cara para facilitar el montaje en protoboard perforada y reducir el cableado entre fusible, inductor y conectores.
+1. **Cara única (Bottom layer) para ruteo compacto:** el cobre quedó únicamente en la cara inferior, donde se rutearon todas las pistas y el plano GND; la cara superior sólo mantiene los pads de los componentes para soldarlos desde abajo sin cruzar pistas.
 2. **Anchos diferenciados:** pistas de potencia (VIN_CTRL, +5 V_CTRL) con ancho ≥1.2 mm; señales de sensado/monitorización a 1.0 mm para mantener resistencia baja sin complicar el ruteo.
 3. **Componentes agrupados:** F1, C14, L1 y C15 se ubicaron a menos de 15 mm entre sí para minimizar lazo de alta frecuencia y asegurar la atenuación calculada (43 dB @ 400 kHz).
 4. **Conectores enfrentados:** las borneras PWR_XL6009/PWR_BNC se alinearon para que los cables entren y salgan en línea recta, reduciendo tensión mecánica sobre el filtro.
-5. **Ruta corta a chasis:** los orificios de montaje M1.6 se colocaron junto a la entrada VIN_CTRL para atornillar la plaquita directamente al chasis metálico y mantener el cableado ordenado.
+5. **Ruta corta a chasis:** los orificios de montaje M1.6 se colocaron junto a la entrada VIN_CTRL para atornillar la plaquita directamente al chasis metálico y mantener el cableado ordenado. El plano GND inferior se conecta a estos tornillos mediante pads expuestos para asegurar referencia común con la carcasa.
 
 #### 3.1.4 Etapa de Control — Módulos Activos
 

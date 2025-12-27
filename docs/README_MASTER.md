@@ -9,7 +9,7 @@
 
 ## 2.1 Formulación de Alternativas de Solución
 
-El desarrollo del simulador de señales biomédicas BioSimulator Pro requirió la evaluación sistemática de múltiples alternativas tecnológicas para cada subsistema. A continuación se presentan las matrices de decisión empleadas, fundamentadas en los criterios técnicos establecidos en el marco teórico y las restricciones del proyecto.
+El desarrollo del simulador de señales biomédicas BioSignalSimulator Pro requirió la evaluación sistemática de múltiples alternativas tecnológicas para cada subsistema. A continuación se presentan las matrices de decisión empleadas, fundamentadas en los criterios técnicos establecidos en el marco teórico y las restricciones del proyecto.
 
 ### 2.1.1 Subsistema de Generación de Señales
 
@@ -62,7 +62,7 @@ La carcasa del dispositivo debía proporcionar protección, disipación térmica
 
 ## 2.2 Diseño Conceptual de la Solución
 
-El sistema BioSimulator Pro se concibió como una solución mecatrónica integrada que combina cuatro subsistemas interdependientes: generación de señales, computacional, electrónico y mecánico. La arquitectura fue diseñada siguiendo principios de modularidad y separación de responsabilidades, permitiendo el desarrollo, prueba y mantenimiento independiente de cada componente.
+El sistema BioSignalSimulator Pro se concibió como una solución mecatrónica integrada que combina cuatro subsistemas interdependientes: generación de señales, computacional, electrónico y mecánico. La arquitectura fue diseñada siguiendo principios de modularidad y separación de responsabilidades, permitiendo el desarrollo, prueba y mantenimiento independiente de cada componente.
 
 ### Arquitectura Global del Sistema
 
@@ -70,7 +70,7 @@ El siguiente diagrama ilustra la estructura jerárquica completa del producto, d
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                         BIOSIMULATOR PRO - ARQUITECTURA GLOBAL                  │
+│                         BIOSIGNALSIMULATOR PRO - ARQUITECTURA GLOBAL           │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐   │
@@ -95,15 +95,13 @@ El siguiente diagrama ilustra la estructura jerárquica completa del producto, d
 │  │  │  │ WebSocket Server   │  │    │  │ Signal Generation  │  │          │   │
 │  │  │  │ HTTP Server        │  │    │  │ DAC Output         │  │          │   │
 │  │  │  │ mDNS Service       │  │    │  │ Nextion Comm       │  │          │   │
-│  │  │  └────────────────────┘  │    │  └────────────────────┘  │          │   │
 │  │  └──────────────────────────┘    └──────────────────────────┘          │   │
 │  └─────────────────────────────────────────────────────────────────────────┘   │
 │                                  │                                             │
 │              ┌───────────────────┼───────────────────┐                         │
 │              ▼                   ▼                   ▼                         │
-│  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────────────────────┐   │
-│  │  DAC Output     │ │ UART Nextion    │ │      WiFi Access Point          │   │
-│  │  GPIO25/26      │ │ 115200 baud     │ │  SSID: BioSimulator_Pro         │   │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────────────────────┐   │  │  │  DAC Output     │ │ UART Nextion    │ │      WiFi Access Point          │   │
+│  │  │  GPIO25/26      │ │ 115200 baud     │ │  SSID: BioSignalSimulator_Pro   │   │
 │  │  0-3.3V         │ │ HMI Protocol    │ │  IP: 192.168.4.1                │   │
 │  └────────┬────────┘ └────────┬────────┘ └────────────────┬────────────────┘   │
 │           │                   │                           │                    │

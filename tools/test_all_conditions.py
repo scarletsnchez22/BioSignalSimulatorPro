@@ -3,7 +3,7 @@
 test_all_conditions.py - Prueba automatizada de todas las patologías
 
 Este script prueba todas las combinaciones de señales y condiciones
-del BioSimulator Pro, validando contra rangos clínicos.
+del BioSignalSimulator Pro, validando contra rangos clínicos.
 
 Uso:
     python test_all_conditions.py --port COM4
@@ -301,7 +301,7 @@ def print_test_result(result: TestResult):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Prueba automatizada de todas las condiciones del BioSimulator Pro'
+        description='Prueba automatizada de todas las condiciones del BioSignalSimulator Pro'
     )
     parser.add_argument('--port', '-p', default='COM4',
                        help='Puerto serial (default: COM4)')
@@ -332,7 +332,7 @@ def main():
     
     if not args.signal:
         print("\n" + "="*80)
-        print("BIOSIMULATOR PRO - PRUEBA DE CONDICIONES")
+        print("BIOSIGNALSIMULATOR PRO - PRUEBA DE CONDICIONES")
         print("="*80)
         print("""
 Uso:
