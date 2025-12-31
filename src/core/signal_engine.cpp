@@ -136,6 +136,10 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
                 params.condition = (EMGCondition)condition;
                 emgModel.setParameters(params);  // Luego aplicar condición
                 yield();  // Alimentar watchdog
+                Serial.printf("[EMG] Condición: %d (%s)\n", 
+                             condition, emgModel.getConditionName());
+                Serial.printf("[EMG] Excitación: %.2f%%\n",
+                             emgModel.getCurrentExcitation() * 100.0f);
                 break;
             }
             case SignalType::PPG: {
@@ -301,8 +305,10 @@ void SignalEngine::generationTask(void* parameter) {
                         break;
                     }
                     case SignalType::EMG: {
-                        currentModelSample = engine->emgModel.getDACValue(modelDeltaTime);
-                        currentModelValueMV = engine->emgModel.getCurrentValueMV();
+                        // Usar tick() para actualizar secuencia + generar muestra (igual que main_debug)
+                        engine->emgModel.tick(modelDeltaTime);
+                        currentModelSample = engine->emgModel.getRawDACValue();
+                        currentModelValueMV = engine->emgModel.getRawSample();
                         break;
                     }
                     case SignalType::PPG: {

@@ -209,7 +209,9 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                         break;
                     }
                     case SignalType::EMG:
+                        Serial.println("[DEBUG] Antes de leer sel_emg");
                         selectedCondition = nextion->readSliderValue("sel_emg");
+                        Serial.printf("[DEBUG] sel_emg leído: %d\n", selectedCondition);
                         Serial.printf("[UI] Leyendo sel_emg del Nextion: %d\n", selectedCondition);
                         break;
                     case SignalType::PPG:
@@ -255,6 +257,12 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                         break;
                     default: break;
                 }
+                
+                // Iniciar la señal automáticamente (usar GO_TO_WAVEFORM que sí cambia estado)
+                Serial.println("[DEBUG] IR - Llamando GO_TO_WAVEFORM");
+                stateMachine.processEvent(SystemEvent::GO_TO_WAVEFORM);
+                Serial.printf("[DEBUG] IR - Estado después de GO_TO_WAVEFORM: %d\n", (int)stateMachine.getState());
+                Serial.println("[UI] Iniciando señal automáticamente desde IR");
             }
             break;
             
@@ -315,8 +323,10 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                         break;
                     }
                     case SignalType::EMG:
+                        Serial.println("[DEBUG] PLAY - Antes de leer sel_emg");
                         selectedCondition = nextion->readSliderValue("sel_emg");
-                        Serial.printf("[UI] PLAY desde SELECT_CONDITION - Leyendo sel_emg: %d\n", selectedCondition);
+                        Serial.printf("[DEBUG] PLAY - sel_emg leído: %d\n", selectedCondition);
+                        Serial.printf("[UI] PLAY - Leyendo sel_emg del Nextion: %d\n", selectedCondition);
                         break;
                     case SignalType::PPG:
                         selectedCondition = nextion->readSliderValue("sel_ppg");
@@ -332,7 +342,9 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     Serial.printf("[UI] Condición actualizada: %d\n", stateMachine.getSelectedCondition());
                 }
                 
+                Serial.println("[DEBUG] Llamando GO_TO_WAVEFORM");
                 stateMachine.processEvent(SystemEvent::GO_TO_WAVEFORM);
+                Serial.printf("[DEBUG] Estado después de GO_TO_WAVEFORM: %d\n", (int)stateMachine.getState());
             }
             
             // PLAY: Si está pausado, reanudar. Si está corriendo, reiniciar.
@@ -1031,6 +1043,7 @@ void setup() {
     Serial.println("╚═══════════════════════════════════════════════╝");
     Serial.printf("Hardware: %s\n", HARDWARE_MODEL);
     Serial.printf("Free Heap: %d KB\n", ESP.getFreeHeap() / 1024);
+    Serial.printf("Build: %s %s [EMG FIX]", __DATE__, __TIME__);
     
     // Inicializar LED
     initializeLED();
