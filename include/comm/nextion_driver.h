@@ -160,6 +160,7 @@ public:
     // Waveform
     void addWaveformPoint(uint8_t componentId, uint8_t channel, uint8_t value);
     void clearWaveform(uint8_t componentId, uint8_t channel);
+    void setWaveformWritePosition(uint8_t componentId, uint8_t channel, uint16_t position);
     
     // Sliders
     void setSliderValue(const char* component, int value);
@@ -178,17 +179,26 @@ public:
     // Estado de simulación
     void setSimulationState(SignalState state);
     
-    // Actualizar valores en página valores_ecg
+    // Actualizar valores en página valores_ecg (sobrecarga simple)
     void updateECGValuesPage(int bpm, int rr_ms, int rAmp_x100, int st_x100, 
                               uint32_t beats, const char* patologia);
     
-    // Actualizar valores en página valores_emg
-    void updateEMGValuesPage(int rms_x100, int activeUnits, int freq_x10, int contraction,
-                              const char* condicion);
+    // Actualizar valores ECG con TODAS las métricas
+    void updateECGValuesPage(int bpm, int rr_ms, int pr_ms, int qrs_ms, int qtc_ms,
+                              int p_x100, int q_x100, int r_x100, int s_x100, 
+                              int t_x100, int st_x100, const char* patologia);
     
-    // Actualizar valores en página valores_ppg
+    // Actualizar valores en página valores_emg
+    void updateEMGValuesPage(int raw_x100, int env_x100, int rms_x100, int activeUnits, 
+                              int freq_x10, int contraction, const char* condicion);
+    
+    // Actualizar valores en página valores_ppg (sobrecarga simple)
     void updatePPGValuesPage(int hr, int rr_ms, int pi_x10,
                               uint32_t beats, const char* condicion);
+    
+    // Actualizar valores PPG con TODAS las métricas
+    void updatePPGValuesPage(int ac_x10, int hr, int rr_ms, int pi_x10, 
+                              int sys_ms, int dia_ms, const char* condicion);
     
     // Configurar página parametros_ecg con límites según patología
     void setupECGParametersPage(int hrMin, int hrMax, int hrCurrent,
@@ -196,6 +206,11 @@ public:
     
     // Actualizar escala mV/div en waveform_ecg y parametros_ecg
     void updateECGScale(int zoomPercent);
+    
+    // Actualizar etiquetas de escala fijas por señal (según Tabla 9.6)
+    void updateECGScaleLabels();   // 0.2 mV/div, 350 ms/div
+    void updateEMGScaleLabels();   // RAW: 1.0 mV/div, ENV: 0.2 mV/div, 700 ms/div
+    void updatePPGScaleLabels();   // 15 mV/div, 700 ms/div
     
     // Configurar página parametros_emg
     void setupEMGParametersPage(int excCurrent, int ampCurrent, int noiseCurrent);

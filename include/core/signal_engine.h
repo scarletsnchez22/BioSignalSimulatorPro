@@ -91,6 +91,7 @@ public:
     uint8_t getLastDACValue() const;
     SignalData getSignalData() const { return currentSignal; }
     PerformanceStats getStats() const;
+    bool getDisplaySample(uint32_t sampleIndex, float& outValue) const;
     
     // Acceso a modelos para métricas
     ECGModel& getECGModel() { return ecgModel; }

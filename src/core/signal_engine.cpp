@@ -17,6 +17,7 @@ SignalEngine* SignalEngine::instance = nullptr;
 // BUFFERS EN RAM RÁPIDA
 // ============================================================================
 DRAM_ATTR static uint8_t signalBuffer[SIGNAL_BUFFER_SIZE];
+DRAM_ATTR static float displayBuffer[SIGNAL_BUFFER_SIZE];
 DRAM_ATTR static volatile uint16_t bufferReadIndex = 0;
 DRAM_ATTR static volatile uint16_t bufferWriteIndex = 0;
 DRAM_ATTR static volatile uint32_t isrCount = 0;
@@ -28,6 +29,8 @@ DRAM_ATTR static volatile uint8_t lastDACValue = 128;
 static uint32_t lastModelTick_us = 0;          // Último tick del modelo
 static uint8_t currentModelSample = 128;       // Muestra actual del modelo
 static uint8_t previousModelSample = 128;      // Muestra anterior (para interpolación)
+static float currentModelValueMV = 0.0f;       // Último valor del modelo en mV
+static float previousModelValueMV = 0.0f;      // Valor anterior en mV
 static uint16_t interpolationCounter = 0;      // Contador para interpolación
 
 // ============================================================================
@@ -82,6 +85,8 @@ bool SignalEngine::begin() {
 // CONTROL DE SEÑALES
 // ============================================================================
 bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
+    Serial.printf("[SignalEngine] startSignal llamado: type=%d, condition=%d\n", (int)type, condition);
+    
     if (xSemaphoreTake(signalMutex, portMAX_DELAY) == pdTRUE) {
         // Detener señal actual si existe
         if (currentSignal.state == SignalState::RUNNING) {
@@ -96,6 +101,8 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
         lastModelTick_us = micros();
         currentModelSample = DAC_CENTER_VALUE;
         previousModelSample = DAC_CENTER_VALUE;
+        currentModelValueMV = 0.0f;
+        previousModelValueMV = 0.0f;
         interpolationCounter = 0;
         
         // Configurar tipo de señal
@@ -104,26 +111,40 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
         currentSignal.lastUpdateTime = millis();
         
         // Configurar modelo según tipo
+        // IMPORTANTE: Llamar reset() ANTES de setParameters() para que
+        // la morfología de la condición no sea sobrescrita por initializeWaveParams()
         switch (type) {
             case SignalType::ECG: {
+                ecgModel.reset();  // Primero reset (carga defaults)
+                yield();  // Alimentar watchdog
                 ECGParameters params;
                 params.condition = (ECGCondition)condition;
-                ecgModel.setParameters(params);
-                ecgModel.reset();
+                ecgModel.setParameters(params);  // Luego aplicar condición
+                yield();  // Alimentar watchdog
+                Serial.printf("[ECG] Condición: %d (%s)\n", 
+                             condition, ecgModel.getConditionName());
+                Serial.printf("[ECG] hrMean=%.0f, currentRR=%.0fms, measuredRR=%.0fms\n",
+                             ecgModel.getHRMean(), 
+                             ecgModel.getCurrentRRInterval(),  // currentRR * 1000
+                             ecgModel.getRRInterval_ms());     // measuredRR_ms
                 break;
             }
             case SignalType::EMG: {
+                emgModel.reset();  // Primero reset
+                yield();  // Alimentar watchdog
                 EMGParameters params;
                 params.condition = (EMGCondition)condition;
-                emgModel.setParameters(params);
-                emgModel.reset();
+                emgModel.setParameters(params);  // Luego aplicar condición
+                yield();  // Alimentar watchdog
                 break;
             }
             case SignalType::PPG: {
+                ppgModel.reset();  // Primero reset
+                yield();  // Alimentar watchdog
                 PPGParameters params;
                 params.condition = (PPGCondition)condition;
-                ppgModel.setParameters(params);
-                ppgModel.reset();
+                ppgModel.setParameters(params);  // Luego aplicar condición
+                yield();  // Alimentar watchdog
                 break;
             }
             default:
@@ -274,17 +295,24 @@ void SignalEngine::generationTask(void* parameter) {
                 
                 // Generar nueva muestra del modelo con su deltaTime correcto
                 switch (engine->currentSignal.type) {
-                    case SignalType::ECG:
+                    case SignalType::ECG: {
                         currentModelSample = engine->ecgModel.getDACValue(modelDeltaTime);
+                        currentModelValueMV = engine->ecgModel.getCurrentValueMV();
                         break;
-                    case SignalType::EMG:
+                    }
+                    case SignalType::EMG: {
                         currentModelSample = engine->emgModel.getDACValue(modelDeltaTime);
+                        currentModelValueMV = engine->emgModel.getCurrentValueMV();
                         break;
-                    case SignalType::PPG:
+                    }
+                    case SignalType::PPG: {
                         currentModelSample = engine->ppgModel.getDACValue(modelDeltaTime);
+                        currentModelValueMV = 0.0f; // PPG maneja su propio waveform
                         break;
+                    }
                     default:
                         currentModelSample = DAC_CENTER_VALUE;
+                        currentModelValueMV = 0.0f;
                 }
                 
                 // Resetear contador de interpolación
@@ -301,12 +329,15 @@ void SignalEngine::generationTask(void* parameter) {
                 float t = (float)interpolationCounter / (float)upsampleRatio;
                 int16_t interpolated = previousModelSample + 
                                        (int16_t)((currentModelSample - previousModelSample) * t);
+                float interpolatedMV = previousModelValueMV + 
+                                       (currentModelValueMV - previousModelValueMV) * t;
                 
                 // Clamp a rango DAC
                 if (interpolated < 0) interpolated = 0;
                 if (interpolated > 255) interpolated = 255;
                 
                 signalBuffer[writeIdx] = (uint8_t)interpolated;
+                displayBuffer[writeIdx] = interpolatedMV;
                 writeIdx = (writeIdx + 1) % SIGNAL_BUFFER_SIZE;
                 bufferWriteIndex = writeIdx;
                 available--;
@@ -316,6 +347,7 @@ void SignalEngine::generationTask(void* parameter) {
                 interpolationCounter++;
                 if (interpolationCounter >= upsampleRatio) {
                     interpolationCounter = 0;
+                    previousModelValueMV = currentModelValueMV;
                 }
             }
         }
@@ -338,6 +370,7 @@ uint8_t SignalEngine::generateSample() {
 void SignalEngine::prefillBuffer() {
     for (int i = 0; i < SIGNAL_BUFFER_SIZE / 2; i++) {
         signalBuffer[i] = generateSample();
+        displayBuffer[i] = 0.0f;
     }
     bufferWriteIndex = SIGNAL_BUFFER_SIZE / 2;
 }
@@ -357,6 +390,26 @@ PerformanceStats SignalEngine::getStats() const {
     stats.bufferLevel = (bufferWriteIndex - bufferReadIndex + SIGNAL_BUFFER_SIZE) % SIGNAL_BUFFER_SIZE;
     stats.freeHeap = ESP.getFreeHeap();
     return stats;
+}
+
+bool SignalEngine::getDisplaySample(uint32_t sampleIndex, float& outValue) const {
+    uint32_t currentCount = currentSignal.sampleCount;
+    if (sampleIndex == 0 || sampleIndex > currentCount) {
+        return false;
+    }
+    
+    uint32_t delta = currentCount - sampleIndex;
+    if (delta >= SIGNAL_BUFFER_SIZE) {
+        return false;
+    }
+    
+    int32_t idx = (int32_t)bufferWriteIndex - (int32_t)delta - 1;
+    if (idx < 0) {
+        idx += SIGNAL_BUFFER_SIZE;
+    }
+    
+    outValue = displayBuffer[idx];
+    return true;
 }
 
 // ============================================================================

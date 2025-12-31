@@ -117,8 +117,9 @@ struct ECGParameters {
     ECGCondition condition;         // Condición actual
     
     // Constructor con valores por defecto
+    // heartRate=0 significa "usar HR de la condición" (setXXXMorphology)
     ECGParameters() :
-        heartRate(75.0f),
+        heartRate(0.0f),           // 0 = usar HR de la condición
         pWaveAmplitude(1.0f),
         qrsAmplitude(1.0f),
         tWaveAmplitude(1.0f),

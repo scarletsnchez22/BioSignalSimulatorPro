@@ -137,6 +137,7 @@ void ECGModel::reset() {
     measuredST_mV = 0.0f;
     lastMeasuredST_mV = 0.0f;
     currentBaseline_mV = 0.0f;
+    stOffset_mV = 0.0f;  // Sin desplazamiento ST por defecto
     
     // Generador aleatorio
     gaussHasSpare = false;
@@ -303,6 +304,7 @@ void ECGModel::setNormalMorphology() {
     hrStd = 1.0f;
     lfhfRatio = 0.5f;
     initializeWaveParams();
+    stOffset_mV = 0.0f;  // Sin desplazamiento ST
 }
 
 void ECGModel::setTachycardiaMorphology() {
@@ -310,6 +312,7 @@ void ECGModel::setTachycardiaMorphology() {
     hrStd = 2.0f;
     lfhfRatio = 0.5f;
     initializeWaveParams();
+    stOffset_mV = 0.0f;  // Sin desplazamiento ST
 }
 
 void ECGModel::setBradycardiaMorphology() {
@@ -317,11 +320,12 @@ void ECGModel::setBradycardiaMorphology() {
     hrStd = 1.0f;
     lfhfRatio = 0.5f;
     initializeWaveParams();
+    stOffset_mV = 0.0f;  // Sin desplazamiento ST
 }
 
 void ECGModel::setAFibMorphology() {
     hrMean = 100.0f;
-    hrStd = 15.0f;  // Variabilidad RR moderada (15-20%) - reducida para estabilidad
+    hrStd = 8.0f;  // Variabilidad RR reducida (8%) para evitar deriva de baseline
     lfhfRatio = 0.5f;
     initializeWaveParams();
     
@@ -335,6 +339,7 @@ void ECGModel::setAFibMorphology() {
     for (int i = 1; i < MCSHARRY_WAVES; i++) {
         waveParams.ai[i] = baseParams.ai[i] * 0.95f;
     }
+    stOffset_mV = 0.0f;  // Sin desplazamiento ST
     initializeAngularWindows();
 }
 
@@ -357,6 +362,7 @@ void ECGModel::setVFibMorphology() {
     // VFib no necesita calibración McSharry - marcar como listo
     isCalibrated = true;
     currentBaseline_mV = 0.0f;
+    stOffset_mV = 0.0f;  // Sin desplazamiento ST
 }
 
 void ECGModel::setAVBlock1Morphology() {
@@ -384,6 +390,8 @@ void ECGModel::setAVBlock1Morphology() {
         waveParams.ti[i] += prProlongation;
     }
     
+    stOffset_mV = 0.0f;  // Sin desplazamiento ST
+    
     // ✅ 4. Sincronizar ventanas angulares con ti modificados
     initializeAngularWindows();
 }
@@ -393,13 +401,18 @@ void ECGModel::setSTElevationMorphology() {
     hrStd = 2.0f;
     lfhfRatio = 0.5f;
     initializeWaveParams();
-    // STEMI: ST ≥ +0.2 mV, T hiperaguda >0.6 mV
-    // Base T = 12.0 → ~0.4 mV, necesitamos ~0.8 mV → × 2.0
-    waveParams.ai[4] = baseParams.ai[4] * 2.0f;   // T hiperaguda >0.6 mV
-    waveParams.bi[4] = baseParams.bi[4] * 1.3f;   // T más ancha (fusión ST-T)
-    waveParams.ti[4] = baseParams.ti[4] * 0.85f;  // T más temprana → eleva ST
-    // Q patológica posible (infarto transmural)
-    waveParams.ai[1] = baseParams.ai[1] * 1.3f;   // Q más profunda
+    
+    // STEMI: Morfología con ST elevado
+    // 1. Onda S menos profunda (se fusiona con ST elevado)
+    waveParams.ai[3] = baseParams.ai[3] * 0.4f;  // S reducida a 40% (menos profunda)
+    
+    // 2. Onda T más alta (hiperaguda en STEMI)
+    waveParams.ai[4] = baseParams.ai[4] * 1.8f;  // T aumentada (hiperaguda)
+    waveParams.bi[4] = baseParams.bi[4] * 1.2f;  // T más ancha
+    
+    // 3. Desplazamiento ST vertical adicional
+    stOffset_mV = 0.30f;
+    
     initializeAngularWindows();
 }
 
@@ -408,12 +421,17 @@ void ECGModel::setSTDepressionMorphology() {
     hrStd = 2.0f;
     lfhfRatio = 0.5f;
     initializeWaveParams();
-    // Isquemia: ST ↓ 0.05-0.2 mV, T invertida -0.1 a -0.3 mV
-    // Base T = 12.0 → ~0.4 mV, necesitamos ~-0.2 mV → × -0.5
-    waveParams.ai[4] = -baseParams.ai[4] * 0.5f;  // T invertida -0.1 a -0.3 mV
-    waveParams.ti[4] = baseParams.ti[4] * 1.1f;   // T retrasada
-    // S más profunda → contribuye a depresión ST
-    waveParams.ai[3] = baseParams.ai[3] * 1.2f;   // S más profunda
+    
+    // Isquemia: Morfología con ST deprimido
+    // 1. Onda S más profunda (acentuada en isquemia)
+    waveParams.ai[3] = baseParams.ai[3] * 1.4f;  // S aumentada (más profunda)
+    
+    // 2. Onda T reducida o invertida
+    waveParams.ai[4] = baseParams.ai[4] * 0.5f;  // T reducida (puede invertirse con offset)
+    
+    // 3. Desplazamiento ST vertical (depresión)
+    stOffset_mV = -0.20f;
+    
     initializeAngularWindows();
 }
 
@@ -775,7 +793,10 @@ void ECGModel::updateCalibrationBuffer(float zValue) {
  */
 float ECGModel::applyScaling(float zRaw) const {
     if (!isCalibrated) {
-        return 0.0f;  // Retornar línea isoeléctrica hasta calibrar
+        // Durante calibración, usar escalado provisional para mostrar morfología
+        // Usar ganancia estimada basada en el target R (1.0 mV típico)
+        float provisionalGain = ECG_R_TARGET_MV / 0.8f;  // 0.8 es amplitud típica del modelo
+        return provisionalGain * (zRaw - Z0_EQUILIBRIUM);
     }
     
     // Escalado lineal simple: z_mV = G * (z - baseline)
@@ -856,6 +877,25 @@ float ECGModel::generateSample(float deltaTime) {
     // Solo después de calibración cuando tenemos baseline válida
     if (isCalibrated) {
         ecgMV -= currentBaseline_mV;
+    }
+    
+    // ✅ APLICAR DESPLAZAMIENTO ST (STEMI/Isquemia)
+    // Aplicar offset desde el final de S hasta el final de T (incluye ST + T)
+    // Esto eleva/deprime visualmente tanto el segmento ST como la onda T
+    if (stOffset_mV != 0.0f && isCalibrated) {
+        // Inicio: final de S
+        float st_start = windows.S_center + windows.S_width * 0.5f;
+        // Final: final de T (no solo inicio de T)
+        float st_end = windows.T_center + windows.T_width * 0.5f;
+        
+        // Normalizar theta a [0, 2π]
+        float theta_norm = theta;
+        if (theta_norm < 0) theta_norm += 2.0f * PI;
+        
+        // Aplicar offset si estamos entre final de S y final de T
+        if (theta_norm >= st_start && theta_norm <= st_end) {
+            ecgMV += stOffset_mV;
+        }
     }
     
     // Almacenar muestra del ciclo actual (theta + valor CORREGIDO en mV)

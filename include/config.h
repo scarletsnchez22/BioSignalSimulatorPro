@@ -38,7 +38,7 @@
 #define NEXTION_SERIAL          Serial2
 #define NEXTION_RX_PIN          16      // RX2
 #define NEXTION_TX_PIN          17      // TX2
-#define NEXTION_BAUD            115200
+#define NEXTION_BAUD            115200  // Mismo baud que Nextion Editor
 
 // ============================================================================
 // CONFIGURACIÓN DE PINES - LED RGB

@@ -608,7 +608,31 @@ El modelo gaussiano fue seleccionado por:
 └───────────────────────────────────┘   └───────────────────────────────────┘
 ```
 
-### 5.4 Variabilidad Fisiológica
+### 5.4 Justificación del Límite de Amplitud AC
+
+En el simulador propuesto, la amplitud de la componente AC de la señal PPG se deriva a partir del índice de perfusión (PI), el cual representa la relación relativa entre las componentes pulsátil (AC) y continua (DC) de la señal. Dado que el PI es una magnitud adimensional y que no existe un estándar universal que defina su correspondencia directa con amplitudes eléctricas absolutas en milivoltios, se adoptó un criterio de escalado instrumental para la generación de la señal sintética.
+
+**Criterio de escalado adoptado:**
+
+$$AC_{mV} = PI_{\%} \times 15 \, \text{mV/\%}$$
+
+El rango de amplitud AC se limitó a **0–150 mV**, con el objetivo de cubrir el rango clínico típico de PI (hasta aproximadamente 10%), garantizando una adecuada visualización de la señal sin saturación en condiciones normales de operación. Este rango permite que señales con perfusión débil (PI < 1%) sean visibles, mientras que escenarios de perfusión elevada (PI 5-10%) ocupan gran parte de la escala disponible, maximizando el uso dinámico del sistema.
+
+Para valores extremos de PI superiores al rango clínico habitual (PI > 10%, como en STRONG_PERFUSION), la amplitud es limitada mediante saturación superior (clipping), preservando la morfología de la señal. Este comportamiento reproduce el funcionamiento de sistemas reales de adquisición y visualización biomédica, donde los rangos nominales están optimizados para las condiciones más frecuentes.
+
+**Naturaleza unipolar de la componente AC:**
+
+Es importante destacar que la componente AC de la señal PPG es **unipolar por naturaleza**, ya que representa variaciones de absorción de luz debidas al volumen sanguíneo arterial. La señal completa se expresa como:
+
+$$PPG(t) = DC + AC(t)$$
+
+Donde:
+- **DC** (componente continua): Absorción constante por tejido estático (~1000 mV)
+- **AC(t)** (componente pulsátil): Modulación unipolar que varía entre 0 y el valor máximo determinado por el PI
+
+La componente AC **no cruza el nivel de referencia DC**, a diferencia de señales bipolares como el ECG o el EMG crudo, que oscilan alrededor de una línea isoeléctrica. En el sistema implementado, para la visualización en Nextion se transmite únicamente la componente AC (0-150 mV), omitiendo el DC para optimizar el rango dinámico de la pantalla.
+
+### 5.5 Variabilidad Fisiológica
 
 Se implementó variabilidad latido-a-latido para HR y PI según Sun et al. [7]:
 
@@ -771,7 +795,276 @@ $$V_{out} = \frac{159}{255} \times 3.3V = 2.06V$$
 
 ---
 
-## 8. Referencias
+## 8. Parámetros de Usuario y Control de Señales
+
+### 8.1 Filosofía de Control de Parámetros
+
+El sistema permite al usuario modificar parámetros de las señales en tiempo real a través de la interfaz Nextion. Los parámetros **inician en valores mínimos o neutros** (no en valores intermedios) para que el usuario tenga control total desde el inicio.
+
+**Principios de diseño:**
+
+1. **Valores iniciales mínimos**: Ruido y variabilidad inician en 0, amplitud en 100% (sin modificación)
+2. **Persistencia de sliders**: Los valores de los sliders se mantienen entre sesiones, **no se leen del modelo**
+3. **Aplicación explícita**: Los cambios solo se aplican al presionar el botón "Aplicar"
+4. **Independencia del modelo**: La señal sigue su morfología base hasta que el usuario modifica parámetros
+
+### 8.2 Parámetros ECG
+
+#### 8.2.1 Frecuencia Cardíaca (HR)
+
+**Rango:** Variable según condición (30-500 BPM)  
+**Valor inicial:** 75 BPM (valor medio)  
+**Unidad en slider:** BPM (entero)
+
+**Aplicación en código:**
+```cpp
+// Lectura del slider (main.cpp)
+int hrValue = nextion->readSliderValue("h_hr");
+ecgSliderValues.hr = hrValue;
+
+// Aplicación al modelo (main.cpp)
+ECGParameters params;
+params.heartRate = (float)ecgSliderValues.hr;  // Convertir a float
+ecg.setParameters(params);
+
+// Uso en modelo (ecg_model.cpp)
+if (newParams.heartRate > 0) {
+    hrMean = newParams.heartRate;  // Sobrescribe HR de la condición
+}
+```
+
+**Comportamiento:**
+- Si `heartRate = 0` (no modificado), se usa el HR de la morfología de la condición
+- Si `heartRate > 0`, sobrescribe el HR base de la condición
+- Afecta el intervalo RR: `RR = 60.0 / HR` (segundos)
+
+#### 8.2.2 Amplitud/Zoom Visual
+
+**Rango:** 50-200%  
+**Valor inicial:** 100% (sin zoom)  
+**Unidad en slider:** Porcentaje (entero)
+
+**Aplicación en código:**
+```cpp
+// Lectura del slider
+int zoomValue = nextion->readSliderValue("h_amp");
+ecgSliderValues.zoom = zoomValue;
+
+// Aplicación SOLO a visualización Nextion (NO afecta modelo ni DAC)
+nextion->updateECGScale(ecgSliderValues.zoom);
+
+// Actualización de etiquetas de escala
+float mvPerDiv = 0.2f * (100.0f / zoom);  // Escala base 0.2 mV/div
+```
+
+**Comportamiento:**
+- **NO afecta el modelo ECG** ni la salida DAC
+- Solo modifica la escala visual en el waveform Nextion
+- Zoom 50% = 0.4 mV/div, Zoom 100% = 0.2 mV/div, Zoom 200% = 0.1 mV/div
+
+#### 8.2.3 Ruido
+
+**Rango:** 0-100 (representa 0.00-1.00)  
+**Valor inicial:** 0 (sin ruido)  
+**Unidad en slider:** Entero × 100
+
+**Aplicación en código:**
+```cpp
+// Lectura del slider
+int noiseValue = nextion->readSliderValue("h_noise");
+ecgSliderValues.noise = noiseValue;
+
+// Aplicación al modelo (conversión a float)
+params.noiseLevel = ecgSliderValues.noise / 100.0f;  // 5 → 0.05
+
+// Uso en modelo (ecg_model.cpp)
+if (noiseLevel > 0.0f) {
+    ecgMV += gaussianRandom(0.0f, noiseLevel);  // Ruido gaussiano
+}
+```
+
+**Comportamiento:**
+- Ruido gaussiano (media 0, desviación estándar = `noiseLevel`)
+- Se añade a cada muestra generada
+- Valores típicos: 0.02-0.05 (2-5 en slider) para ruido realista
+
+#### 8.2.4 Variabilidad (HRV)
+
+**Rango:** 0-100%  
+**Valor inicial:** 0% (sin variabilidad)  
+**Unidad en slider:** Porcentaje (entero)
+
+**Aplicación en código:**
+```cpp
+// Lectura del slider
+int hrvValue = nextion->readSliderValue("h_hrv");
+ecgSliderValues.hrv = hrvValue;
+
+// Aplicación al modelo (NO se pasa directamente, se calcula hrStd)
+// hrStd = hrMean * (hrv / 100.0)
+// Ejemplo: HR=75, HRV=5% → hrStd = 75 * 0.05 = 3.75 BPM
+
+// Uso en modelo (ecg_model.cpp)
+float generateNextRR() {
+    float rr = gaussianRandom(60.0f / hrMean, hrStd / hrMean);  // RR con variabilidad
+    return constrain(rr, rrMin, rrMax);
+}
+```
+
+**Comportamiento:**
+- Variabilidad latido-a-latido del intervalo RR
+- HRV = 0% → intervalos RR constantes
+- HRV > 0% → intervalos RR con distribución gaussiana
+- Valores típicos: 3-5% para ritmo sinusal normal
+
+### 8.3 Parámetros EMG
+
+#### 8.3.1 Excitación
+
+**Rango:** 0-100%  
+**Valor inicial:** 0% (reposo)  
+**Unidad en slider:** Porcentaje (entero)
+
+**Aplicación en código:**
+```cpp
+// Lectura y aplicación
+int excValue = nextion->readSliderValue("h_exc");
+params.excitationLevel = excValue / 100.0f;  // 50 → 0.5
+
+// Uso en modelo (emg_model.cpp)
+int activeUnits = (int)(excitationLevel * totalUnits);  // Unidades motoras activas
+for (int i = 0; i < activeUnits; i++) {
+    // Generar MUAP para cada unidad activa
+}
+```
+
+**Comportamiento:**
+- Controla el número de unidades motoras activas (reclutamiento)
+- 0% = reposo (solo ruido de fondo)
+- 100% = contracción máxima (todas las unidades activas)
+
+#### 8.3.2 Amplitud
+
+**Rango:** 50-200%  
+**Valor inicial:** 100% (sin modificación)  
+**Unidad en slider:** Porcentaje (entero)
+
+**Aplicación en código:**
+```cpp
+// Lectura y aplicación
+int ampValue = nextion->readSliderValue("h_amp");
+params.amplitude = ampValue / 100.0f;  // 150 → 1.5
+
+// Uso en modelo (emg_model.cpp)
+float emgMV = rawSignal * amplitude;  // Escalar señal
+```
+
+**Comportamiento:**
+- Factor multiplicativo de la amplitud de la señal EMG
+- 50% = mitad de amplitud, 200% = doble amplitud
+- Afecta tanto RAW como ENV (envolvente)
+
+#### 8.3.3 Ruido
+
+**Rango:** 0-100 (representa 0.00-1.00)  
+**Valor inicial:** 0 (sin ruido)  
+**Aplicación:** Idéntica a ECG (ruido gaussiano)
+
+### 8.4 Parámetros PPG
+
+#### 8.4.1 Frecuencia Cardíaca (HR)
+
+**Rango:** 30-200 BPM  
+**Valor inicial:** 75 BPM  
+**Aplicación:** Idéntica a ECG
+
+#### 8.4.2 Índice de Perfusión (PI)
+
+**Rango:** 1-200 (representa 0.1-20.0%)  
+**Valor inicial:** 50 (5.0%)  
+**Unidad en slider:** Entero × 10
+
+**Aplicación en código:**
+```cpp
+// Lectura y aplicación
+int piValue = nextion->readSliderValue("h_pi");
+params.perfusionIndex = piValue / 10.0f;  // 52 → 5.2%
+
+// Uso en modelo (ppg_model.cpp)
+float acAmplitude = dcBaseline * (perfusionIndex / 100.0f);  // AC = DC × PI%
+float ppgMV = dcBaseline + acAmplitude * pulseMorphology;
+```
+
+**Comportamiento:**
+- PI = (AC / DC) × 100%
+- PI bajo (0.1-1%) = perfusión débil (vasoconstriccion)
+- PI normal (2-5%) = perfusión adecuada
+- PI alto (5-20%) = perfusión fuerte (vasodilatación)
+
+#### 8.4.3 Ruido
+
+**Rango:** 0-100 (representa 0.00-1.00)  
+**Valor inicial:** 0 (sin ruido)  
+**Aplicación:** Idéntica a ECG (ruido gaussiano)
+
+#### 8.4.4 Amplitud/Zoom Visual
+
+**Rango:** 50-200%  
+**Valor inicial:** 100%  
+**Aplicación:** Solo visual, NO afecta modelo ni DAC
+
+### 8.5 Flujo de Aplicación de Parámetros
+
+```
+1. Usuario abre popup de parámetros
+   ↓
+2. Sliders muestran valores actuales (NO leídos del modelo)
+   ↓
+3. Usuario modifica sliders
+   ↓
+4. Valores se guardan en estructuras temporales (ecgSliderValues, etc.)
+   ↓
+5. Usuario presiona "Aplicar"
+   ↓
+6. Valores se convierten y aplican al modelo:
+   - HR: BPM → float
+   - Ruido: int/100 → float (0.00-1.00)
+   - Amplitud: int/100 → float (0.50-2.00)
+   - PI: int/10 → float (0.1-20.0%)
+   ↓
+7. Modelo regenera señal con nuevos parámetros
+```
+
+### 8.6 Valores Recomendados por Condición
+
+**ECG Normal:**
+- HR: 60-100 BPM
+- Ruido: 2-5 (0.02-0.05)
+- HRV: 3-5%
+
+**ECG Taquicardia:**
+- HR: 100-180 BPM
+- Ruido: 2-5
+- HRV: 2-3%
+
+**EMG Reposo:**
+- Excitación: 0-10%
+- Amplitud: 100%
+- Ruido: 5-10
+
+**EMG Contracción Máxima:**
+- Excitación: 80-100%
+- Amplitud: 100-150%
+- Ruido: 5-10
+
+**PPG Normal:**
+- HR: 60-100 BPM
+- PI: 20-50 (2.0-5.0%)
+- Ruido: 2-5
+
+---
+
+## 9. Referencias
 
 [1] P. E. McSharry, G. D. Clifford, L. Tarassenko, and L. A. Smith, "A dynamical model for generating synthetic electrocardiogram signals," *IEEE Trans. Biomed. Eng.*, vol. 50, no. 3, pp. 289-294, Mar. 2003. DOI: 10.1109/TBME.2003.808805
 

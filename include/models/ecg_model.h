@@ -256,6 +256,7 @@ private:
     float measuredST_mV;                // Desviación ST (mV)
     float lastMeasuredST_mV;            // Último ST válido (para fallback)
     float currentBaseline_mV;           // Baseline actual para corrección de señal
+    float stOffset_mV;                  // Desplazamiento ST vertical (STEMI/Isquemia)
     
     // =========================================================================
     // CONFIGURACIÓN

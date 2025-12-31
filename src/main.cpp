@@ -5,6 +5,7 @@
  * @date 18 Diciembre 2025
  * 
  * Sistema de generación de señales biomédicas (ECG, EMG, PPG).
+ * pio run -e esp32_wroom32 --target upload
  * 
  * ARQUITECTURA:
  * - Core 0: UI (Nextion + Serial)
@@ -40,10 +41,10 @@ ParamController paramController;
 // Almacenan valores mientras el popup está abierto, se aplican al cerrar
 // ============================================================================
 struct ECGSliderValues {
-    int hr = 75;        // Frecuencia cardíaca (BPM)
+    int hr = 75;        // Frecuencia cardíaca (BPM) - inicia en valor medio de rango
     int zoom = 100;     // Zoom visual (50-200%), NO afecta modelo ni DAC
-    int noise = 2;      // Ruido × 100 (0.02)
-    int hrv = 5;        // Variabilidad HRV (%)
+    int noise = 0;      // Ruido × 100 (0.00) - inicia en 0
+    int hrv = 0;        // Variabilidad HRV (%) - inicia en 0
     bool modified = false;  // ¿Se modificó algún valor?
 } ecgSliderValues;
 
@@ -52,9 +53,9 @@ struct ECGSliderValues {
 // Almacenan valores mientras el popup está abierto, se aplican al cerrar
 // ============================================================================
 struct EMGSliderValues {
-    int exc = 0;        // Excitación (0-100%)
-    int amp = 100;      // Amplitud × 100 (1.00 factor)
-    int noise = 5;      // Ruido × 100 (0.05)
+    int exc = 0;        // Excitación (0-100%) - inicia en 0
+    int amp = 100;      // Amplitud × 100 (1.00 factor) - inicia en 100 (sin modificación)
+    int noise = 0;      // Ruido × 100 (0.00) - inicia en 0
     bool modified = false;
 } emgSliderValues;
 
@@ -63,9 +64,9 @@ struct EMGSliderValues {
 // Almacenan valores mientras el popup está abierto, se aplican al cerrar
 // ============================================================================
 struct PPGSliderValues {
-    int hr = 75;        // Frecuencia cardíaca (BPM)
-    int pi = 50;        // Índice perfusión × 10 (5.0%)
-    int noise = 5;      // Ruido × 100 (0.05)
+    int hr = 75;        // Frecuencia cardíaca (BPM) - inicia en valor medio de rango
+    int pi = 50;        // Índice perfusión × 10 (5.0%) - inicia en valor medio
+    int noise = 0;      // Ruido × 100 (0.00) - inicia en 0
     int amp = 100;      // Factor amplitud/zoom (50-200%), solo visual
     bool modified = false;
 } ppgSliderValues;
@@ -144,27 +145,24 @@ void handleUIEvent(UIEvent event, uint8_t param) {
         case UIEvent::BUTTON_ECG:
             stateMachine.processEvent(SystemEvent::SELECT_ECG);
             nextion->updateMenuButtons(SignalType::ECG);
-            // La navegación se hace con bt_ir
             break;
             
         case UIEvent::BUTTON_EMG:
+            Serial.println("[UI] BUTTON_EMG presionado");
             stateMachine.processEvent(SystemEvent::SELECT_EMG);
             nextion->updateMenuButtons(SignalType::EMG);
-            // La navegación se hace con bt_ir
             break;
             
         case UIEvent::BUTTON_PPG:
+            Serial.println("[UI] BUTTON_PPG presionado");
             stateMachine.processEvent(SystemEvent::SELECT_PPG);
             nextion->updateMenuButtons(SignalType::PPG);
-            // La navegación se hace con bt_ir
             break;
         
         case UIEvent::BUTTON_IR:
-            // Comportamiento depende del estado actual
             if (stateMachine.getState() == SystemState::MENU) {
-                // En menú: ir a selección de condición según señal seleccionada
-                stateMachine.processEvent(SystemEvent::GO_TO_CONDITION);
-                switch (stateMachine.getSelectedSignal()) {
+                SignalType selected = stateMachine.getSelectedSignal();
+                switch (selected) {
                     case SignalType::ECG:
                         nextion->goToPage(NextionPage::ECG_SIM);
                         delay(60); // dar tiempo a que la página cargue antes de pintar botones
@@ -183,23 +181,79 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     default:
                         break;
                 }
+                if (selected != SignalType::NONE) {
+                    stateMachine.processEvent(SystemEvent::GO_TO_CONDITION);
+                }
             } else if (stateMachine.getState() == SystemState::SELECT_CONDITION) {
-                // Solo permitir si hay condición seleccionada
-                if (stateMachine.getSelectedCondition() != 0xFF) {
-                    // En ecg_sim/emg_sim/ppg_sim: solo navegar a waveform (sin iniciar señal)
-                    switch (stateMachine.getSelectedSignal()) {
-                        case SignalType::ECG:
-                            nextion->goToPage(NextionPage::WAVEFORM_ECG);
-                            break;
-                        case SignalType::EMG:
-                            nextion->goToPage(NextionPage::WAVEFORM_EMG);
-                            break;
-                        case SignalType::PPG:
-                            nextion->goToPage(NextionPage::WAVEFORM_PPG);
-                            break;
-                        default:
-                            break;
+                // Leer la condición seleccionada del Nextion antes de navegar
+                int selectedCondition = -1;
+                switch (stateMachine.getSelectedSignal()) {
+                    case SignalType::ECG: {
+                        int hmiButtonIndex = nextion->readSliderValue("sel_ecg");
+                        Serial.printf("[UI] Leyendo sel_ecg del Nextion (botón HMI): %d\n", hmiButtonIndex);
+                        // Convertir índice de botón HMI a ECGCondition enum:
+                        // HMI: 0=Normal, 1=Taq, 2=Bra, 3=Bloqueo, 4=FA, 5=FV, 6=STEMI, 7=Isquemia
+                        // Enum: 0=NORMAL, 1=TACH, 2=BRAD, 3=AFIB, 4=VFIB, 5=AVB1, 6=STE, 7=STD
+                        switch (hmiButtonIndex) {
+                            case 0: selectedCondition = 0; break;  // Normal → NORMAL
+                            case 1: selectedCondition = 1; break;  // Taq → TACHYCARDIA
+                            case 2: selectedCondition = 2; break;  // Bra → BRADYCARDIA
+                            case 3: selectedCondition = 5; break;  // Bloqueo → AV_BLOCK_1
+                            case 4: selectedCondition = 3; break;  // FA → ATRIAL_FIBRILLATION
+                            case 5: selectedCondition = 4; break;  // FV → VENTRICULAR_FIBRILLATION
+                            case 6: selectedCondition = 6; break;  // STEMI → ST_ELEVATION
+                            case 7: selectedCondition = 7; break;  // Isquemia → ST_DEPRESSION
+                            default: selectedCondition = -1; break;
+                        }
+                        Serial.printf("[UI] Convertido a ECGCondition enum: %d\n", selectedCondition);
+                        break;
                     }
+                    case SignalType::EMG:
+                        selectedCondition = nextion->readSliderValue("sel_emg");
+                        Serial.printf("[UI] Leyendo sel_emg del Nextion: %d\n", selectedCondition);
+                        break;
+                    case SignalType::PPG:
+                        selectedCondition = nextion->readSliderValue("sel_ppg");
+                        Serial.printf("[UI] Leyendo sel_ppg del Nextion: %d\n", selectedCondition);
+                        break;
+                    default:
+                        break;
+                }
+                
+                // Actualizar condición en stateMachine si se leyó correctamente
+                if (selectedCondition >= 0) {
+                    stateMachine.processEvent(SystemEvent::SELECT_CONDITION, selectedCondition);
+                    Serial.printf("[UI] Condición actualizada en stateMachine: %d\n", stateMachine.getSelectedCondition());
+                }
+                
+                NextionPage waveformPage = NextionPage::WAVEFORM_ECG;
+                switch (stateMachine.getSelectedSignal()) {
+                    case SignalType::ECG: 
+                        waveformPage = NextionPage::WAVEFORM_ECG; 
+                        break;
+                    case SignalType::EMG: 
+                        waveformPage = NextionPage::WAVEFORM_EMG; 
+                        break;
+                    case SignalType::PPG: 
+                        waveformPage = NextionPage::WAVEFORM_PPG; 
+                        break;
+                    default: break;
+                }
+                nextion->goToPage(waveformPage);
+                nextion->clearWaveform(WAVEFORM_COMPONENT_ID, 0);
+                
+                // Actualizar etiquetas de escala fijas según Tabla 9.6
+                switch (stateMachine.getSelectedSignal()) {
+                    case SignalType::ECG: 
+                        nextion->updateECGScaleLabels();  // 0.2 mV/div, 350 ms/div
+                        break;
+                    case SignalType::EMG: 
+                        nextion->updateEMGScaleLabels();  // RAW: 1.0 mV/div, ENV: 0.2 mV/div, 700 ms/div
+                        break;
+                    case SignalType::PPG: 
+                        nextion->updatePPGScaleLabels();  // 15 mV/div, 700 ms/div
+                        break;
+                    default: break;
                 }
             }
             break;
@@ -223,7 +277,9 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             
         // Selección de condición
         case UIEvent::BUTTON_CONDITION:
+            Serial.printf("[UI] BUTTON_CONDITION presionado - param=%d\n", param);
             stateMachine.processEvent(SystemEvent::SELECT_CONDITION, param);
+            Serial.printf("[UI] Condición guardada en stateMachine: %d\n", stateMachine.getSelectedCondition());
             // Actualizar botones según el tipo de señal
             if (stateMachine.getSelectedSignal() == SignalType::ECG) {
                 nextion->updateECGConditionButtons(param);
@@ -236,23 +292,67 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             
         // Controles de simulación (en páginas waveform)
         case UIEvent::BUTTON_START:
-            // Serial.println("[UI] PLAY presionado");
-            // Si estamos en SELECT_CONDITION, cambiar a SIMULATING
-            if (stateMachine.getState() == SystemState::SELECT_CONDITION && stateMachine.getSelectedCondition() != 0xFF) {
+            // Si estamos en SELECT_CONDITION, leer la condición del Nextion antes de continuar
+            if (stateMachine.getState() == SystemState::SELECT_CONDITION) {
+                int selectedCondition = -1;
+                switch (stateMachine.getSelectedSignal()) {
+                    case SignalType::ECG: {
+                        int hmiButtonIndex = nextion->readSliderValue("sel_ecg");
+                        Serial.printf("[UI] PLAY - Leyendo sel_ecg (botón HMI): %d\n", hmiButtonIndex);
+                        // Convertir índice de botón HMI a ECGCondition enum
+                        switch (hmiButtonIndex) {
+                            case 0: selectedCondition = 0; break;  // Normal → NORMAL
+                            case 1: selectedCondition = 1; break;  // Taq → TACHYCARDIA
+                            case 2: selectedCondition = 2; break;  // Bra → BRADYCARDIA
+                            case 3: selectedCondition = 5; break;  // Bloqueo → AV_BLOCK_1
+                            case 4: selectedCondition = 3; break;  // FA → ATRIAL_FIBRILLATION
+                            case 5: selectedCondition = 4; break;  // FV → VENTRICULAR_FIBRILLATION
+                            case 6: selectedCondition = 6; break;  // STEMI → ST_ELEVATION
+                            case 7: selectedCondition = 7; break;  // Isquemia → ST_DEPRESSION
+                            default: selectedCondition = -1; break;
+                        }
+                        Serial.printf("[UI] Convertido a ECGCondition: %d\n", selectedCondition);
+                        break;
+                    }
+                    case SignalType::EMG:
+                        selectedCondition = nextion->readSliderValue("sel_emg");
+                        Serial.printf("[UI] PLAY desde SELECT_CONDITION - Leyendo sel_emg: %d\n", selectedCondition);
+                        break;
+                    case SignalType::PPG:
+                        selectedCondition = nextion->readSliderValue("sel_ppg");
+                        Serial.printf("[UI] PLAY desde SELECT_CONDITION - Leyendo sel_ppg: %d\n", selectedCondition);
+                        break;
+                    default:
+                        break;
+                }
+                
+                // Actualizar condición en stateMachine si se leyó correctamente
+                if (selectedCondition >= 0) {
+                    stateMachine.processEvent(SystemEvent::SELECT_CONDITION, selectedCondition);
+                    Serial.printf("[UI] Condición actualizada: %d\n", stateMachine.getSelectedCondition());
+                }
+                
                 stateMachine.processEvent(SystemEvent::GO_TO_WAVEFORM);
-            } else {
-                stateMachine.processEvent(SystemEvent::START_SIMULATION);
             }
-            // Habilitar streaming WiFi
-            wifiServer.setStreamingEnabled(true);
+            
+            // PLAY: Si está pausado, reanudar. Si está corriendo, reiniciar.
+            if (stateMachine.getState() == SystemState::PAUSED) {
+                // Reanudar desde donde se pausó (continuar onda)
+                stateMachine.processEvent(SystemEvent::RESUME);
+                Serial.println("[UI] PLAY: Reanudando señal");
+            } else {
+                // Reiniciar desde cero (limpiar waveform)
+                nextion->clearWaveform(WAVEFORM_COMPONENT_ID, 0);
+                stateMachine.processEvent(SystemEvent::START_SIMULATION);
+                Serial.println("[UI] PLAY: Iniciando/Reiniciando señal");
+            }
             break;
             
         case UIEvent::BUTTON_PAUSE:
-            // Serial.println("[UI] PAUSE presionado");
-            if (signalEngine->getState() == SignalState::RUNNING) {
+            // PAUSE: Solo pausar (no alternar)
+            if (stateMachine.getState() == SystemState::SIMULATING) {
                 stateMachine.processEvent(SystemEvent::PAUSE);
-            } else {
-                stateMachine.processEvent(SystemEvent::RESUME);
+                Serial.println("[UI] PAUSE: Pausando señal");
             }
             break;
             
@@ -291,10 +391,8 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             if (stateMachine.getSelectedSignal() == SignalType::ECG) {
                 nextion->goToPage(NextionPage::PARAMETROS_ECG);
                 ECGModel& ecg = signalEngine->getECGModel();
-                ecgSliderValues.hr = (int)ecg.getHRMean();
-                // zoom ya tiene su valor actual (no se obtiene del modelo)
-                ecgSliderValues.noise = (int)(ecg.getNoiseLevel() * 100);
-                ecgSliderValues.hrv = (int)(ecg.getHRStd() / ecg.getHRMean() * 100);
+                // NO leer del modelo - mantener valores del slider
+                // Los valores en ecgSliderValues representan la posición del slider
                 ecgSliderValues.modified = false;
                 
                 float hrMin, hrMax;
@@ -308,10 +406,8 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 );
             } else if (stateMachine.getSelectedSignal() == SignalType::EMG) {
                 nextion->goToPage(NextionPage::PARAMETROS_EMG);
-                EMGModel& emg = signalEngine->getEMGModel();
-                emgSliderValues.exc = (int)(emg.getCurrentExcitation() * 100);  // 0.5 → 50
-                emgSliderValues.amp = (int)(emg.getAmplitude() * 100);          // 1.5 → 150
-                emgSliderValues.noise = (int)(emg.getNoiseLevel() * 100);
+                // NO leer del modelo - mantener valores del slider
+                // Los valores en emgSliderValues representan la posición del slider
                 emgSliderValues.modified = false;
                 
                 nextion->setupEMGParametersPage(
@@ -321,11 +417,8 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 );
             } else if (stateMachine.getSelectedSignal() == SignalType::PPG) {
                 nextion->goToPage(NextionPage::PARAMETROS_PPG);
-                PPGModel& ppg = signalEngine->getPPGModel();
-                ppgSliderValues.hr = (int)ppg.getCurrentHeartRate();
-                ppgSliderValues.pi = (int)(ppg.getPerfusionIndex() * 10);  // 5.2% → 52
-                ppgSliderValues.noise = (int)(ppg.getNoiseLevel() * 100);
-                // amp ya tiene su valor actual (solo visual, no del modelo)
+                // NO leer del modelo - mantener valores del slider
+                // Los valores en ppgSliderValues representan la posición del slider
                 ppgSliderValues.modified = false;
                 
                 nextion->setupPPGParametersPage(
@@ -350,6 +443,8 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     // NOTA: zoom NO afecta el modelo, solo la visualización
                     params.noiseLevel = ecgSliderValues.noise / 100.0f;
                     ecg.setParameters(params);
+                    yield();  // Alimentar watchdog para evitar reset
+                    delay(50);  // Dar tiempo al sistema para estabilizarse
                     
                     // Actualizar escala mV/div en waveform_ecg
                     nextion->updateECGScale(ecgSliderValues.zoom);
@@ -357,6 +452,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 }
                 ecgSliderValues.modified = false;
                 nextion->goToPage(NextionPage::WAVEFORM_ECG);
+                nextion->updateECGScaleLabels();  // Actualizar escalas: 0.2 mV/div, 350 ms/div
             } else if (stateMachine.getSelectedSignal() == SignalType::EMG) {
                 if (emgSliderValues.modified) {
                     EMGModel& emg = signalEngine->getEMGModel();
@@ -366,10 +462,13 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     params.amplitude = emgSliderValues.amp / 100.0f;        // 150 → 1.5
                     params.noiseLevel = emgSliderValues.noise / 100.0f;     // 5 → 0.05
                     emg.setParameters(params);
+                    yield();  // Alimentar watchdog para evitar reset
+                    delay(50);  // Dar tiempo al sistema para estabilizarse
                     Serial.println("[UI] Parámetros EMG aplicados");
                 }
                 emgSliderValues.modified = false;
                 nextion->goToPage(NextionPage::WAVEFORM_EMG);
+                nextion->updateEMGScaleLabels();  // Actualizar escalas: RAW 1.0 mV/div, ENV 0.2 mV/div, 700 ms/div
             } else if (stateMachine.getSelectedSignal() == SignalType::PPG) {
                 if (ppgSliderValues.modified) {
                     PPGModel& ppg = signalEngine->getPPGModel();
@@ -380,27 +479,50 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     params.noiseLevel = ppgSliderValues.noise / 100.0f;  // 5 → 0.05
                     params.dicroticNotch = 0.4f;  // Mantener valor por defecto
                     ppg.setParameters(params);
+                    yield();  // Alimentar watchdog para evitar reset
+                    delay(50);  // Dar tiempo al sistema para estabilizarse
                     Serial.println("[UI] Parámetros PPG aplicados");
                 }
                 ppgSliderValues.modified = false;
                 nextion->goToPage(NextionPage::WAVEFORM_PPG);
+                nextion->updatePPGScaleLabels();  // Actualizar escalas: 15 mV/div, 700 ms/div
             }
             break;
         
         case UIEvent::BUTTON_CANCEL_PARAMS:
-            // bt_ex: Cancelar sin guardar - descartar cambios
+            // bt_ex: Cancelar sin guardar - restaurar valores originales del modelo
             if (stateMachine.getSelectedSignal() == SignalType::ECG) {
+                // Restaurar valores desde el modelo (descartar cambios temporales)
+                ECGModel& ecg = signalEngine->getECGModel();
+                ecgSliderValues.hr = (int)ecg.getHRMean();
+                ecgSliderValues.noise = (int)(ecg.getNoiseLevel() * 100);
+                ecgSliderValues.hrv = (int)(ecg.getHRStd() / ecg.getHRMean() * 100);
+                // zoom se mantiene (es solo visual)
                 ecgSliderValues.modified = false;
-                Serial.println("[UI] Cambios ECG descartados");
+                Serial.println("[UI] Cambios ECG descartados - valores restaurados");
                 nextion->goToPage(NextionPage::WAVEFORM_ECG);
+                nextion->updateECGScaleLabels();
             } else if (stateMachine.getSelectedSignal() == SignalType::EMG) {
+                // Restaurar valores desde el modelo
+                EMGModel& emg = signalEngine->getEMGModel();
+                emgSliderValues.exc = (int)(emg.getCurrentExcitation() * 100);
+                emgSliderValues.amp = (int)(emg.getAmplitude() * 100);
+                emgSliderValues.noise = (int)(emg.getNoiseLevel() * 100);
                 emgSliderValues.modified = false;
-                Serial.println("[UI] Cambios EMG descartados");
+                Serial.println("[UI] Cambios EMG descartados - valores restaurados");
                 nextion->goToPage(NextionPage::WAVEFORM_EMG);
+                nextion->updateEMGScaleLabels();
             } else if (stateMachine.getSelectedSignal() == SignalType::PPG) {
+                // Restaurar valores desde el modelo
+                PPGModel& ppg = signalEngine->getPPGModel();
+                ppgSliderValues.hr = (int)ppg.getCurrentHeartRate();
+                ppgSliderValues.pi = (int)(ppg.getPerfusionIndex() * 10);
+                ppgSliderValues.noise = (int)(ppg.getNoiseLevel() * 100);
+                // amp se mantiene (es solo visual)
                 ppgSliderValues.modified = false;
-                Serial.println("[UI] Cambios PPG descartados");
+                Serial.println("[UI] Cambios PPG descartados - valores restaurados");
                 nextion->goToPage(NextionPage::WAVEFORM_PPG);
+                nextion->updatePPGScaleLabels();
             }
             break;
         
@@ -611,13 +733,11 @@ void handleSerialCommand(uint8_t cmd, uint8_t* data, uint16_t len) {
 }
 
 void handleStateChange(SystemState oldState, SystemState newState) {
-    // Serial.printf("[State] %s -> %s\n", 
-    //               stateMachine.stateToString(oldState),
-    //               stateMachine.stateToString(newState));
+    Serial.printf("[State] Cambio de estado: %d -> %d\n", (int)oldState, (int)newState);
     
     // Verificar que signalEngine está inicializado
     if (!signalEngine) {
-        // Serial.println("[State] SignalEngine no inicializado, omitiendo acciones");
+        Serial.println("[State] ERROR: SignalEngine no inicializado!");
         return;
     }
     
@@ -635,21 +755,38 @@ void handleStateChange(SystemState oldState, SystemState newState) {
             break;
             
         case SystemState::SELECT_CONDITION:
-            // No navegamos aquí, la navegación se maneja en handleUIEvent
+            // Detener la señal al volver a la pantalla de condiciones
+            signalEngine->stopSignal();
             setLEDState(SignalState::STOPPED);
             break;
             
         case SystemState::SIMULATING:
-            // No navegamos aquí, la navegación se maneja en handleUIEvent
-            // Solo iniciamos la generación de señal
-            // Serial.printf("[State] Iniciando señal: Tipo=%d, Condición=%d\n",
-            //              (int)stateMachine.getSelectedSignal(),
-            //              stateMachine.getSelectedCondition());
-            signalEngine->startSignal(
-                stateMachine.getSelectedSignal(),
-                stateMachine.getSelectedCondition()
-            );
-            setLEDState(SignalState::RUNNING);
+            // Verificar si venimos de PAUSED (RESUME) o de otro estado (START)
+            if (oldState == SystemState::PAUSED) {
+                // RESUME: Reanudar sin reiniciar - mantener continuidad de onda
+                signalEngine->resumeSignal();
+                setLEDState(SignalState::RUNNING);
+                // NO resetear contadores para mantener continuidad
+                // NO llamar startSignal() para no reiniciar desde cero
+            } else {
+                // START: Iniciar nueva simulación desde cero
+                Serial.printf("[State] Iniciando señal: Tipo=%d, Condición=%d\n",
+                             (int)stateMachine.getSelectedSignal(),
+                             stateMachine.getSelectedCondition());
+                signalEngine->startSignal(
+                    stateMachine.getSelectedSignal(),
+                    stateMachine.getSelectedCondition()
+                );
+                delay(100);  // Dar tiempo al sistema para estabilizarse después de cambiar señal
+                setLEDState(SignalState::RUNNING);
+                // Resetear contador de display para forzar redibujado desde cero
+                extern void resetDisplayCounters();
+                resetDisplayCounters();
+                // Actualizar escalas de visualización según tipo de señal
+                if (stateMachine.getSelectedSignal() == SignalType::ECG) {
+                    nextion->updateECGScale(ecgSliderValues.zoom);
+                }
+            }
             // Serial.printf("[State] Estado SignalEngine: %d (0=STOPPED, 1=RUNNING)\n", 
             //              (int)signalEngine->getState());
             break;
@@ -667,9 +804,16 @@ void handleStateChange(SystemState oldState, SystemState newState) {
 // ============================================================================
 // ACTUALIZACIÓN DE DISPLAY
 // ============================================================================
+// Variable estática para tracking de muestras
+static uint32_t lastSampleCount = 0;
+
+// Función para resetear contadores (llamada al iniciar nueva simulación)
+void resetDisplayCounters() {
+    lastSampleCount = 0;
+}
+
 void updateDisplay() {
     static unsigned long lastUpdate = 0;
-    static uint32_t lastSampleCount = 0;
     
     unsigned long now = millis();
     
@@ -693,81 +837,177 @@ void updateDisplay() {
             default: downsampleRatio = 20; break;
         }
         
-        // Enviar punto solo cuando corresponde según el ratio
-        if (currentSampleCount != lastSampleCount && 
-            currentSampleCount % downsampleRatio == 0) {
-            
-            uint8_t dacValue;
-            
-            // Para PPG usamos getWaveformValue() que escala solo la AC al rango 0-255
-            // Para ECG/EMG usamos getLastDACValue() que ya tiene el escalado correcto
-            if (type == SignalType::PPG) {
-                dacValue = signalEngine->getPPGModel().getWaveformValue();
-            } else {
-                dacValue = signalEngine->getLastDACValue();
+        // Enviar puntos cada vez que crucemos el múltiplo del ratio, incluso si se acumularon muestras
+        if (currentSampleCount > lastSampleCount) {
+            uint32_t samplesProcessed = currentSampleCount - lastSampleCount;
+
+            // Limitar el procesamiento para evitar bloqueos si hubo un gran retraso
+            const uint32_t maxSamples = downsampleRatio * 4;  // ≈20 ms de búfer para ECG
+            if (samplesProcessed > maxSamples) {
+                samplesProcessed = maxSamples;
+                lastSampleCount = currentSampleCount - samplesProcessed;
             }
-            
-            // Aplicar zoom visual (solo afecta display, no DAC)
-            float zoomFactor = 1.0f;
-            if (type == SignalType::ECG) {
-                zoomFactor = ecgSliderValues.zoom / 100.0f;
-            } else if (type == SignalType::EMG) {
-                zoomFactor = emgSliderValues.amp / 100.0f;
-            } else if (type == SignalType::PPG) {
-                zoomFactor = ppgSliderValues.amp / 100.0f;
+
+            for (uint32_t i = 1; i <= samplesProcessed; ++i) {
+                uint32_t sampleIndex = lastSampleCount + i;
+                if (sampleIndex % downsampleRatio != 0) {
+                    continue;
+                }
+                
+                float mV_value = 0.0f;
+                bool hasSample = signalEngine->getDisplaySample(sampleIndex, mV_value);
+                int waveValue = 127;  // Centro por defecto
+
+                if (type == SignalType::ECG && hasSample) {
+                    // ECG: Un solo canal
+                    float zoomFactor = ecgSliderValues.zoom / 100.0f;
+                    mV_value *= zoomFactor;
+
+                    float normalized = (mV_value + 0.5f) / 2.0f;
+                    normalized = constrain(normalized, 0.0f, 1.0f);
+                    waveValue = (int)(20 + (normalized * 215));
+                    
+                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, (uint8_t)waveValue);
+                    
+                } else if (type == SignalType::EMG) {
+                    // EMG: DOS canales (RAW + envolvente)
+                    EMGModel& emg = signalEngine->getEMGModel();
+                    
+                    // Canal 0: Señal RAW bipolar (-5 a +5 mV)
+                    uint16_t ch0_value = emg.getWaveformValue_Ch0();
+                    uint8_t ch0_mapped = map(ch0_value, 0, 380, 20, 235);
+                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, ch0_mapped);
+                    
+                    // Canal 1: Envolvente RMS unipolar (0 a +2 mV)
+                    uint16_t ch1_value = emg.getWaveformValue_Ch1();
+                    uint8_t ch1_mapped = map(ch1_value, 0, 380, 20, 235);
+                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 1, ch1_mapped);
+                    
+                } else if (type == SignalType::PPG) {
+                    // PPG: Un solo canal (AC: 0 a 150 mV)
+                    uint8_t ppgValue = signalEngine->getPPGModel().getWaveformValue();
+                    float zoomFactor = ppgSliderValues.amp / 100.0f;
+                    int centered = ppgValue - 127;
+                    int zoomed = (int)(centered * zoomFactor) + 127;
+                    zoomed = constrain(zoomed, 0, 255);
+                    waveValue = map(zoomed, 0, 255, 20, 235);
+                    
+                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, (uint8_t)waveValue);
+                    
+                } else {
+                    continue; // sin muestra disponible
+                }
             }
-            
-            // Zoom visual: expandir/comprimir respecto al centro (127)
-            int centered = dacValue - 127;
-            int zoomed = (int)(centered * zoomFactor) + 127;
-            zoomed = constrain(zoomed, 0, 255);
-            int waveValue = map(zoomed, 0, 255, 10, NEXTION_WAVEFORM_HEIGHT - 10);
-            
-            // Enviar al waveform (ID=1, Canal=0)
-            nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, WAVEFORM_CHANNEL, (uint8_t)waveValue);
+
+            lastSampleCount = currentSampleCount;
         }
-        lastSampleCount = currentSampleCount;
     }
     
     // Actualizar métricas y valores en pantalla a 4 Hz
     if (now - lastUpdate >= METRICS_UPDATE_MS) {
-        if (signalEngine->getState() == SignalState::RUNNING) {
+        SystemState sysState = stateMachine.getState();
+        if (sysState == SystemState::SIMULATING || sysState == SystemState::PAUSED) {
             SignalType type = signalEngine->getCurrentType();
             
             // Actualizar valores integrados en waveforms
             switch (type) {
                 case SignalType::ECG: {
                     ECGModel& ecg = signalEngine->getECGModel();
-                    nextion->updateECGValuesPage(
-                        (int)ecg.getCurrentBPM(),
-                        (int)ecg.getCurrentRR_ms(),
-                        (int)(ecg.getRWaveAmplitude_mV() * 100),
-                        (int)(ecg.getSTDeviation_mV() * 100),
-                        ecg.getBeatCount(),
-                        ecg.getConditionName()
-                    );
+                    // HR: 3 enteros (ws0=3, ws1=0)
+                    int bpm = (int)ecg.getCurrentBPM();
+                    
+                    // RR: 4 enteros (ws0=4, ws1=0)
+                    int rr = (int)ecg.getCurrentRR_ms();
+                    
+                    // PR, QRS, QTc: 3 enteros (ws0=3, ws1=0)
+                    int pr = (int)ecg.getPRInterval_ms();
+                    int qrs = (int)ecg.getQRSDuration_ms();
+                    int qtc = (int)ecg.getQTcInterval_ms();
+                    
+                    // Amplitudes: 1 entero + 2 decimales (ws0=3, ws1=2) → enviar × 100
+                    int p_x100 = (int)(ecg.getPAmplitude_mV() * 100);
+                    int q_x100 = (int)(ecg.getQAmplitude_mV() * 100);
+                    int r_x100 = (int)(ecg.getRAmplitude_mV() * 100);
+                    int s_x100 = (int)(ecg.getSAmplitude_mV() * 100);
+                    int t_x100 = (int)(ecg.getTAmplitude_mV() * 100);
+                    int st_x100 = (int)(ecg.getSTDeviation_mV() * 100);
+                    
+                    nextion->updateECGValuesPage(bpm, rr, pr, qrs, qtc,
+                                                p_x100, q_x100, r_x100, s_x100, t_x100, st_x100,
+                                                ecg.getConditionName());
+                    
+                    // Debug: Imprimir cada 4 segundos
+                    static unsigned long lastDebug = 0;
+                    if (millis() - lastDebug > 4000) {
+                        Serial.printf("[ECG] BPM=%d, RR=%d, PR=%d, QRS=%d, QTc=%d, P=%.2f, Q=%.2f, R=%.2f, S=%.2f, T=%.2f, ST=%.2f\n", 
+                                     bpm, rr, pr, qrs, qtc,
+                                     ecg.getPAmplitude_mV(), ecg.getQAmplitude_mV(), ecg.getRAmplitude_mV(),
+                                     ecg.getSAmplitude_mV(), ecg.getTAmplitude_mV(), ecg.getSTDeviation_mV());
+                        lastDebug = millis();
+                    }
                     break;
                 }
                 case SignalType::EMG: {
                     EMGModel& emg = signalEngine->getEMGModel();
-                    nextion->updateEMGValuesPage(
-                        (int)(emg.getRMSAmplitude() * 100),      // 0.25mV → 25
-                        emg.getActiveMotorUnits(),               // Entero
-                        (int)(emg.getMeanFiringRate() * 10),     // 12.5Hz → 125
-                        (int)emg.getContractionLevel(),          // % entero
-                        emg.getConditionName()
-                    );
+                    
+                    // Raw signal, Envolvente, RMS: 1 entero + 2 decimales (ws0=3, ws1=2) → enviar × 100
+                    float rawValue = emg.getCurrentValueMV();
+                    float envValue = emg.getProcessedSample();  // Envolvente procesada
+                    int raw_x100 = (int)(rawValue * 100);
+                    int env_x100 = (int)(envValue * 100);
+                    int rms_x100 = (int)(emg.getRMSAmplitude() * 100);
+                    
+                    // Unidades motoras: 3 enteros (ws0=3, ws1=0)
+                    int mu = emg.getActiveMotorUnits();
+                    
+                    // Frecuencia de disparo: 3 enteros + 1 decimal (ws0=4, ws1=1) → enviar × 10
+                    int fr_x10 = (int)(emg.getMeanFiringRate() * 10);
+                    
+                    // Contracción %: 3 enteros (ws0=3, ws1=0)
+                    int mvc = (int)emg.getContractionLevel();
+                    
+                    nextion->updateEMGValuesPage(raw_x100, env_x100, rms_x100, mu, fr_x10, mvc, emg.getConditionName());
+                    
+                    // Debug: Imprimir cada 4 segundos
+                    static unsigned long lastDebugEMG = 0;
+                    if (millis() - lastDebugEMG > 4000) {
+                        Serial.printf("[EMG] RAW=%.2f, ENV=%.2f, RMS=%.2f mV, MU=%d, FR=%.1f Hz, MVC=%d%%, Cond=%s\n", 
+                                     rawValue, envValue, emg.getRMSAmplitude(),
+                                     mu, emg.getMeanFiringRate(), mvc,
+                                     emg.getConditionName());
+                        lastDebugEMG = millis();
+                    }
                     break;
                 }
                 case SignalType::PPG: {
                     PPGModel& ppg = signalEngine->getPPGModel();
-                    nextion->updatePPGValuesPage(
-                        (int)ppg.getCurrentHeartRate(),          // BPM
-                        (int)ppg.getCurrentRRInterval(),         // RR en ms
-                        (int)(ppg.getPerfusionIndex() * 10),     // PI × 10 (5.2% → 52)
-                        ppg.getBeatCount(),
-                        ppg.getConditionName()
-                    );
+                    
+                    // Señal AC: 3 enteros + 1 decimal (ws0=4, ws1=1) → enviar × 10
+                    int ac_x10 = (int)(ppg.getPerfusionIndex() * 15.0f * 10);  // AC = PI × 15 mV, × 10
+                    
+                    // HR envolvente: 3 enteros (ws0=3, ws1=0)
+                    int hr = (int)ppg.getCurrentHeartRate();
+                    
+                    // Intervalo RR: 4 enteros (ws0=4, ws1=0)
+                    int rr = (int)ppg.getMeasuredRRInterval();
+                    
+                    // Índice de perfusión %: 2 enteros + 1 decimal (ws0=3, ws1=1) → enviar × 10
+                    int pi_x10 = (int)(ppg.getPerfusionIndex() * 10);
+                    
+                    // Rangos sistólico y diastólico: 4 enteros (ws0=4, ws1=0)
+                    int sys = (int)ppg.getMeasuredSystoleTime();
+                    int dia = (int)ppg.getMeasuredDiastoleTime();
+                    
+                    nextion->updatePPGValuesPage(ac_x10, hr, rr, pi_x10, sys, dia, ppg.getConditionName());
+                    
+                    // Debug: Imprimir cada 4 segundos
+                    static unsigned long lastDebugPPG = 0;
+                    if (millis() - lastDebugPPG > 4000) {
+                        Serial.printf("[PPG] AC=%.1f mV, HR=%d, RR=%d, PI=%.1f%%, Sys=%d ms, Dia=%d ms\n", 
+                                     ppg.getPerfusionIndex() * 15.0f, hr, rr, ppg.getPerfusionIndex(),
+                                     sys, dia);
+                        lastDebugPPG = millis();
+                    }
                     break;
                 }
                 default:
