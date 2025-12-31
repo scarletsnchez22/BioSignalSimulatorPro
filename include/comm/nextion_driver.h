@@ -196,9 +196,9 @@ public:
     void updatePPGValuesPage(int hr, int rr_ms, int pi_x10,
                               uint32_t beats, const char* condicion);
     
-    // Actualizar valores PPG con TODAS las métricas
+    // Actualizar valores PPG con TODAS las métricas (incluye DC para DAC)
     void updatePPGValuesPage(int ac_x10, int hr, int rr_ms, int pi_x10, 
-                              int sys_ms, int dia_ms, const char* condicion);
+                              int sys_ms, int dia_ms, int dc_mV, const char* condicion);
     
     // Configurar página parametros_ecg con límites según patología
     void setupECGParametersPage(int hrMin, int hrMax, int hrCurrent,

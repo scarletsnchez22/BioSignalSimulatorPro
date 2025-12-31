@@ -96,9 +96,9 @@ enum class PPGCondition : uint8_t {
     NORMAL = 0,                     // PI 1-5%, morfología estándar con muesca dicrótica
     ARRHYTHMIA,                     // PI 1-5%, RR muy variable (±15%), morfología similar a normal
     WEAK_PERFUSION,                 // PI 0.02-0.4%, señal muy débil, muesca desaparecida
-    VASODILATION,                   // PI 5-10%, pico alto, muesca marcada, diástole bien definida
-    STRONG_PERFUSION,               // PI 10-20%, señal muy robusta, muesca prominente
     VASOCONSTRICTION,               // PI 0.2-0.8%, pico pequeño, muesca apenas perceptible, onda afilada
+    STRONG_PERFUSION,               // PI 10-20%, señal muy robusta, muesca prominente
+    VASODILATION,                   // PI 5-10%, pico alto, muesca marcada, diástole bien definida
     
     COUNT = 6                       // Total de condiciones
 };
@@ -195,6 +195,7 @@ struct PPGParameters {
     float perfusionIndex;           // Índice de perfusión % (0.3-20.0, varía por condición)
     float dicroticNotch;            // Muesca dicrótica (0.0-0.7, varía por condición)
     float noiseLevel;               // Nivel de ruido (0.0-1.0)
+    float amplification;            // Factor de amplificación (0.5-2.0, multiplica señal)
     PPGCondition condition;         // Condición actual
     
     // Constructor con valores por defecto
@@ -203,6 +204,7 @@ struct PPGParameters {
         perfusionIndex(5.0f),
         dicroticNotch(0.3f),
         noiseLevel(0.05f),
+        amplification(1.0f),
         condition(PPGCondition::NORMAL)
     {}
 };

@@ -215,21 +215,21 @@ inline PPGLimits getPPGLimits(PPGCondition condition) {
     
     switch (condition) {
         case PPGCondition::NORMAL:
-            // Allen 2007: ritmo sinusal 60-100, PI 2-10%, notch 0.2-0.5
+            // Allen 2007: ritmo sinusal 60-100, PI 2.9-6.1%
             limits.heartRate       = {60.0f, 100.0f, 75.0f};
-            limits.perfusionIndex  = {2.0f, 10.0f, 5.0f};
+            limits.perfusionIndex  = {2.9f, 6.1f, 4.5f};
             limits.dicroticNotch   = {0.2f, 0.5f, 0.35f};
             break;
             
         case PPGCondition::ARRHYTHMIA:
-            // Elgendi 2012: variabilidad RR aumentada, notch variable
+            // Elgendi 2012: variabilidad RR aumentada, PI 1.0-5.0%
             limits.heartRate       = {50.0f, 150.0f, 75.0f};
-            limits.perfusionIndex  = {2.0f, 8.0f, 4.0f};
+            limits.perfusionIndex  = {1.0f, 5.0f, 3.0f};
             limits.dicroticNotch   = {0.1f, 0.4f, 0.25f};
             break;
             
         case PPGCondition::WEAK_PERFUSION:
-            // Reisner 2008: hipovolemia reduce notch significativamente
+            // Reisner 2008: hipovolemia, PI 0.3-2.0%
             limits.heartRate       = {90.0f, 140.0f, 110.0f};
             limits.perfusionIndex  = {0.3f, 2.0f, 0.8f};
             limits.dicroticNotch   = {0.05f, 0.15f, 0.1f};  // Muy reducido
@@ -243,7 +243,7 @@ inline PPGLimits getPPGLimits(PPGCondition condition) {
             break;
             
         case PPGCondition::VASODILATION:
-            // BPL 2023: vasodilatación aumenta PI (5-10%)
+            // Allen 2007: vasodilatación aumenta PI (5-10%)
             limits.heartRate       = {60.0f, 90.0f, 75.0f};
             limits.perfusionIndex  = {5.0f, 10.0f, 7.5f};
             limits.dicroticNotch   = {0.3f, 0.5f, 0.4f};   // Marcado

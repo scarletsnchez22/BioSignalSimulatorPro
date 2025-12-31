@@ -131,15 +131,15 @@ void PPGModel::initConditionRanges() {
             };
             break;
             
-        case PPGCondition::VASODILATION:
-            // PI: 5.0-10.0%, mejor relleno diastólico
-            // Pico más alto y ancho; muesca más marcada
+        case PPGCondition::VASOCONSTRICTION:
+            // PI: 0.7-0.8%, pulso aplanado
+            // Upstroke menos pronunciado; muesca tenue
             condRanges = {
-                .hrMin = 60.0f, .hrMax = 90.0f, .hrCV = 0.02f,
-                .piMin = 5.0f,  .piMax = 10.0f, .piCV = 0.10f,
+                .hrMin = 65.0f, .hrMax = 110.0f, .hrCV = 0.02f,
+                .piMin = 0.7f,  .piMax = 0.8f,   .piCV = 0.10f,
                 .systolicAmpl = 1.0f,       // Base Allen
-                .diastolicAmpl = 0.5f,      // Aumentado (mejor relleno diastólico)
-                .dicroticDepth = 0.30f      // 20-40%, más marcada
+                .diastolicAmpl = 0.25f,     // Reducido (pulso aplanado)
+                .dicroticDepth = 0.05f      // <10%, tenue o inexistente
             };
             break;
             
@@ -155,15 +155,15 @@ void PPGModel::initConditionRanges() {
             };
             break;
             
-        case PPGCondition::VASOCONSTRICTION:
-            // PI: 0.7-0.8%, pulso aplanado
-            // Upstroke menos pronunciado; muesca tenue
+        case PPGCondition::VASODILATION:
+            // PI: 5.0-10.0%, mejor relleno diastólico
+            // Pico más alto y ancho; muesca más marcada
             condRanges = {
-                .hrMin = 65.0f, .hrMax = 110.0f, .hrCV = 0.02f,
-                .piMin = 0.7f,  .piMax = 0.8f,   .piCV = 0.10f,
+                .hrMin = 60.0f, .hrMax = 90.0f, .hrCV = 0.02f,
+                .piMin = 5.0f,  .piMax = 10.0f, .piCV = 0.10f,
                 .systolicAmpl = 1.0f,       // Base Allen
-                .diastolicAmpl = 0.25f,     // Reducido (pulso aplanado)
-                .dicroticDepth = 0.05f      // <10%, tenue o inexistente
+                .diastolicAmpl = 0.5f,      // Aumentado (mejor relleno diastólico)
+                .dicroticDepth = 0.30f      // 20-40%, más marcada
             };
             break;
             
@@ -197,6 +197,11 @@ void PPGModel::setParameters(const PPGParameters& newParams) {
     systoleFraction = calculateSystoleFraction(currentHR);
     systoleTime = currentRR * 1000.0f * systoleFraction;
     diastoleTime = currentRR * 1000.0f * (1.0f - systoleFraction);
+    
+    // IMPORTANTE: Actualizar métricas medidas para que estén disponibles inmediatamente
+    measuredRRInterval_ms = currentRR * 1000.0f;
+    measuredSystoleTime_ms = systoleTime;
+    measuredDiastoleTime_ms = diastoleTime;
 }
 
 void PPGModel::setPendingParameters(const PPGParameters& newParams) {
@@ -387,6 +392,10 @@ void PPGModel::detectBeatAndApplyPending() {
     
     // Actualizar PI dinámico
     currentPI = generateDynamicPI();
+    
+    // Actualizar métricas medidas basadas en el modelo (para display inmediato)
+    // Esto asegura que RR y otras métricas estén disponibles desde el primer latido
+    measuredRRInterval_ms = currentRR * 1000.0f;
 }
 
 // ============================================================================
@@ -584,9 +593,9 @@ const char* PPGModel::getConditionName() const {
         case PPGCondition::NORMAL: return "Normal";
         case PPGCondition::ARRHYTHMIA: return "Arritmia";
         case PPGCondition::WEAK_PERFUSION: return "Perfusion Debil";
-        case PPGCondition::VASODILATION: return "Vasodilatacion";
-        case PPGCondition::STRONG_PERFUSION: return "Perfusion Fuerte";
         case PPGCondition::VASOCONSTRICTION: return "Vasoconstriccion";
+        case PPGCondition::STRONG_PERFUSION: return "Perfusion Fuerte";
+        case PPGCondition::VASODILATION: return "Vasodilatacion";
         default: return "Desconocido";
     }
 }
@@ -601,17 +610,15 @@ uint8_t PPGModel::getWaveformValue() const {
     // - PI típico: 0.5% - 10% → AC: 7.5 - 150 mV
     // - PI extremo (STRONG_PERFUSION): hasta 20% → AC: 300 mV (se clipea)
     //
-    // Usamos rango fijo 0-150 mV para que:
-    // - NORMAL (PI 3-6%): AC 45-90 mV → ocupa 30-60% de pantalla
-    // - WEAK (PI 0.5-2%): AC 7-30 mV → visible pero pequeño (correcto clínicamente)
-    // - VASODILATION (PI 5-10%): AC 75-150 mV → ocupa 50-100% de pantalla
-    // - STRONG (PI >10%): se clipea arriba pero sigue viéndose la forma
-    //
     // La señal AC es UNIPOLAR: pulse va de 0 a 1, acValue va de 0 a AC_amplitude
-    const float AC_DISPLAY_MAX = 150.0f;  // mV - rango clínico para visualización
+    // Se aplica factor de amplificación configurado por el usuario (0.5-2.0)
+    const float AC_DISPLAY_MAX = 150.0f;  // mV - rango clínico base para visualización
+    
+    // Aplicar factor de amplificación (50-200% → 0.5-2.0)
+    float amplifiedAC = lastACValue * params.amplification;
     
     // Mapeo unipolar: 0 → 0, AC_DISPLAY_MAX → 255
-    float normalized = lastACValue / AC_DISPLAY_MAX;
+    float normalized = amplifiedAC / AC_DISPLAY_MAX;
     normalized = constrain(normalized, 0.0f, 1.0f);
     
     return (uint8_t)(normalized * 255.0f);

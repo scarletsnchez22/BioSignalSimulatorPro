@@ -45,7 +45,7 @@
 // 0=NORMAL, 1=TACHYCARDIA, 2=BRADYCARDIA, 3=ATRIAL_FIBRILLATION,
 // 4=VENTRICULAR_FIBRILLATION, 5=AV_BLOCK_1, 6=ST_ELEVATION, 7=ST_DEPRESSION
 // --------------------------------------------------------------------------
-#define AUTO_ECG_CONDITION      2
+#define AUTO_ECG_CONDITION      0
 
 // --------------------------------------------------------------------------
 // CONDICIONES EMG (solo si AUTO_SIGNAL_TYPE==1):
@@ -143,9 +143,9 @@ const char* getPPGConditionName(PPGCondition cond) {
         case PPGCondition::NORMAL:            return "Normal";
         case PPGCondition::ARRHYTHMIA:        return "Arritmia";
         case PPGCondition::WEAK_PERFUSION:    return "Perfusion Debil";
-        case PPGCondition::VASODILATION:      return "Vasodilatacion";
-        case PPGCondition::STRONG_PERFUSION:  return "Perfusion Fuerte";
         case PPGCondition::VASOCONSTRICTION:  return "Vasoconstriccion";
+        case PPGCondition::STRONG_PERFUSION:  return "Perfusion Fuerte";
+        case PPGCondition::VASODILATION:      return "Vasodilatacion";
         default:                              return "Desconocido";
     }
 }

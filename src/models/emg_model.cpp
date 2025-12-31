@@ -1094,6 +1094,14 @@ void EMGModel::tick(float deltaTime) {
     // Generar UNA sola muestra cruda del modelo
     cachedRawSample = generateSample(deltaTime);
     sampleIsCached = true;
+    
+    // Actualizar envelope en cada tick para que esté sincronizado con el waveform
+    // Esto hace que lastProcessedValue esté siempre actualizado para getWaveformValue_Ch1()
+    float rectified = fabsf(cachedRawSample);
+    updateEnvelopeBuffer(rectified);
+    float envelopeRMS = (envelopeSum > 0.0f) ? sqrtf(envelopeSum / (float)ENVELOPE_BUFFER_SIZE) : 0.0f;
+    const float alpha = 0.02f;
+    lastProcessedValue = lastProcessedValue * (1.0f - alpha) + envelopeRMS * alpha;
 }
 
 // ============================================================================
@@ -1151,26 +1159,8 @@ uint8_t EMGModel::getRawDACValue() const {
  * @return Envolvente RMS en mV (~0.3-0.5 mV en contracción moderada)
  */
 float EMGModel::getProcessedSample() {
-    if (!sampleIsCached) {
-        return 0.0f;
-    }
-    
-    // PASO 1: Rectificación |x|
-    float rectified = fabsf(cachedRawSample);
-    
-    // PASO 2: Actualizar buffer envolvente con señal RECTIFICADA
-    updateEnvelopeBuffer(rectified);
-    
-    // PASO 3: Calcular RMS sobre ventana de 30ms (señal rectificada)
-    float envelopeRMS = (envelopeSum > 0.0f) ? sqrtf(envelopeSum / (float)ENVELOPE_BUFFER_SIZE) : 0.0f;
-    
-    // PASO 4: Suavizado exponencial para visualización
-    // Alpha = 0.02 → constante de tiempo ~50ms
-    // Perfecto para ver diferencias REST/LOW/MODERATE/HIGH y oscilaciones TREMOR
-    const float alpha = 0.02f;
-    lastProcessedValue = lastProcessedValue * (1.0f - alpha) + envelopeRMS * alpha;
-    
-    // Sin clamp - el RMS sobre rectificada ya tiene valores fisiológicos correctos
+    // El envelope se actualiza en tick() para estar sincronizado con el waveform
+    // Aquí solo retornamos el valor ya calculado
     // Valores esperados:
     //   REST: 0.03-0.05 mV
     //   LOW: 0.3-0.5 mV
@@ -1343,40 +1333,46 @@ uint16_t EMGModel::getWaveformValue_Ch0() const {
     // Normalizar: -5mV → 0.0, 0mV → 0.5, +5mV → 1.0
     float normalized = (voltage - EMG_OUTPUT_MIN_MV) / (EMG_OUTPUT_MAX_MV - EMG_OUTPUT_MIN_MV);
     
-    // Invertir Y para Nextion (Y=0 arriba, Y=380 abajo)
-    uint16_t y = NEXTION_WAVEFORM_HEIGHT - (uint16_t)(normalized * NEXTION_WAVEFORM_HEIGHT);
+    // Mapear a 0-380 (Nextion waveform: 0=bottom, 380=top)
+    // voltage alto → normalized alto → Y alto → val alto → arriba en display
+    uint16_t y = (uint16_t)(normalized * NEXTION_WAVEFORM_HEIGHT);
     
     // Clamp por seguridad
     return constrain(y, 0, NEXTION_WAVEFORM_HEIGHT);
 }
 
 /**
- * @brief Canal 1: Envelope procesada unipolar para Nextion
+ * @brief Canal 1: Envelope procesada usando MISMA ESCALA que raw
  * 
- * Mapeo FIJO: 0mV a 2mV → Y invertido (0-380)
- * - 0.0 mV → Y=380 (fondo, baseline)
- * - 1.0 mV → Y=190 (50% altura)
- * - 2.0 mV → Y=0   (tope, máxima contracción)
+ * Mapeo en escala del RAW: ±5mV → Y invertido (0-380)
+ * El envelope es unipolar (0 a ~2 mV) pero se muestra en la escala del raw
+ * para que visualmente sea proporcional (como en Serial Plotter).
  * 
- * Grid fijo: 0.5mV/div = 95px
- * Valores esperados por condición:
- * - REST:     ~0.05 mV (Y≈361, casi baseline)
- * - LOW:      ~0.40 mV (Y≈304)
- * - MODERATE: ~1.20 mV (Y≈152)
- * - HIGH:     ~3.00 mV (saturaría, clamped a Y=0)
+ * - 0.0 mV → Y=190 (centro, línea isoeléctrica del raw)
+ * - 1.0 mV → Y=152 (1mV arriba del centro)
+ * - 2.0 mV → Y=114 (2mV arriba del centro)
+ * - 5.0 mV → Y=0   (máximo de la escala)
+ * 
+ * Ventaja: El estudiante ve el envelope proporcional al raw,
+ * igual que en el Serial Plotter. REST muestra envelope cerca del centro.
  */
 uint16_t EMGModel::getWaveformValue_Ch1() const {
     // Usar envelope procesada (RMS con EMA)
     float voltage = lastProcessedValue;
     
-    // Limitar a rango 0-2mV (envelope unipolar)
-    voltage = constrain(voltage, 0.0f, EMG_RMS_MAX_MV);
+    // El envelope es positivo (0 a ~2-4 mV dependiendo de condición)
+    // Usar MISMA ESCALA que el raw (-5 a +5 mV) para mapeo proporcional
+    // Esto hace que envelope ocupe el mismo espacio visual que ocuparía
+    // ese voltaje en la escala del raw:
+    // - 0 mV envelope → mismo Y que 0 mV raw (centro)
+    // - 2 mV envelope → mismo Y que 2 mV raw
+    voltage = constrain(voltage, 0.0f, EMG_OUTPUT_MAX_MV);  // Clamp a 0-5mV
     
-    // Normalizar: 0mV → 0.0, 2mV → 1.0
-    float normalized = voltage / EMG_RMS_MAX_MV;
+    // Normalizar usando escala del raw: -5mV → 0.0, 0mV → 0.5, +5mV → 1.0
+    float normalized = (voltage - EMG_OUTPUT_MIN_MV) / (EMG_OUTPUT_MAX_MV - EMG_OUTPUT_MIN_MV);
     
-    // Invertir Y (señal crece desde el fondo hacia arriba)
-    uint16_t y = NEXTION_WAVEFORM_HEIGHT - (uint16_t)(normalized * NEXTION_WAVEFORM_HEIGHT);
+    // Mapear a 0-380 (misma escala que raw)
+    uint16_t y = (uint16_t)(normalized * NEXTION_WAVEFORM_HEIGHT);
     
     // Clamp por seguridad
     return constrain(y, 0, NEXTION_WAVEFORM_HEIGHT);

@@ -450,8 +450,39 @@ La fatiga se modeló según Cifrek et al. [5] con tres componentes:
 
 ### 4.6 Escalado de Salida (Raw y Envolvente)
 
-- **Señal cruda**: tras sumar los MUAPs individuales, la señal se clampa a **±5 mV** (`EMG_OUTPUT_MIN/MAX_MV`) porque ese rango cubre el 95 % de amplitudes sEMG reportadas por De Luca, Merletti y Konrad. El clamp se aplica al final de `generateSample()` @src/models/emg_model.cpp#660-667 antes de llamar a `getDACValue()`, que convierte directamente a 0‑255 (0‑3.3 V) para el DAC y el waveform RAW.
-- **Envolvente RMS**: la señal cruda se rectifica y se integra con una ventana RMS de 30 ms (`updateEnvelopeBuffer()`, equivalente al pasabajos 3‑5 Hz recomendado por SENIAM). Ese valor se limita a **0‑2 mV** (`EMG_RMS_MAX_MV`) para que el indicador de nivel de contracción coincida con los ~2 mV RMS observados en EMG superficial durante MVC. Esta envolvente es la que se muestra como canal “env” en Nextion y Serial Plotter.
+- **Señal cruda**: tras sumar los MUAPs individuales, la señal se clampa a **±5 mV** (`EMG_OUTPUT_MIN/MAX_MV`) porque ese rango cubre el 95 % de amplitudes sEMG reportadas por De Luca, Merletti y Konrad. El clamp se aplica al final de `generateSample()` @src/models/emg_model.cpp#660-667 antes de llamar a `getDACValue()`, que convierte directamente a 0‑255 (0‑3.3 V) para el DAC y el waveform RAW.
+- **Envolvente RMS**: la señal cruda se rectifica y se integra con una ventana RMS de 30 ms (`updateEnvelopeBuffer()`, equivalente al pasabajos 3‑5 Hz recomendado por SENIAM). Ese valor se limita a **0‑2 mV** (`EMG_RMS_MAX_MV`) para que el indicador de nivel de contracción coincida con los ~2 mV RMS observados en EMG superficial durante MVC. Esta envolvente es la que se muestra como canal “env” en Nextion y Serial Plotter.
+
+### 4.7 Sincronización Envelope-Waveform (Actualización v1.1)
+
+Para garantizar coherencia entre el waveform visualizado y las métricas numéricas, el cálculo del envelope se realiza **en cada tick()**, no solo cuando se solicita la métrica:
+
+```cpp
+// En tick(): cálculo sincronizado del envelope
+void EMGModel::tick(float deltaTime) {
+    cachedRawSample = generateSample(deltaTime);
+    sampleIsCached = true;
+    
+    // Envelope sincronizado con cada muestra
+    float rectified = fabsf(cachedRawSample);
+    updateEnvelopeBuffer(rectified);
+    float envelopeRMS = sqrtf(envelopeSum / ENVELOPE_BUFFER_SIZE);
+    lastProcessedValue = lastProcessedValue * 0.98f + envelopeRMS * 0.02f;  // EMA α=0.02
+}
+```
+
+**Mapeo proporcional Raw-Envelope para Nextion:**
+
+| Señal | Rango mV | Escala Y (0-380) | Posición |
+|-------|----------|------------------|----------|
+| Raw | -5 a +5 | 0 a 380 | Centro = 190 |
+| Envelope | 0 a 2 | 190 a 266 | Misma escala que raw |
+
+El envelope usa la **misma escala Y que el raw** para visualización proporcional:
+- 0 mV envelope → Y = 190 (centro, igual que 0 mV del raw)
+- 2 mV envelope → Y = 266 (mismo lugar que ocuparía 2 mV en escala raw)
+
+Esto permite comparación visual directa entre amplitud raw y nivel de envelope.
 
 ---
 
@@ -646,9 +677,9 @@ $$PI_{beat} = PI_{mean} + CV_{PI} \times PI_{mean} \times \mathcal{N}(0,1)$$
 | NORMAL | 60-100 | 2-5 | 5% | 10% | Muesca visible |
 | ARRHYTHMIA | 60-180 | 1-5 | 20% | 15% | RR muy irregular |
 | WEAK_PERFUSION | 90-140 | 0.1-0.5 | 8% | 20% | Sin muesca |
-| VASODILATION | 50-80 | 5-10 | 5% | 12% | Muesca prominente |
-| STRONG_PERFUSION | 60-90 | 10-20 | 5% | 10% | AC muy alto |
 | VASOCONSTRICTION | 60-100 | 0.2-0.8 | 7% | 15% | Forma afilada |
+| STRONG_PERFUSION | 60-90 | 10-20 | 5% | 10% | AC muy alto |
+| VASODILATION | 50-80 | 5-10 | 5% | 12% | Muesca prominente |
 
 ---
 
@@ -746,38 +777,44 @@ $$V_{out} = \frac{159}{255} \times 3.3V = 2.06V$$
 
 ### 7.2 Métricas Clínicas Obtenidas
 
-**Tabla 7.2: Métricas ECG por condición**
+**Tabla 7.2: Métricas ECG por condición (Límites de parámetros ajustables)**
 
-| Condición | HR (BPM) | PR (ms) | QRS (ms) | QTc (ms) | ST (mV) |
-|-----------|----------|---------|----------|----------|---------|
-| NORMAL | 60-100 | 120-200 | 60-100 | 350-440 | 0 |
-| TACHYCARDIA | 100-180 | 100-160 | 60-100 | 320-400 | 0 |
-| BRADYCARDIA | 40-60 | 140-220 | 80-120 | 380-480 | 0 |
-| ATRIAL_FIB | 60-160 | - | 60-100 | Variable | 0 |
-| ST_ELEVATION | 60-100 | 120-200 | 60-100 | 350-440 | +0.2 |
-| ST_DEPRESSION | 60-100 | 120-200 | 60-100 | 350-440 | -0.15 |
+| # | Condición | HR (BPM) | RR (ms) | PR (ms) | QRS (ms) | ST/T |
+|---|-----------|----------|---------|---------|----------|------|
+| 0 | NORMAL | 60-100 | 600-1000 | 120-200 | 80-120 | ST=0, T 0.2-0.6 mV |
+| 1 | TACHYCARDIA | 100-180 | <600 | 120-200 | 80-120 | Normales |
+| 2 | BRADYCARDIA | 30-59 | >1000 | 170-200 | 80-120 | Normales |
+| 3 | ATRIAL_FIB | 60-180 | Irregular | — | 80-120 | Secundarios |
+| 4 | VENTRICULAR_FIB | 150-500 | — | — | — | Caótico 4-10 Hz |
+| 5 | AV_BLOCK_1 | 60-100 | 600-1000 | >200 | 80-120 | Normales |
+| 6 | ST_ELEVATION | 50-110 | Variable | 120-200 | 80-120 | ST↑ ≥0.2 mV |
+| 7 | ST_DEPRESSION | 50-150 | Variable | 120-200 | 80-120 | ST↓ 0.05-0.2 mV |
 
-**Tabla 7.3: Métricas EMG por condición**
+**Tabla 7.3: Métricas EMG por condición (Límites de parámetros ajustables)**
 
-| Condición | Excitación | MUs activas | FR medio (Hz) | RMS (mV) |
-|-----------|------------|-------------|---------------|----------|
-| REST | 0-5% | 0-5 | 8-10 | 0.02-0.05 |
-| LOW | 5-20% | 10-30 | 10-15 | 0.1-0.2 |
-| MODERATE | 20-50% | 30-60 | 15-25 | 0.3-0.8 |
-| HIGH | 50-100% | 60-100 | 25-35 | 1.0-5.0 |
-| TREMOR | 20-40% | 20-40 | 12-20 | 0.1-0.5 |
-| FATIGUE | 50% → decay | 50-80 | 25 → 15 | 1.5 → 0.4 |
+| Condición | Excitación (MVC) | MUs Activas | FR Media (Hz) | RMS Pico (mV) | Secuencia |
+|-----------|------------------|-------------|---------------|---------------|-----------|
+| REST | 0-10% | 0 | 0 | 0.001 | Estático (solo ruido) |
+| LOW | 5-20% | 68-70 | 8-10 | 0.52 | REST 1s → LOW 3s |
+| MODERATE | 20-50% | 100 | 15-17 | 1.7 | REST 1s → MOD 3s |
+| HIGH | 50-100% | 100 | 31-37 | 2.8 | REST 1s → HIGH 3s |
+| TREMOR | Variable | Variable | 4-6 Hz mod | 0.1-0.5 | Modulación continua |
+| FATIGUE | 50% sostenido | 100 | 25 → 15 | 1.5 → 0.4 | Decay progresivo |
 
-**Tabla 7.4: Métricas PPG por condición**
+*Fuente: Fuglevand 1993, Cifrek 2009, Gulati & Pandey 2024*
 
-| Condición | HR (BPM) | PI (%) | AC (mV) | Sístole (ms) | Diástole (ms) |
-|-----------|----------|--------|---------|--------------|---------------|
-| NORMAL | 60-100 | 2-5 | 30-75 | 280-320 | 480-720 |
-| ARRHYTHMIA | 60-180 | 1-5 | 15-75 | Variable | Variable |
-| WEAK_PERF | 90-140 | 0.1-0.5 | 1.5-7.5 | 260-300 | 130-370 |
-| VASODILATION | 50-80 | 5-10 | 75-150 | 300-350 | 400-900 |
-| STRONG_PERF | 60-90 | 10-20 | 150-300 | 290-330 | 380-710 |
-| VASOCONSTR | 60-100 | 0.2-0.8 | 3-12 | 280-320 | 280-720 |
+**Tabla 7.4: Métricas PPG por condición (Límites de parámetros ajustables)**
+
+| # | Condición | HR (BPM) | PI (%) | AC (mV) | Muesca Dicrótica |
+|---|-----------|----------|--------|---------|------------------|
+| 0 | NORMAL | 60-100 | 2.9-6.1 | 44-92 | Pos 20-50%, Amp ≥20% |
+| 1 | ARRHYTHMIA | 50-150 | 1.0-5.0 | 15-75 | Variable |
+| 2 | WEAK_PERFUSION | 90-140 | 0.3-2.0 | 5-30 | Ausente o tenue |
+| 3 | VASOCONSTRICTION | 70-110 | 0.2-0.8 | 3-12 | Ausente |
+| 4 | STRONG_PERFUSION | 50-90 | 10.0-20.0 | 150-300 | Muy marcada |
+| 5 | VASODILATION | 60-90 | 5.0-10.0 | 75-150 | Prominente |
+
+*Fuente: Allen 2007, Elgendi 2012, Shelley 2007*
 
 ### 7.3 Rendimiento del Sistema
 
@@ -808,9 +845,57 @@ El sistema permite al usuario modificar parámetros de las señales en tiempo re
 3. **Aplicación explícita**: Los cambios solo se aplican al presionar el botón "Aplicar"
 4. **Independencia del modelo**: La señal sigue su morfología base hasta que el usuario modifica parámetros
 
-### 8.2 Parámetros ECG
+### 8.2 Límites de Parámetros por Condición
 
-#### 8.2.1 Frecuencia Cardíaca (HR)
+Los sliders de parámetros se **limitan automáticamente** según la condición/patología seleccionada. Esto garantiza coherencia fisiológica: el usuario no puede establecer valores fuera del rango clínico de la condición actual.
+
+**Tabla 8.1: Límites de sliders ECG por condición**
+
+| # | Condición | HR (BPM) | Amplitud (%) | Ruido (%) | HRV (%) |
+|---|-----------|----------|--------------|-----------|----------|
+| 0 | NORMAL | 60-100 | 50-200 | 0-10 | 1-10 |
+| 1 | TACHYCARDIA | 100-180 | 50-200 | 0-10 | 1-8 |
+| 2 | BRADYCARDIA | 30-59 | 50-200 | 0-10 | 1-8 |
+| 3 | ATRIAL_FIB | 60-180 | 50-200 | 0-10 | 15-40 |
+| 4 | VENTRICULAR_FIB | 150-500 | 50-200 | 0-10 | 0-5 |
+| 5 | AV_BLOCK_1 | 60-100 | 50-200 | 0-10 | 1-10 |
+| 6 | ST_ELEVATION | 50-110 | 50-200 | 0-10 | 1-10 |
+| 7 | ST_DEPRESSION | 50-150 | 50-200 | 0-10 | 1-10 |
+
+*Nota: Amplitud es factor multiplicador (100% = sin cambio). Ruido y HRV son porcentajes.*
+*Fuente: Implementación en `param_limits.h` y `main.cpp`*
+
+**Tabla 8.2: Límites de sliders EMG por condición**
+
+| # | Condición | Excitación (%) | Amplitud (%) | Ruido (%) |
+|---|-----------|----------------|--------------|------------|
+| 0 | REST | 0-10 | 10-50 | 0-10 |
+| 1 | LOW_CONTRACTION | 5-20 | 50-100 | 0-10 |
+| 2 | MODERATE_CONTRACTION | 20-50 | 80-150 | 0-10 |
+| 3 | HIGH_CONTRACTION | 50-100 | 120-250 | 0-10 |
+| 4 | TREMOR | N/A (fijo) | 50-150 | 0-10 |
+| 5 | FATIGUE | N/A (fijo) | 50-150 | 0-10 |
+
+*Nota: Excitación = % MVC. Amplitud es factor × 100 (100% = sin cambio).*
+*Fuente: Implementación en `param_limits.h` y `main.cpp`*
+
+**Tabla 8.3: Límites de sliders PPG por condición**
+
+| # | Condición | HR (BPM) | PI (slider × 10) | Amplitud (%) | Ruido (%) |
+|---|-----------|----------|------------------|--------------|------------|
+| 0 | NORMAL | 60-100 | 29-61 (2.9-6.1%) | 50-200 | 0-10 |
+| 1 | ARRHYTHMIA | 50-150 | 10-50 (1.0-5.0%) | 50-200 | 0-10 |
+| 2 | WEAK_PERFUSION | 90-140 | 3-20 (0.3-2.0%) | 50-200 | 0-10 |
+| 3 | VASOCONSTRICTION | 70-110 | 2-8 (0.2-0.8%) | 50-200 | 0-10 |
+| 4 | STRONG_PERFUSION | 50-90 | 100-200 (10.0-20.0%) | 50-200 | 0-10 |
+| 5 | VASODILATION | 60-90 | 50-100 (5.0-10.0%) | 50-200 | 0-10 |
+
+*Nota: PI slider envía valor × 10 (ej: slider=52 → 5.2%). Amplitud es factor × 100.*
+*Fuente: Implementación en `param_limits.h` y `main.cpp`*
+
+### 8.3 Parámetros ECG
+
+#### 8.3.1 Frecuencia Cardíaca (HR)
 
 **Rango:** Variable según condición (30-500 BPM)  
 **Valor inicial:** 75 BPM (valor medio)  
@@ -838,29 +923,29 @@ if (newParams.heartRate > 0) {
 - Si `heartRate > 0`, sobrescribe el HR base de la condición
 - Afecta el intervalo RR: `RR = 60.0 / HR` (segundos)
 
-#### 8.2.2 Amplitud/Zoom Visual
+#### 8.2.2 Factor de Amplificación
 
 **Rango:** 50-200%  
-**Valor inicial:** 100% (sin zoom)  
+**Valor inicial:** 100%  
 **Unidad en slider:** Porcentaje (entero)
 
 **Aplicación en código:**
 ```cpp
 // Lectura del slider
-int zoomValue = nextion->readSliderValue("h_amp");
-ecgSliderValues.zoom = zoomValue;
+int ampValue = nextion->readSliderValue("h_amp");
+ecgSliderValues.amp = ampValue;
 
-// Aplicación SOLO a visualización Nextion (NO afecta modelo ni DAC)
-nextion->updateECGScale(ecgSliderValues.zoom);
+// Aplicación al modelo (factor de ganancia de señal)
+params.waveformGain = ecgSliderValues.amp / 100.0f;  // 150 → 1.5
 
-// Actualización de etiquetas de escala
-float mvPerDiv = 0.2f * (100.0f / zoom);  // Escala base 0.2 mV/div
+// Uso en modelo (ecg_model.cpp)
+float amplifiedValue = rawValue * waveformGain;  // Amplificación real
 ```
 
 **Comportamiento:**
-- **NO afecta el modelo ECG** ni la salida DAC
-- Solo modifica la escala visual en el waveform Nextion
-- Zoom 50% = 0.4 mV/div, Zoom 100% = 0.2 mV/div, Zoom 200% = 0.1 mV/div
+- **SÍ afecta la señal generada** (factor de amplificación real)
+- Amplificación 50% = señal × 0.5, 100% = señal × 1.0, 200% = señal × 2.0
+- Se aplica antes del mapeo a DAC y waveform Nextion
 
 #### 8.2.3 Ruido
 
@@ -917,9 +1002,9 @@ float generateNextRR() {
 - HRV > 0% → intervalos RR con distribución gaussiana
 - Valores típicos: 3-5% para ritmo sinusal normal
 
-### 8.3 Parámetros EMG
+### 8.4 Parámetros EMG
 
-#### 8.3.1 Excitación
+#### 8.4.1 Excitación
 
 **Rango:** 0-100%  
 **Valor inicial:** 0% (reposo)  
@@ -943,7 +1028,7 @@ for (int i = 0; i < activeUnits; i++) {
 - 0% = reposo (solo ruido de fondo)
 - 100% = contracción máxima (todas las unidades activas)
 
-#### 8.3.2 Amplitud
+#### 8.4.2 Amplitud
 
 **Rango:** 50-200%  
 **Valor inicial:** 100% (sin modificación)  
@@ -964,21 +1049,21 @@ float emgMV = rawSignal * amplitude;  // Escalar señal
 - 50% = mitad de amplitud, 200% = doble amplitud
 - Afecta tanto RAW como ENV (envolvente)
 
-#### 8.3.3 Ruido
+#### 8.4.3 Ruido
 
 **Rango:** 0-100 (representa 0.00-1.00)  
 **Valor inicial:** 0 (sin ruido)  
 **Aplicación:** Idéntica a ECG (ruido gaussiano)
 
-### 8.4 Parámetros PPG
+### 8.5 Parámetros PPG
 
-#### 8.4.1 Frecuencia Cardíaca (HR)
+#### 8.5.1 Frecuencia Cardíaca (HR)
 
 **Rango:** 30-200 BPM  
 **Valor inicial:** 75 BPM  
 **Aplicación:** Idéntica a ECG
 
-#### 8.4.2 Índice de Perfusión (PI)
+#### 8.5.2 Índice de Perfusión (PI)
 
 **Rango:** 1-200 (representa 0.1-20.0%)  
 **Valor inicial:** 50 (5.0%)  
@@ -1001,19 +1086,29 @@ float ppgMV = dcBaseline + acAmplitude * pulseMorphology;
 - PI normal (2-5%) = perfusión adecuada
 - PI alto (5-20%) = perfusión fuerte (vasodilatación)
 
-#### 8.4.3 Ruido
+#### 8.5.3 Ruido
 
 **Rango:** 0-100 (representa 0.00-1.00)  
 **Valor inicial:** 0 (sin ruido)  
 **Aplicación:** Idéntica a ECG (ruido gaussiano)
 
-#### 8.4.4 Amplitud/Zoom Visual
+#### 8.5.4 Factor de Amplificación
 
 **Rango:** 50-200%  
 **Valor inicial:** 100%  
-**Aplicación:** Solo visual, NO afecta modelo ni DAC
+**Aplicación:** Factor de amplificación real aplicado a la señal AC
 
-### 8.5 Flujo de Aplicación de Parámetros
+```cpp
+// Aplicación en modelo (ppg_model.cpp)
+params.amplification = ppgSliderValues.amp / 100.0f;  // 150 → 1.5
+float amplifiedAC = lastACValue * params.amplification;
+```
+
+**Comportamiento:**
+- **SÍ afecta la señal generada** (factor de amplificación real)
+- Amplificación 50% = AC × 0.5, 100% = AC × 1.0, 200% = AC × 2.0
+
+### 8.6 Flujo de Aplicación de Parámetros
 
 ```
 1. Usuario abre popup de parámetros
@@ -1035,7 +1130,7 @@ float ppgMV = dcBaseline + acAmplitude * pulseMorphology;
 7. Modelo regenera señal con nuevos parámetros
 ```
 
-### 8.6 Valores Recomendados por Condición
+### 8.7 Valores Recomendados por Condición
 
 **ECG Normal:**
 - HR: 60-100 BPM

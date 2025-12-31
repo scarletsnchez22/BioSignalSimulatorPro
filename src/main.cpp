@@ -20,6 +20,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "data/signal_types.h"
+#include "data/param_limits.h"
 #include "core/signal_engine.h"
 #include "core/state_machine.h"
 #include "core/param_controller.h"
@@ -67,7 +68,7 @@ struct PPGSliderValues {
     int hr = 75;        // Frecuencia cardíaca (BPM) - inicia en valor medio de rango
     int pi = 50;        // Índice perfusión × 10 (5.0%) - inicia en valor medio
     int noise = 0;      // Ruido × 100 (0.00) - inicia en 0
-    int amp = 100;      // Factor amplitud/zoom (50-200%), solo visual
+    int amp = 100;      // Factor amplificación (50-200%), se aplica al modelo
     bool modified = false;
 } ppgSliderValues;
 
@@ -258,11 +259,9 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     default: break;
                 }
                 
-                // Iniciar la señal automáticamente (usar GO_TO_WAVEFORM que sí cambia estado)
-                Serial.println("[DEBUG] IR - Llamando GO_TO_WAVEFORM");
-                stateMachine.processEvent(SystemEvent::GO_TO_WAVEFORM);
-                Serial.printf("[DEBUG] IR - Estado después de GO_TO_WAVEFORM: %d\n", (int)stateMachine.getState());
-                Serial.println("[UI] Iniciando señal automáticamente desde IR");
+                // NO iniciar automáticamente - esperar a que usuario presione PLAY
+                // El estado queda en SELECT_CONDITION hasta que presione PLAY
+                Serial.println("[UI] Navegando a waveform - esperando PLAY para iniciar");
             }
             break;
             
@@ -300,6 +299,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             
         // Controles de simulación (en páginas waveform)
         case UIEvent::BUTTON_START:
+            Serial.printf("[UI] BUTTON_START recibido - Estado actual: %d\n", (int)stateMachine.getState());
             // Si estamos en SELECT_CONDITION, leer la condición del Nextion antes de continuar
             if (stateMachine.getState() == SystemState::SELECT_CONDITION) {
                 int selectedCondition = -1;
@@ -328,10 +328,19 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                         Serial.printf("[DEBUG] PLAY - sel_emg leído: %d\n", selectedCondition);
                         Serial.printf("[UI] PLAY - Leyendo sel_emg del Nextion: %d\n", selectedCondition);
                         break;
-                    case SignalType::PPG:
-                        selectedCondition = nextion->readSliderValue("sel_ppg");
-                        Serial.printf("[UI] PLAY desde SELECT_CONDITION - Leyendo sel_ppg: %d\n", selectedCondition);
+                    case SignalType::PPG: {
+                        int hmiButtonIndex = nextion->readSliderValue("sel_ppg");
+                        Serial.printf("[UI] PLAY - Leyendo sel_ppg (botón HMI): %d\n", hmiButtonIndex);
+                        // Mapeo directo: botones HMI coinciden con enum PPGCondition
+                        // HMI y Enum: 0=Normal, 1=Arritmia, 2=PerfDébil, 3=Vasoconstr, 4=PerfFuerte, 5=Vasodil
+                        if (hmiButtonIndex >= 0 && hmiButtonIndex <= 5) {
+                            selectedCondition = hmiButtonIndex;  // Mapeo directo 1:1
+                        } else {
+                            selectedCondition = -1;
+                        }
+                        Serial.printf("[UI] Convertido a PPGCondition: %d\n", selectedCondition);
                         break;
+                    }
                     default:
                         break;
                 }
@@ -489,6 +498,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     params.heartRate = (float)ppgSliderValues.hr;
                     params.perfusionIndex = ppgSliderValues.pi / 10.0f;  // 52 → 5.2
                     params.noiseLevel = ppgSliderValues.noise / 100.0f;  // 5 → 0.05
+                    params.amplification = ppgSliderValues.amp / 100.0f; // 150 → 1.5
                     params.dicroticNotch = 0.4f;  // Mantener valor por defecto
                     ppg.setParameters(params);
                     yield();  // Alimentar watchdog para evitar reset
@@ -608,14 +618,21 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             }
             break;
         
-        // Sliders ECG - Solo guardan en variables temporales, NO aplican al modelo
+        // Sliders ECG - Aplican límites según condición actual
         case UIEvent::SLIDER_ECG_HR:
             {
                 int hrValue = nextion->readSliderValue("h_hr");
                 if (hrValue > 0) {
+                    // Aplicar límites según condición actual
+                    ECGCondition cond = signalEngine->getECGModel().getCondition();
+                    ECGLimits limits = getECGLimits(cond);
+                    int minHR = (int)limits.heartRate.min;
+                    int maxHR = (int)limits.heartRate.max;
+                    hrValue = constrain(hrValue, minHR, maxHR);
                     ecgSliderValues.hr = hrValue;
                     ecgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider HR: %d BPM (pendiente aplicar)\n", hrValue);
+                    Serial.printf("[UI] Slider HR: %d BPM (límites %d-%d, pendiente aplicar)\n", 
+                                 hrValue, minHR, maxHR);
                 }
             }
             break;
@@ -637,9 +654,11 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             {
                 int noiseValue = nextion->readSliderValue("h_noise");
                 if (noiseValue >= 0) {
+                    // Ruido: límite global 0-10%
+                    noiseValue = constrain(noiseValue, 0, 10);
                     ecgSliderValues.noise = noiseValue;
                     ecgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider Ruido: %d (pendiente aplicar)\n", noiseValue);
+                    Serial.printf("[UI] Slider Ruido ECG: %d%% (pendiente aplicar)\n", noiseValue);
                 }
             }
             break;
@@ -648,21 +667,35 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             {
                 int hrvValue = nextion->readSliderValue("h_hrv");
                 if (hrvValue >= 0) {
+                    // Aplicar límites HRV según condición actual
+                    ECGCondition cond = signalEngine->getECGModel().getCondition();
+                    HRVRange hrvLimits = getHRVLimits(cond);
+                    int minHRV = (int)hrvLimits.minVar;
+                    int maxHRV = (int)hrvLimits.maxVar;
+                    hrvValue = constrain(hrvValue, minHRV, maxHRV);
                     ecgSliderValues.hrv = hrvValue;
                     ecgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider HRV: %d%% (pendiente aplicar)\n", hrvValue);
+                    Serial.printf("[UI] Slider HRV: %d%% (límites %d-%d%%, pendiente aplicar)\n", 
+                                 hrvValue, minHRV, maxHRV);
                 }
             }
             break;
         
-        // Sliders EMG - Solo guardan en variables temporales, NO aplican al modelo
+        // Sliders EMG - Aplican límites según condición actual
         case UIEvent::SLIDER_EMG_EXC:
             {
                 int excValue = nextion->readSliderValue("h_exc");
                 if (excValue >= 0) {
+                    // Aplicar límites según condición actual
+                    EMGCondition cond = signalEngine->getEMGModel().getCondition();
+                    EMGLimits limits = getEMGLimits(cond);
+                    int minExc = (int)(limits.excitationLevel.min * 100);
+                    int maxExc = (int)(limits.excitationLevel.max * 100);
+                    excValue = constrain(excValue, minExc, maxExc);
                     emgSliderValues.exc = excValue;
                     emgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider Excitación: %d%% (pendiente aplicar)\n", excValue);
+                    Serial.printf("[UI] Slider Excitación: %d%% (límites %d-%d%%, pendiente aplicar)\n", 
+                                 excValue, minExc, maxExc);
                 }
             }
             break;
@@ -671,9 +704,16 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             {
                 int ampValue = nextion->readSliderValue("h_amp");
                 if (ampValue > 0) {
+                    // Aplicar límites según condición actual
+                    EMGCondition cond = signalEngine->getEMGModel().getCondition();
+                    EMGLimits limits = getEMGLimits(cond);
+                    int minAmp = (int)(limits.amplitude.min * 100);
+                    int maxAmp = (int)(limits.amplitude.max * 100);
+                    ampValue = constrain(ampValue, minAmp, maxAmp);
                     emgSliderValues.amp = ampValue;
                     emgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider Amplitud: %d (pendiente aplicar)\n", ampValue);
+                    Serial.printf("[UI] Slider Amplitud EMG: %d (límites %d-%d, pendiente aplicar)\n", 
+                                 ampValue, minAmp, maxAmp);
                 }
             }
             break;
@@ -682,21 +722,30 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             {
                 int noiseValue = nextion->readSliderValue("h_noise");
                 if (noiseValue >= 0) {
+                    // Ruido: límite global 0-10%
+                    noiseValue = constrain(noiseValue, 0, 10);
                     emgSliderValues.noise = noiseValue;
                     emgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider Ruido: %d (pendiente aplicar)\n", noiseValue);
+                    Serial.printf("[UI] Slider Ruido EMG: %d%% (pendiente aplicar)\n", noiseValue);
                 }
             }
             break;
         
-        // Sliders PPG - Solo guardan en variables temporales, NO aplican al modelo
+        // Sliders PPG - Aplican límites según condición actual
         case UIEvent::SLIDER_PPG_HR:
             {
                 int hrValue = nextion->readSliderValue("h_hr");
                 if (hrValue > 0) {
+                    // Aplicar límites según condición actual
+                    PPGCondition cond = signalEngine->getPPGModel().getCondition();
+                    PPGLimits limits = getPPGLimits(cond);
+                    int minHR = (int)limits.heartRate.min;
+                    int maxHR = (int)limits.heartRate.max;
+                    hrValue = constrain(hrValue, minHR, maxHR);
                     ppgSliderValues.hr = hrValue;
                     ppgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider HR PPG: %d BPM (pendiente aplicar)\n", hrValue);
+                    Serial.printf("[UI] Slider HR PPG: %d BPM (límites %d-%d, pendiente aplicar)\n", 
+                                 hrValue, minHR, maxHR);
                 }
             }
             break;
@@ -705,9 +754,16 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             {
                 int piValue = nextion->readSliderValue("h_pi");
                 if (piValue > 0) {
+                    // Aplicar límites según condición actual (PI × 10)
+                    PPGCondition cond = signalEngine->getPPGModel().getCondition();
+                    PPGLimits limits = getPPGLimits(cond);
+                    int minPI = (int)(limits.perfusionIndex.min * 10);
+                    int maxPI = (int)(limits.perfusionIndex.max * 10);
+                    piValue = constrain(piValue, minPI, maxPI);
                     ppgSliderValues.pi = piValue;
                     ppgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider PI: %d (%.1f%%, pendiente aplicar)\n", piValue, piValue/10.0f);
+                    Serial.printf("[UI] Slider PI: %d (%.1f%%, límites %.1f-%.1f%%, pendiente aplicar)\n", 
+                                 piValue, piValue/10.0f, limits.perfusionIndex.min, limits.perfusionIndex.max);
                 }
             }
             break;
@@ -716,9 +772,11 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             {
                 int noiseValue = nextion->readSliderValue("h_noise");
                 if (noiseValue >= 0) {
+                    // Ruido: límite global 0-10%
+                    noiseValue = constrain(noiseValue, 0, 10);
                     ppgSliderValues.noise = noiseValue;
                     ppgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider Ruido PPG: %d (pendiente aplicar)\n", noiseValue);
+                    Serial.printf("[UI] Slider Ruido PPG: %d%% (pendiente aplicar)\n", noiseValue);
                 }
             }
             break;
@@ -727,9 +785,10 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             {
                 int ampValue = nextion->readSliderValue("h_amp");
                 if (ampValue >= 50 && ampValue <= 200) {
+                    // Factor de amplificación: 50-200% (se aplica al modelo)
                     ppgSliderValues.amp = ampValue;
                     ppgSliderValues.modified = true;
-                    Serial.printf("[UI] Slider Amplitud PPG: %d%% (pendiente aplicar)\n", ampValue);
+                    Serial.printf("[UI] Slider Amplificación PPG: %d%% (pendiente aplicar)\n", ampValue);
                 }
             }
             break;
@@ -896,13 +955,10 @@ void updateDisplay() {
                     nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 1, ch1_mapped);
                     
                 } else if (type == SignalType::PPG) {
-                    // PPG: Un solo canal (AC: 0 a 150 mV)
+                    // PPG: Un solo canal (AC: 0 a 150 mV) - señal UNIPOLAR
+                    // La amplificación ya está aplicada en el modelo (getWaveformValue)
                     uint8_t ppgValue = signalEngine->getPPGModel().getWaveformValue();
-                    float zoomFactor = ppgSliderValues.amp / 100.0f;
-                    int centered = ppgValue - 127;
-                    int zoomed = (int)(centered * zoomFactor) + 127;
-                    zoomed = constrain(zoomed, 0, 255);
-                    waveValue = map(zoomed, 0, 255, 20, 235);
+                    waveValue = map(ppgValue, 0, 255, 20, 235);
                     
                     nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, (uint8_t)waveValue);
                     
@@ -997,10 +1053,10 @@ void updateDisplay() {
                     // Señal AC: 3 enteros + 1 decimal (ws0=4, ws1=1) → enviar × 10
                     int ac_x10 = (int)(ppg.getPerfusionIndex() * 15.0f * 10);  // AC = PI × 15 mV, × 10
                     
-                    // HR envolvente: 3 enteros (ws0=3, ws1=0)
+                    // HR: 3 enteros (ID14, variable nhr)
                     int hr = (int)ppg.getCurrentHeartRate();
                     
-                    // Intervalo RR: 4 enteros (ws0=4, ws1=0)
+                    // Intervalo RR: 4 enteros (ID15, variable nrr)
                     int rr = (int)ppg.getMeasuredRRInterval();
                     
                     // Índice de perfusión %: 2 enteros + 1 decimal (ws0=3, ws1=1) → enviar × 10
@@ -1010,7 +1066,10 @@ void updateDisplay() {
                     int sys = (int)ppg.getMeasuredSystoleTime();
                     int dia = (int)ppg.getMeasuredDiastoleTime();
                     
-                    nextion->updatePPGValuesPage(ac_x10, hr, rr, pi_x10, sys, dia, ppg.getConditionName());
+                    // DC Baseline: valor en mV (típico 1000 mV)
+                    int dc = (int)ppg.getDCBaseline();
+                    
+                    nextion->updatePPGValuesPage(ac_x10, hr, rr, pi_x10, sys, dia, dc, ppg.getConditionName());
                     
                     // Debug: Imprimir cada 4 segundos
                     static unsigned long lastDebugPPG = 0;

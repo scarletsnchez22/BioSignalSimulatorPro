@@ -458,6 +458,56 @@ Si encuentras errores:
 
 ---
 
+## 📺 Configuración Nextion HMI - Touch Release Events
+
+### Formato del comando `printh`
+
+```
+printh 65 [page] [component_id] [event] FF FF FF
+       │    │         │           │
+       │    │         │           └─ 01=release, 00=press
+       │    │         └─ ID del componente
+       │    └─ Número de página
+       └─ Código evento touch (0x65)
+```
+
+### Página `ppg_sim` (page 4) - Botones de Condición
+
+| Botón | ID | Nombre | Touch Release Event | sel_ppg.val |
+|-------|-----|--------|---------------------|-------------|
+| Normal | 1 | bt_norm | `printh 65 04 01 01 FF FF FF` | 0 |
+| Arritmia | 2 | bt_arr | `printh 65 04 02 01 FF FF FF` | 1 |
+| Perf Débil | 3 | bt_lowp | `printh 65 04 03 01 FF FF FF` | 2 |
+| Vasoconstr | 4 | bt_vascon | `printh 65 04 04 01 FF FF FF` | 3 |
+| Perf Fuerte | 5 | bt_highp | `printh 65 04 05 01 FF FF FF` | 4 |
+| Vasodil | 6 | bt_vasod | `printh 65 04 06 01 FF FF FF` | 5 |
+
+### Página `ecg_sim` (page 2) - Botones de Condición
+
+| Botón | ID | Nombre | Touch Release Event | sel_ecg.val |
+|-------|-----|--------|---------------------|-------------|
+| Normal | 1 | bt_norm | `printh 65 02 01 01 FF FF FF` | 0 |
+| Taquicardia | 2 | bt_taq | `printh 65 02 02 01 FF FF FF` | 1 |
+| Bradicardia | 3 | bt_bra | `printh 65 02 03 01 FF FF FF` | 2 |
+| Bloqueo AV | 4 | bt_blk | `printh 65 02 04 01 FF FF FF` | 3 |
+| Fib Auricular | 5 | bt_fa | `printh 65 02 05 01 FF FF FF` | 4 |
+| Fib Ventricular | 6 | bt_fv | `printh 65 02 06 01 FF FF FF` | 5 |
+| ST Elevado | 7 | bt_stup | `printh 65 02 07 01 FF FF FF` | 6 |
+| ST Deprimido | 8 | bt_stdn | `printh 65 02 08 01 FF FF FF` | 7 |
+
+### Página `emg_sim` (page 3) - Botones de Condición
+
+| Botón | ID | Nombre | Touch Release Event | sel_emg.val |
+|-------|-----|--------|---------------------|-------------|
+| Reposo | 1 | bt_reposo | `printh 65 03 01 01 FF FF FF` | 0 |
+| Leve | 2 | bt_leve | `printh 65 03 02 01 FF FF FF` | 1 |
+| Moderada | 3 | bt_moderada | `printh 65 03 03 01 FF FF FF` | 2 |
+| Máxima | 4 | bt_maxima | `printh 65 03 04 01 FF FF FF` | 3 |
+| Temblor | 5 | bt_temblor | `printh 65 03 05 01 FF FF FF` | 4 |
+| Fatiga | 6 | bt_fatiga | `printh 65 03 06 01 FF FF FF` | 5 |
+
+---
+
 **Última actualización:** Diciembre 2025  
 **Proyecto:** BioSimulator Pro v3.0.0  
 **Hardware:** ESP32-WROOM-32

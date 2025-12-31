@@ -216,6 +216,7 @@ public:
     const char* getConditionName() const;
     float getNoiseLevel() const { return params.noiseLevel; }
     float getCurrentPI() const { return currentPI; }
+    float getAmplification() const { return params.amplification; }
     
     // Métricas calculadas (del modelo)
     float getACAmplitude() const;      // AC en mV (PI * scale)

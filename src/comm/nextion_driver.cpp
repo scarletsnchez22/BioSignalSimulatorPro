@@ -196,16 +196,18 @@ void NextionDriver::parseEvent() {
         case 4:  // PPG_SIM
             // Estructura de ppg_sim (800x480):
             // ID 1-6: botones de condición (dual-state)
-            //   1=Normal(0), 2=Arritmia(1), 3=Perfusión débil(2), 4=Perfusión fuerte(3),
-            //   5=Vasodilatación(4), 6=Vasoconstricción(5)
+            // Orden HMI actual: 1=Normal, 2=Arritmia, 3=PerfDébil, 4=Vasoconstr, 5=PerfFuerte, 6=Vasodil
+            // Enum PPGCondition: 0=NORMAL, 1=ARRHYTHMIA, 2=WEAK_PERF, 3=VASOCONSTR, 4=STRONG_PERF, 5=VASODIL
             // ID 7: bt_atras (hotspot) → volver a menu
             // ID 8: bt_ir (hotspot) → ir a waveform_ppg
             // ID 9: sel_ppg (number) - variable, no genera evento
             switch (component) {
-                case 1: case 2: case 3: case 4: case 5: case 6:
-                    uiEvent = UIEvent::BUTTON_CONDITION;
-                    param = component - 1;  // ID 1 → condición 0, ID 6 → condición 5
-                    break;
+                case 1: uiEvent = UIEvent::BUTTON_CONDITION; param = 0; break;  // Normal → NORMAL
+                case 2: uiEvent = UIEvent::BUTTON_CONDITION; param = 1; break;  // Arritmia → ARRHYTHMIA
+                case 3: uiEvent = UIEvent::BUTTON_CONDITION; param = 2; break;  // PerfDébil → WEAK_PERFUSION
+                case 4: uiEvent = UIEvent::BUTTON_CONDITION; param = 3; break;  // Vasoconstr → VASOCONSTRICTION
+                case 5: uiEvent = UIEvent::BUTTON_CONDITION; param = 4; break;  // PerfFuerte → STRONG_PERFUSION
+                case 6: uiEvent = UIEvent::BUTTON_CONDITION; param = 5; break;  // Vasodil → VASODILATION
                 case 7: 
                     uiEvent = UIEvent::BUTTON_ATRAS; 
                     break;
@@ -544,8 +546,9 @@ void NextionDriver::updatePPGConditionButtons(int selectedCondition) {
     Serial.printf("[PPG] updateConditionButtons: cond=%d\n", selectedCondition);
     
     // Estructura ppg_sim (800x480):
-    // ID 1-6: bt_norm, bt_arr, bt_lowp, bt_highp, bt_vasod, bt_vascon
+    // ID 1-6: bt_norm, bt_arr, bt_lowp, bt_vascon, bt_highp, bt_vasod
     // ID 7: bt_atras, ID 8: bt_ir, ID 9: sel_ppg
+    // Mapeo directo: enum PPGCondition = posición botón HMI
     
     char cmd[32];
     
@@ -553,22 +556,22 @@ void NextionDriver::updatePPGConditionButtons(int selectedCondition) {
     sendCommand("bt_norm.val=0");
     sendCommand("bt_arr.val=0");
     sendCommand("bt_lowp.val=0");
+    sendCommand("bt_vascon.val=0");
     sendCommand("bt_highp.val=0");
     sendCommand("bt_vasod.val=0");
-    sendCommand("bt_vascon.val=0");
 
-    // Activar el botón seleccionado
+    // Activar el botón seleccionado (mapeo directo 1:1)
     switch (selectedCondition) {
-        case 0: sendCommand("bt_norm.val=1"); break;
-        case 1: sendCommand("bt_arr.val=1"); break;
-        case 2: sendCommand("bt_lowp.val=1"); break;
-        case 3: sendCommand("bt_highp.val=1"); break;
-        case 4: sendCommand("bt_vasod.val=1"); break;
-        case 5: sendCommand("bt_vascon.val=1"); break;
+        case 0: sendCommand("bt_norm.val=1");   break;  // NORMAL
+        case 1: sendCommand("bt_arr.val=1");    break;  // ARRHYTHMIA
+        case 2: sendCommand("bt_lowp.val=1");   break;  // WEAK_PERFUSION
+        case 3: sendCommand("bt_vascon.val=1"); break;  // VASOCONSTRICTION
+        case 4: sendCommand("bt_highp.val=1");  break;  // STRONG_PERFUSION
+        case 5: sendCommand("bt_vasod.val=1");  break;  // VASODILATION
         default: break;
     }
 
-    // Actualizar variable sel_ppg
+    // Actualizar variable sel_ppg (mapeo directo)
     int ppgSel = (selectedCondition >= 0 && selectedCondition <= 5) ? selectedCondition : 255;
     sprintf(cmd, "sel_ppg.val=%d", ppgSel);
     sendCommand(cmd);
@@ -834,29 +837,29 @@ void NextionDriver::updatePPGValuesPage(int hr, int rr_ms, int pi_x10,
                                          uint32_t beats, const char* condicion) {
     // Sobrecarga simple para compatibilidad
     char cmd[48];
-    sprintf(cmd, "nenv.val=%d", hr);
+    sprintf(cmd, "nhr.val=%d", hr);
     sendCommand(cmd);
-    sprintf(cmd, "nhr.val=%d", rr_ms);
+    sprintf(cmd, "nrr.val=%d", rr_ms);
     sendCommand(cmd);
     sprintf(cmd, "npi.val=%d", pi_x10);
     sendCommand(cmd);
     setText("t_patol", condicion);
 }
 
-// Sobrecarga con TODAS las métricas PPG
+// Sobrecarga con TODAS las métricas PPG (incluye DC para DAC)
 void NextionDriver::updatePPGValuesPage(int ac_x10, int hr, int rr_ms, int pi_x10, 
-                                         int sys_ms, int dia_ms, const char* condicion) {
+                                         int sys_ms, int dia_ms, int dc_mV, const char* condicion) {
     char cmd[48];
     
     // Señal AC: 3 enteros + 1 decimal (ws0=4, ws1=1)
     sprintf(cmd, "nac.val=%d", ac_x10);  // ws1=1: Nextion divide por 10
     sendCommand(cmd);
     
-    // HR envolvente: 3 enteros (ws0=3, ws1=0)
-    sprintf(cmd, "nenv.val=%d", hr);
+    // HR: 3 enteros (ID14, variable nhr)
+    sprintf(cmd, "nhr.val=%d", hr);
     sendCommand(cmd);
     
-    // Intervalo RR: 4 enteros (ws0=4, ws1=0)
+    // Intervalo RR: 4 enteros (ID15, variable nrr)
     sprintf(cmd, "nrr.val=%d", rr_ms);
     sendCommand(cmd);
     
@@ -870,6 +873,10 @@ void NextionDriver::updatePPGValuesPage(int ac_x10, int hr, int rr_ms, int pi_x1
     
     // Rango diastólico: 4 enteros (ws0=4, ws1=0)
     sprintf(cmd, "ndia.val=%d", dia_ms);
+    sendCommand(cmd);
+    
+    // DC Baseline: 4 enteros (mV) - valor enviado al DAC
+    sprintf(cmd, "ndc.val=%d", dc_mV);
     sendCommand(cmd);
     
     // Actualizar texto de condición
@@ -1099,7 +1106,8 @@ void NextionDriver::updateECGScaleLabels() {
 
 /**
  * @brief Actualiza etiquetas de escala para EMG
- * Según Tabla 9.6: EMG RAW = 1.0 mV/div, ENV = 0.2 mV/div, 700 ms/div
+ * Ambos canales usan la MISMA escala: ±5 mV (10 mV total, 10 div = 1.0 mV/div)
+ * El envelope se muestra proporcional al raw (como en Serial Plotter)
  * IDs: mvdiv=20 (RAW Ch0), msdiv=21, mvdiv2=22 (ENV Ch1)
  */
 void NextionDriver::updateEMGScaleLabels() {
@@ -1113,8 +1121,9 @@ void NextionDriver::updateEMGScaleLabels() {
     sprintf(cmd, "msdiv.txt=\"700 ms/div\"");
     sendCommand(cmd);
     
-    // ID 22: mvdiv2 - Escala vertical Envolvente (Canal 1: 0-2 mV)
-    sprintf(cmd, "mvdiv2.txt=\"0.2 mV/div\"");
+    // ID 22: mvdiv2 - Escala vertical Envolvente (misma escala que raw)
+    // Envelope usa escala del raw para visualización proporcional
+    sprintf(cmd, "mvdiv2.txt=\"1.0 mV/div\"");
     sendCommand(cmd);
 }
 
