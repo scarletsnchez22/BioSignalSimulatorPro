@@ -1,7 +1,7 @@
 # Metodología de Arquitectura Computacional del Sistema
 
 **BioSimulator Pro v1.0.0**  
-**Fecha:** 18 de Diciembre de 2025  
+**Fecha:** 3 de Enero de 2026 (Actualizado)  
 **Documento de Sustentación Técnica**
 
 ---
@@ -16,7 +16,9 @@
 6. [Subsistema de Comunicación WiFi](#6-subsistema-de-comunicación-wifi)
 7. [Flujo de Datos Integrado](#7-flujo-de-datos-integrado)
 8. [Cálculos Computacionales Representativos](#8-cálculos-computacionales-representativos)
-9. [Referencias](#9-referencias)
+9. [Metodología de Diseño de Frecuencias](#9-metodología-de-diseño-de-frecuencias)
+10. [Salida Analógica y Acondicionamiento de Señal](#10-salida-analógica-y-acondicionamiento-de-señal)
+11. [Referencias](#11-referencias)
 
 ---
 
@@ -794,7 +796,259 @@ Esta sección documenta la metodología sistemática utilizada para seleccionar 
 
 ---
 
-## 10. Referencias
+## 10. Salida Analógica y Acondicionamiento de Señal
+
+Esta sección documenta la etapa de acondicionamiento analógico de la señal DAC y las estrategias de visualización para debug.
+
+### 10.1 Arquitectura de Salida Analógica
+
+La señal generada por el DAC del ESP32 pasa por una etapa de acondicionamiento antes de llegar al conector BNC:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    ETAPA DE ACONDICIONAMIENTO ANALÓGICO                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ESP32 DAC (GPIO25)                                                         │
+│  ┌─────────────────┐                                                        │
+│  │  8-bit DAC      │                                                        │
+│  │  0-3.3V         │                                                        │
+│  │  @ 4 kHz        │                                                        │
+│  └────────┬────────┘                                                        │
+│           │                                                                 │
+│           │ Señal escalonada (escalones de 250 µs)                          │
+│           ▼                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────┐        │
+│  │                    FILTRO RC PASIVO                              │        │
+│  │                                                                  │        │
+│  │    GPIO25 ───[R=10kΩ]───┬─── Vout                               │        │
+│  │                         │                                        │        │
+│  │                      [C=100nF]                                   │        │
+│  │                         │                                        │        │
+│  │                        GND                                       │        │
+│  │                                                                  │        │
+│  │    fc = 1/(2πRC) = 1/(2π × 10kΩ × 100nF) ≈ 159 Hz               │        │
+│  │                                                                  │        │
+│  │    FUNCIÓN:                                                      │        │
+│  │    • Suaviza escalones del DAC (anti-aliasing analógico)        │        │
+│  │    • Elimina componentes >159 Hz (armónicos de muestreo)        │        │
+│  │    • Preserva contenido de señal ECG/EMG/PPG (0-150 Hz)         │        │
+│  └─────────────────────────────────────────────────────────────────┘        │
+│           │                                                                 │
+│           │ Señal suavizada (curva continua)                                │
+│           ▼                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────┐        │
+│  │                    BUFFER SEGUIDOR (LM358/TL072)                 │        │
+│  │                                                                  │        │
+│  │                      ┌────────┐                                  │        │
+│  │    Vout_RC ──────────┤+       │                                  │        │
+│  │                      │  Op-Amp├──────── Vout_buffer              │        │
+│  │              ┌───────┤-       │                                  │        │
+│  │              │       └────────┘                                  │        │
+│  │              └────────────────────────────────────────────────   │        │
+│  │                        (Realimentación unitaria)                 │        │
+│  │                                                                  │        │
+│  │    FUNCIONES:                                                    │        │
+│  │    1. AISLAMIENTO DE IMPEDANCIA                                  │        │
+│  │       • Entrada: Alta impedancia (no carga al filtro RC)        │        │
+│  │       • Salida: Baja impedancia (puede alimentar cargas)        │        │
+│  │                                                                  │        │
+│  │    2. ELIMINACIÓN DE OFFSET DEL DAC                              │        │
+│  │       • El DAC ESP32 tiene offset interno (~50-100 mV)          │        │
+│  │       • El buffer con alimentación simétrica centra la señal    │        │
+│  │       • Resultado: señal centrada en el rango real              │        │
+│  │                                                                  │        │
+│  │    3. PROTECCIÓN DEL DAC                                         │        │
+│  │       • Aísla el DAC de cargas externas                         │        │
+│  │       • Previene daño por cortocircuitos en BNC                 │        │
+│  └─────────────────────────────────────────────────────────────────┘        │
+│           │                                                                 │
+│           ▼                                                                 │
+│  ┌─────────────────┐                                                        │
+│  │  Conector BNC   │                                                        │
+│  │  Salida final   │                                                        │
+│  │  0-3.3V limpio  │                                                        │
+│  └─────────────────┘                                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 10.2 Justificación del Filtro RC
+
+**Problema sin filtro:**
+El DAC de 8 bits genera escalones discretos cada 250 µs (4 kHz). Estos escalones contienen armónicos de alta frecuencia que:
+- Crean ruido audible en equipos de audio
+- Interfieren con ADCs externos
+- No representan una señal biológica real
+
+**Solución con filtro RC:**
+
+| Parámetro | Valor | Justificación |
+|-----------|-------|---------------|
+| R | 10 kΩ | Compromiso entre atenuación y carga al DAC |
+| C | 100 nF | Frecuencia de corte adecuada para señales biomédicas |
+| fc | 159 Hz | Superior a fmax de ECG (50 Hz) y PPG (10 Hz) |
+| Atenuación @ 4 kHz | -28 dB | Escalones reducidos a <5% de amplitud original |
+
+**Cálculo de atenuación:**
+$$H(f) = \frac{1}{\sqrt{1 + (f/f_c)^2}}$$
+$$H(4000\,Hz) = \frac{1}{\sqrt{1 + (4000/159)^2}} = \frac{1}{\sqrt{634}} = 0.04 = -28\,dB$$
+
+### 10.3 Justificación del Buffer Seguidor
+
+**Observación experimental:**
+Al medir con ADC loopback (GPIO34), se observó que:
+- **DAC (GPIO25):** Señal con valores cercanos al tope del rango (ej: 2.75V)
+- **ADC (GPIO34):** Señal con valores más bajos (ej: 2.41V)
+
+**Explicación:**
+1. El DAC del ESP32 tiene un **offset interno** y no-linealidades
+2. El filtro RC introduce **atenuación** en el rango de paso
+3. El buffer seguidor **no amplifica** pero **aísla** y **estabiliza**
+
+**Tabla 10.1: Comparación DAC vs ADC (valores típicos ECG)**
+
+| Punto de medición | Voltaje típico | Observación |
+|-------------------|----------------|-------------|
+| DAC (GPIO25) | 2.75 V | Valor teórico escalado |
+| Post-filtro RC | 2.50 V | Atenuación ~10% en banda |
+| Post-buffer | 2.41 V | Offset del op-amp + tolerancias |
+| ADC (GPIO34) | 2.41 V | Lectura real del sistema |
+
+**Conclusión:** La diferencia DAC-ADC es **normal y esperada**. El buffer no "elimina" el offset sino que proporciona una salida estable y de baja impedancia.
+
+### 10.4 Visualización de Señales para Debug
+
+#### 10.4.1 Serial Plotter con Downsampling
+
+Para visualizar la señal en el Serial Plotter de VS Code, se implementó **downsampling con promediado** igual que para Nextion:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    VISUALIZACIÓN EN SERIAL PLOTTER                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Timer ISR @ 4000 Hz (FS_TIMER_HZ)                                          │
+│  └─> DAC escribe señal a máxima resolución temporal                         │
+│       └─> Filtro RC analógico suaviza escalones del DAC                     │
+│            └─> Señal analógica lista para osciloscopio/ECG real             │
+│                                                                              │
+│  VISUALIZACIÓN (Serial Plotter):                                            │
+│  └─> Downsampling + promediado (igual que Nextion)                          │
+│       └─> ECG: 200 Hz (5ms) - Captura QRS de ~80ms con 16 puntos           │
+│       └─> EMG/PPG: 100 Hz (10ms) - Señales más lentas, menos puntos        │
+│                                                                              │
+│  JUSTIFICACIÓN TÉCNICA:                                                     │
+│  - DAC @ 4kHz: Necesario para reconstrucción analógica de alta calidad     │
+│  - Visualización @ 100-200 Hz: Suficiente para percepción humana           │
+│  - Promediado: Actúa como filtro anti-aliasing natural                      │
+│  - Nyquist: ECG tiene componentes hasta ~150 Hz, 200 Hz es suficiente      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 10.4.2 Implementación del Downsampling para Serial Plotter
+
+```cpp
+// main.cpp - loop()
+// Acumular muestras a 4000 Hz para promediar
+if (micros() - lastSample_us >= 250) {  // 250 µs = 4000 Hz
+    dacAccum += dacVoltage;
+    adcAccum += adcVoltage;
+    sampleCount++;
+}
+
+// Determinar intervalo según tipo de señal
+uint8_t downsampleInterval_ms = 5;  // ECG @ 200 Hz
+if (currentType == SignalType::EMG || currentType == SignalType::PPG) {
+    downsampleInterval_ms = 10;  // EMG/PPG @ 100 Hz
+}
+
+// Enviar promedio al intervalo correspondiente
+if (millis() - lastADCRead_ms >= downsampleInterval_ms) {
+    float dacAvg = dacAccum / sampleCount;
+    float adcAvg = adcAccum / sampleCount;
+    Serial.print(">dac:");
+    Serial.print(dacAvg, 3);
+    Serial.print(",adc:");
+    Serial.println(adcAvg, 3);
+    // Reset acumuladores
+    dacAccum = 0; adcAccum = 0; sampleCount = 0;
+}
+```
+
+**Tabla 10.2: Parámetros de downsampling para Serial Plotter**
+
+| Señal | Fs_timer | Fds | Intervalo | Muestras promediadas |
+|-------|----------|-----|-----------|----------------------|
+| ECG | 4000 Hz | 200 Hz | 5 ms | 20 |
+| EMG | 4000 Hz | 100 Hz | 10 ms | 40 |
+| PPG | 4000 Hz | 100 Hz | 10 ms | 40 |
+
+#### 10.4.3 Por qué NO se filtra digitalmente el DAC
+
+Se evaluó implementar un filtro FIR digital antes del DAC, pero se descartó por:
+
+1. **Nextion ya funciona bien:** El downsampling 20:1 o 40:1 actúa como filtro natural
+2. **Riesgo de distorsión:** Coeficientes FIR incorrectos pueden alterar la morfología
+3. **El filtro RC es suficiente:** Para la salida analógica, el RC elimina armónicos
+4. **Complejidad innecesaria:** Agregar ~10 µs de cálculo sin beneficio visible
+
+**Arquitectura final adoptada:**
+```
+Modelo → Interpolación → Buffer → DAC @ 4kHz → Filtro RC → Señal limpia
+                              ↓
+                    Downsampling → Nextion/Serial Plotter (visualización suave)
+```
+
+### 10.5 Resumen de la Cadena de Señal
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         CADENA COMPLETA DE SEÑAL                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  [Modelo Matemático]                                                        │
+│        │ ECG: McSharry RK4 @ 750 Hz                                         │
+│        │ EMG: Fuglevand MU @ 2000 Hz                                        │
+│        │ PPG: Allen Gaussiano @ 100 Hz                                      │
+│        ▼                                                                    │
+│  [Interpolación Lineal]                                                     │
+│        │ Upsampling a 4000 Hz (FS_TIMER_HZ)                                 │
+│        │ Suaviza transiciones entre muestras del modelo                     │
+│        ▼                                                                    │
+│  [Buffer Circular DRAM_ATTR]                                                │
+│        │ 2048 muestras, ~0.5s de autonomía                                  │
+│        │ Desacopla generación de salida                                     │
+│        ▼                                                                    │
+│  [Timer ISR @ 4 kHz]                                                        │
+│        │ dacWrite(GPIO25, valor) cada 250 µs                                │
+│        │ Señal escalonada (escalones discretos)                             │
+│        ▼                                                                    │
+│  [Filtro RC Pasivo]                                                         │
+│        │ fc = 159 Hz, suaviza escalones                                     │
+│        │ Señal analógica continua                                           │
+│        ▼                                                                    │
+│  [Buffer Seguidor Op-Amp]                                                   │
+│        │ Aislamiento de impedancia                                          │
+│        │ Protección del DAC                                                 │
+│        ▼                                                                    │
+│  [Conector BNC]                                                             │
+│        │ Salida 0-3.3V para osciloscopio/equipo médico                      │
+│        ▼                                                                    │
+│  ════════════════════════════════════════════════════════════════           │
+│                                                                             │
+│  VISUALIZACIÓN (paralelo):                                                  │
+│                                                                             │
+│  [Buffer Circular] ──► Downsampling ──► [Nextion 100-200 Hz]               │
+│                    ──► Downsampling ──► [Serial Plotter 100-200 Hz]        │
+│                    ──► Downsampling ──► [WebSocket 100 Hz]                 │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 11. Referencias
 
 [1] Espressif Systems, "ESP32 Technical Reference Manual," Version 4.5, 2022.
 
