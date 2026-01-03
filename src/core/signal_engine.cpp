@@ -43,6 +43,12 @@ SignalEngine::SignalEngine() {
     signalMutex = xSemaphoreCreateMutex();
     signalTimer = nullptr;
     generationTaskHandle = nullptr;
+    
+    // Inicializar filtro FIR
+    firIndex = 0;
+    for (int i = 0; i <= FIR_ORDER; i++) {
+        firBuffer[i] = 0.0f;
+    }
 }
 
 SignalEngine* SignalEngine::getInstance() {
@@ -104,6 +110,9 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
         currentModelValueMV = 0.0f;
         previousModelValueMV = 0.0f;
         interpolationCounter = 0;
+        
+        // Reset filtro FIR para evitar artefactos de señal anterior
+        resetFIRFilter();
         
         // Configurar tipo de señal
         currentSignal.type = type;

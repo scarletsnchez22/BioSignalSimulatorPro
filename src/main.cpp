@@ -1176,23 +1176,77 @@ void loop() {
     // Actualizar display
     updateDisplay();
     
-    // ADC Loopback @ 4000 Hz - Formato VS Code Serial Plotter
+    // ============================================================================
+    // DEBUG: ADC LOOPBACK CON DOWNSAMPLING PARA VISUALIZACIÓN
+    // ============================================================================
+    // ARQUITECTURA DE MUESTREO:
+    // ┌─────────────────────────────────────────────────────────────────────────┐
+    // │  Timer ISR @ 4000 Hz (FS_TIMER_HZ)                                      │
+    // │  └─> DAC escribe señal a máxima resolución temporal                     │
+    // │       └─> Filtro RC analógico suaviza escalones del DAC                 │
+    // │            └─> Señal analógica lista para osciloscopio/ECG real         │
+    // │                                                                          │
+    // │  VISUALIZACIÓN (Serial Plotter):                                        │
+    // │  └─> Downsampling + promediado (igual que Nextion)                      │
+    // │       └─> ECG: 200 Hz (5ms) - Captura QRS de ~80ms con 16 puntos       │
+    // │       └─> EMG/PPG: 100 Hz (10ms) - Señales más lentas, menos puntos    │
+    // │                                                                          │
+    // │  JUSTIFICACIÓN TÉCNICA:                                                 │
+    // │  - DAC @ 4kHz: Necesario para reconstrucción analógica de alta calidad │
+    // │  - Visualización @ 100-200 Hz: Suficiente para percepción humana       │
+    // │  - Promediado: Actúa como filtro anti-aliasing natural                  │
+    // │  - Nyquist: ECG tiene componentes hasta ~150 Hz, 200 Hz es suficiente  │
+    // └─────────────────────────────────────────────────────────────────────────┘
 #if DEBUG_ADC_LOOPBACK
     if (signalEngine->getState() == SignalState::RUNNING) {
-        static unsigned long lastADCRead_us = 0;
-        if (micros() - lastADCRead_us >= 250) {  // 250 µs = 4000 Hz (igual que DAC)
-            lastADCRead_us = micros();
+        static unsigned long lastADCRead_ms = 0;
+        static float dacAccum = 0.0f;
+        static float adcAccum = 0.0f;
+        static uint8_t sampleCount = 0;
+        
+        // Acumular muestras a 4000 Hz para promediar (igual que Timer ISR)
+        static unsigned long lastSample_us = 0;
+        if (micros() - lastSample_us >= 250) {  // 250 µs = 4000 Hz
+            lastSample_us = micros();
             
             uint16_t adcRaw = analogRead(ADC_LOOPBACK_PIN);
             float adcVoltage = (adcRaw / 4095.0f) * 3.3f;
             uint8_t lastDAC = signalEngine->getLastDACValue();
             float dacVoltage = (lastDAC / 255.0f) * 3.3f;
             
-            // Formato VS Code Serial Plotter: >var1:value1,var2:value2\r\n
-            Serial.print(">dac:");
-            Serial.print(dacVoltage, 3);
-            Serial.print(",adc:");
-            Serial.println(adcVoltage, 3);  // println() agrega \r\n automáticamente
+            dacAccum += dacVoltage;
+            adcAccum += adcVoltage;
+            sampleCount++;
+        }
+        
+        // Determinar intervalo de downsampling según tipo de señal
+        // ECG: 200 Hz (5ms) - Mayor resolución para QRS rápido
+        // EMG/PPG: 100 Hz (10ms) - Señales más lentas
+        uint8_t downsampleInterval_ms = 5;  // Default ECG @ 200 Hz
+        SignalType currentType = signalEngine->getCurrentType();
+        if (currentType == SignalType::EMG || currentType == SignalType::PPG) {
+            downsampleInterval_ms = 10;  // EMG/PPG @ 100 Hz
+        }
+        
+        // Enviar promedio al intervalo correspondiente
+        if (millis() - lastADCRead_ms >= downsampleInterval_ms) {
+            lastADCRead_ms = millis();
+            
+            if (sampleCount > 0) {
+                float dacAvg = dacAccum / sampleCount;
+                float adcAvg = adcAccum / sampleCount;
+                
+                // Formato VS Code Serial Plotter: >var1:value1,var2:value2\r\n
+                Serial.print(">dac:");
+                Serial.print(dacAvg, 3);
+                Serial.print(",adc:");
+                Serial.println(adcAvg, 3);
+                
+                // Reset acumuladores
+                dacAccum = 0.0f;
+                adcAccum = 0.0f;
+                sampleCount = 0;
+            }
         }
     }
 #endif
