@@ -1176,22 +1176,24 @@ void loop() {
     // Actualizar display
     updateDisplay();
     
-    // Debug ADC Loopback: leer salida DAC post-filtro RC
+    // ADC Loopback @ 4000 Hz - Formato VS Code Serial Plotter
 #if DEBUG_ADC_LOOPBACK
-    static unsigned long lastADCRead = 0;
-    if (millis() - lastADCRead >= 5) {  // Leer cada 5ms = 200 Hz
-        lastADCRead = millis();
-        
-        uint16_t adcRaw = analogRead(ADC_LOOPBACK_PIN);  // 0-4095 (12-bit)
-        float adcVoltage = (adcRaw / 4095.0f) * 3.3f;
-        uint8_t lastDAC = signalEngine->getLastDACValue();
-        float dacVoltage = (lastDAC / 255.0f) * 3.3f;
-        
-        // Formato para Serial Plotter: >dac:X,adc:Y
-        Serial.print(">dac:");
-        Serial.print(dacVoltage, 3);
-        Serial.print(",adc:");
-        Serial.println(adcVoltage, 3);
+    if (signalEngine->getState() == SignalState::RUNNING) {
+        static unsigned long lastADCRead_us = 0;
+        if (micros() - lastADCRead_us >= 250) {  // 250 µs = 4000 Hz (igual que DAC)
+            lastADCRead_us = micros();
+            
+            uint16_t adcRaw = analogRead(ADC_LOOPBACK_PIN);
+            float adcVoltage = (adcRaw / 4095.0f) * 3.3f;
+            uint8_t lastDAC = signalEngine->getLastDACValue();
+            float dacVoltage = (lastDAC / 255.0f) * 3.3f;
+            
+            // Formato VS Code Serial Plotter: >var1:value1,var2:value2\r\n
+            Serial.print(">dac:");
+            Serial.print(dacVoltage, 3);
+            Serial.print(",adc:");
+            Serial.println(adcVoltage, 3);  // println() agrega \r\n automáticamente
+        }
     }
 #endif
     

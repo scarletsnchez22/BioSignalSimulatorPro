@@ -38,7 +38,7 @@ bool NextionDriver::begin() {
 // COMANDOS BÁSICOS
 // ============================================================================
 void NextionDriver::sendCommand(const char* cmd) {
-    Serial.printf("[TX] %s\n", cmd);  // DEBUG: ver qué enviamos
+    // Serial.printf("[TX] %s\n", cmd);  // DEBUG: desactivado para Serial Plotter
     serial.print(cmd);
     serial.write(0xFF);
     serial.write(0xFF);
