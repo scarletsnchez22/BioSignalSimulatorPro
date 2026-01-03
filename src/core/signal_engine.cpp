@@ -210,6 +210,7 @@ void SignalEngine::setupTimer() {
     timerAttachInterrupt(signalTimer, &timerISR, true);
     timerAlarmWrite(signalTimer, 1000000 / FS_TIMER_HZ, true);  // 250 us = 4 kHz
     timerAlarmEnable(signalTimer);
+    Serial.println("[DAC] Timer ISR iniciado a 4 kHz");
 }
 
 void SignalEngine::stopTimer() {
@@ -218,6 +219,7 @@ void SignalEngine::stopTimer() {
         timerDetachInterrupt(signalTimer);
         timerEnd(signalTimer);
         signalTimer = nullptr;
+        Serial.println("[DAC] Timer ISR detenido");
     }
 }
 

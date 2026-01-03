@@ -55,6 +55,12 @@
 #define LED_STATUS              2       // GPIO2 (LED interno)
 
 // ============================================================================
+// CONFIGURACIÓN DE PINES - ADC LOOPBACK (DEBUG)
+// ============================================================================
+#define DEBUG_ADC_LOOPBACK      true   // true = leer GPIO34 y enviar a Serial
+#define ADC_LOOPBACK_PIN        34      // GPIO34 - ADC1_CH6
+
+// ============================================================================
 // CONFIGURACIÓN DE SEÑALES
 // ============================================================================
 

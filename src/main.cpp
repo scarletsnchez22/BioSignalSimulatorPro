@@ -88,45 +88,54 @@ void updateDisplay();
 // ============================================================================
 void initializeLED() {
 #if LED_RGB_ENABLED
-    pinMode(LED_RGB_RED, OUTPUT);
-    pinMode(LED_RGB_GREEN, OUTPUT);
-    pinMode(LED_RGB_BLUE, OUTPUT);
+    // Configurar canales PWM para control de intensidad
+    ledcSetup(0, 5000, 8);  // Canal 0, 5kHz, 8 bits
+    ledcSetup(1, 5000, 8);  // Canal 1, 5kHz, 8 bits
+    ledcSetup(2, 5000, 8);  // Canal 2, 5kHz, 8 bits
+    
+    ledcAttachPin(LED_RGB_RED, 0);
+    ledcAttachPin(LED_RGB_GREEN, 1);
+    ledcAttachPin(LED_RGB_BLUE, 2);
     
     // Apagar todos
-    digitalWrite(LED_RGB_RED, LED_RGB_COMMON_ANODE ? HIGH : LOW);
-    digitalWrite(LED_RGB_GREEN, LED_RGB_COMMON_ANODE ? HIGH : LOW);
-    digitalWrite(LED_RGB_BLUE, LED_RGB_COMMON_ANODE ? HIGH : LOW);
+    ledcWrite(0, LED_RGB_COMMON_ANODE ? 255 : 0);
+    ledcWrite(1, LED_RGB_COMMON_ANODE ? 255 : 0);
+    ledcWrite(2, LED_RGB_COMMON_ANODE ? 255 : 0);
 #endif
     pinMode(LED_STATUS, OUTPUT);
 }
 
 void setLEDState(SignalState state) {
 #if LED_RGB_ENABLED
-    bool r = false, g = false, b = false;
+    uint8_t r = 0, g = 0, b = 0;
     
     switch (state) {
         case SignalState::STOPPED:
-            r = true; g = false; b = false;  // Rojo
+            // Amarillo cálido: rojo completo, verde reducido
+            r = 255; g = 85; b = 0;
             break;
         case SignalState::RUNNING:
-            r = false; g = false; b = true;  // Azul
+            // Verde: señal activa, generando forma de onda
+            r = 0; g = 255; b = 0;
             break;
         case SignalState::PAUSED:
-            r = false; g = true; b = true;   // Cyan
+            // Rojo: simulación detenida o en pausa
+            r = 255; g = 0; b = 0;
             break;
         case SignalState::ERROR:
-            r = true; g = false; b = false;  // Rojo
+            // Rojo parpadeante (por ahora solo rojo fijo)
+            r = 255; g = 0; b = 0;
             break;
     }
     
     if (LED_RGB_COMMON_ANODE) {
-        digitalWrite(LED_RGB_RED, !r);
-        digitalWrite(LED_RGB_GREEN, !g);
-        digitalWrite(LED_RGB_BLUE, !b);
+        ledcWrite(0, 255 - r);
+        ledcWrite(1, 255 - g);
+        ledcWrite(2, 255 - b);
     } else {
-        digitalWrite(LED_RGB_RED, r);
-        digitalWrite(LED_RGB_GREEN, g);
-        digitalWrite(LED_RGB_BLUE, b);
+        ledcWrite(0, r);
+        ledcWrite(1, g);
+        ledcWrite(2, b);
     }
 #endif
 }
@@ -1166,6 +1175,25 @@ void loop() {
     
     // Actualizar display
     updateDisplay();
+    
+    // Debug ADC Loopback: leer salida DAC post-filtro RC
+#if DEBUG_ADC_LOOPBACK
+    static unsigned long lastADCRead = 0;
+    if (millis() - lastADCRead >= 5) {  // Leer cada 5ms = 200 Hz
+        lastADCRead = millis();
+        
+        uint16_t adcRaw = analogRead(ADC_LOOPBACK_PIN);  // 0-4095 (12-bit)
+        float adcVoltage = (adcRaw / 4095.0f) * 3.3f;
+        uint8_t lastDAC = signalEngine->getLastDACValue();
+        float dacVoltage = (lastDAC / 255.0f) * 3.3f;
+        
+        // Formato para Serial Plotter: >dac:X,adc:Y
+        Serial.print(">dac:");
+        Serial.print(dacVoltage, 3);
+        Serial.print(",adc:");
+        Serial.println(adcVoltage, 3);
+    }
+#endif
     
     // Procesar WiFi Server
     wifiServer.loop();
