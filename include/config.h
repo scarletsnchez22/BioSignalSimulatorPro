@@ -65,23 +65,32 @@
 // ============================================================================
 
 // ============================================================================
-// FRECUENCIAS DE MUESTREO - METODOLOGÍA DE DISEÑO
+// FRECUENCIAS DE MUESTREO - METODOLOGÍA DE SÍNTESIS DIGITAL
 // ============================================================================
+// NOTA: Este sistema GENERA señales sintéticas, NO digitaliza señales analógicas.
+// Por lo tanto, Nyquist (para ADC) NO aplica directamente aquí.
+//
+// TÉCNICA: Oversampling + Decimación
+// 1. Modelo genera muestras a Fs_modelo (según criterios de síntesis)
+// 2. Interpolación lineal sube a Fs_timer (oversampling)
+// 3. Decimación baja a Fds para salidas (DAC y Nextion)
+// 4. Filtro RC completa la reconstrucción analógica
+//
 // Criterios para Fs_timer:
-// 1. Fs_timer >= 2 × fmax (Nyquist) - EMG: 2×500=1000 Hz mínimo
-// 2. Fs_timer >= Fs_modelo_máximo - EMG: 2000 Hz
-// 3. Fs_timer divisible por Fds (200, 100) para downsampling entero
-// 4. Margen de seguridad 2× sobre Fs_modelo_máximo
+// 1. Fs_timer > Fs_modelo_máximo (EMG @ 2000 Hz)
+// 2. Factor de seguridad 2× → 4000 Hz
+// 3. Divisible por Fds (200, 100) para decimación entera
 // Conclusión: Fs_timer = 4000 Hz
 
-// Timer maestro (frecuencia de salida DAC)
+// Timer maestro (frecuencia de buffer interno)
 const uint16_t FS_TIMER_HZ = 4000;             // Hz - Timer ISR @ 4 kHz
 const uint16_t SAMPLE_RATE_HZ = FS_TIMER_HZ;   // Alias legacy
 
-// Frecuencias internas de cada modelo (Fs >= 5×fmax)
-const uint16_t MODEL_SAMPLE_RATE_ECG = 750;    // Hz - ECG fmax=50Hz (15×)
-const uint16_t MODEL_SAMPLE_RATE_PPG = 100;    // Hz - PPG fmax=10Hz (10×)
-const uint16_t MODEL_SAMPLE_RATE_EMG = 2000;   // Hz - EMG fmax=500Hz (4×)
+// Frecuencias internas de cada modelo
+// Criterios de síntesis: estabilidad RK4, resolución de detalles, costo CPU
+const uint16_t MODEL_SAMPLE_RATE_ECG = 750;    // Hz - ~60 muestras/QRS, estabilidad RK4
+const uint16_t MODEL_SAMPLE_RATE_PPG = 100;    // Hz - ~5 muestras/dicrótico, estándar clínico
+const uint16_t MODEL_SAMPLE_RATE_EMG = 2000;   // Hz - ~4 muestras/MUAP (Fuglevand)
 
 // deltaTime para cada modelo (segundos)
 const float MODEL_DT_ECG = 1.0f / MODEL_SAMPLE_RATE_ECG;  // 1.333 ms

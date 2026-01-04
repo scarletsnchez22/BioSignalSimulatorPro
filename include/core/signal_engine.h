@@ -54,12 +54,13 @@ private:
     // Timer de hardware
     hw_timer_t* signalTimer;
     
-    // Filtro FIR anti-aliasing para suavizar señal DAC
-    static const int FIR_ORDER = 15;
-    float firBuffer[FIR_ORDER + 1];
-    int firIndex;
-    float applyFIRFilter(float input);
-    void resetFIRFilter();
+    // Moving Average para suavizar señal DAC
+    static const int MA_WINDOW_SIZE = 8;
+    float maBuffer[MA_WINDOW_SIZE];
+    int maIndex;
+    float maSum;
+    float applyMovingAverage(float input);
+    void resetMovingAverage();
     
     // Métodos privados
     void setupTimer();
