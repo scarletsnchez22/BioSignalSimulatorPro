@@ -35,6 +35,13 @@ struct PerformanceStats {
 // CLASE SignalEngine (Singleton)
 // ============================================================================
 class SignalEngine {
+public:
+    // Enum para selección de salida DAC EMG (debe estar antes de usarse)
+    enum class EMGDACOutput : uint8_t {
+        RAW = 0,      // Señal cruda (por defecto)
+        ENVELOPE = 1  // Señal envolvente
+    };
+
 private:
     static SignalEngine* instance;
     SignalEngine();
@@ -46,6 +53,9 @@ private:
     
     // Estado actual
     SignalData currentSignal;
+    
+    // Configuración salida DAC EMG (RAW por defecto)
+    EMGDACOutput emgDacOutput;
     
     // FreeRTOS handles
     TaskHandle_t generationTaskHandle;
@@ -92,6 +102,10 @@ public:
     void setECGParameters(const ECGParameters& params);
     void setEMGParameters(const EMGParameters& params);
     void setPPGParameters(const PPGParameters& params);
+    
+    // Configuración de salida DAC para EMG
+    void setEMGDACOutput(EMGDACOutput output);
+    EMGDACOutput getEMGDACOutput() const { return emgDacOutput; }
     
     // Getters
     SignalState getState() const { return currentSignal.state; }

@@ -296,7 +296,8 @@ void NextionDriver::parseEvent() {
             // ID 13-18: nraw, nenv, nrms, nmu, nfr, nmvc (xfloat valores)
             // ID 20: mvdiv (text) - escala mV/div raw
             // ID 21: mvdiv2 (text) - escala mV/div envolvente
-            // ID ??: msdiv (text) - escala ms/div (compartida)
+            // ID 26: bt0 (dual-state) → seleccionar ENVELOPE para DAC
+            // ID 27: bt1 (dual-state) → seleccionar RAW para DAC
             switch (component) {
                 case 2: 
                     uiEvent = UIEvent::BUTTON_START; 
@@ -309,6 +310,14 @@ void NextionDriver::parseEvent() {
                     break;
                 case 5: 
                     uiEvent = UIEvent::BUTTON_PARAMETROS; 
+                    break;
+                case 26:  // bt0 - Envelope al DAC
+                    uiEvent = UIEvent::BUTTON_EMG_DAC_ENV;
+                    Serial.println("[Nextion] -> BUTTON_EMG_DAC_ENV");
+                    break;
+                case 27:  // bt1 - Raw al DAC
+                    uiEvent = UIEvent::BUTTON_EMG_DAC_RAW;
+                    Serial.println("[Nextion] -> BUTTON_EMG_DAC_RAW");
                     break;
             }
             break;
@@ -614,6 +623,10 @@ void NextionDriver::addWaveformPoint(uint8_t componentId, uint8_t channel, uint8
 void NextionDriver::clearWaveform(uint8_t componentId, uint8_t channel) {
     char cmd[16];
     sprintf(cmd, "cle %d,%d", componentId, channel);
+    sendCommand(cmd);
+}
+
+void NextionDriver::sendRawCommand(const char* cmd) {
     sendCommand(cmd);
 }
 

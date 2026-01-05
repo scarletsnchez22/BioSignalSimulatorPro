@@ -801,6 +801,23 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 }
             }
             break;
+        
+        // Botones EMG DAC Output Selection (waveform_emg página 7)
+        case UIEvent::BUTTON_EMG_DAC_RAW:
+            // bt1 (ID 27): Seleccionar señal RAW para salida DAC
+            signalEngine->setEMGDACOutput(SignalEngine::EMGDACOutput::RAW);
+            // Desactivar bt0 (ENVELOPE) para exclusión mutua
+            nextion->sendRawCommand("bt0.val=0");
+            Serial.println("[UI] EMG DAC Output: RAW");
+            break;
+            
+        case UIEvent::BUTTON_EMG_DAC_ENV:
+            // bt0 (ID 26): Seleccionar señal ENVELOPE para salida DAC
+            signalEngine->setEMGDACOutput(SignalEngine::EMGDACOutput::ENVELOPE);
+            // Desactivar bt1 (RAW) para exclusión mutua
+            nextion->sendRawCommand("bt1.val=0");
+            Serial.println("[UI] EMG DAC Output: ENVELOPE");
+            break;
             
         default:
             break;

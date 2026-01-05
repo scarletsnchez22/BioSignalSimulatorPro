@@ -79,12 +79,12 @@
   <rect x="560" y="137" width="345" height="20" fill="white"/>
   <text x="620" y="151" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">División horizontal</text>
   <text x="720" y="151" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">70 px/div</text>
-  <text x="835" y="151" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#2980b9">200 ms/div</text>
+  <text x="835" y="151" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#2980b9">350 ms/div</text>
   
   <rect x="560" y="157" width="345" height="20" fill="#eee"/>
   <text x="620" y="171" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">División vertical</text>
-  <text x="720" y="171" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">76 px/div</text>
-  <text x="835" y="171" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#2980b9">0.5 mV/div</text>
+  <text x="720" y="171" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">38 px/div</text>
+  <text x="835" y="171" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#2980b9">0.2 mV/div</text>
   
   <rect x="560" y="177" width="345" height="20" fill="white"/>
   <text x="620" y="191" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">Tiempo visible</text>
@@ -121,26 +121,26 @@
   <rect x="50" y="452" width="845" height="20" fill="#eee"/>
   <text x="130" y="466" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#e74c3c">ECG</text>
   <text x="250" y="466" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">-0.5 a +1.5 mV</text>
-  <text x="390" y="466" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">0.5 mV/div</text>
-  <text x="510" y="466" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">200 ms/div</text>
+  <text x="390" y="466" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">0.2 mV/div</text>
+  <text x="510" y="466" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">350 ms/div</text>
   <text x="640" y="466" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">3.5 segundos</text>
-  <text x="790" y="466" text-anchor="middle" font-family="Arial" font-size="10" fill="#27ae60">3.5s/0.8s = 4 latidos</text>
+  <text x="790" y="466" text-anchor="middle" font-family="Arial" font-size="10" fill="#27ae60">~4 latidos @75BPM</text>
   
   <rect x="50" y="472" width="845" height="20" fill="white"/>
   <text x="130" y="486" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#27ae60">EMG</text>
   <text x="250" y="486" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">-5.0 a +5.0 mV</text>
-  <text x="390" y="486" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">2.5 mV/div</text>
-  <text x="510" y="486" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">200 ms/div</text>
-  <text x="640" y="486" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">7 segundos</text>
-  <text x="790" y="486" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">7s/3s = 2 contracciones</text>
+  <text x="390" y="486" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">1.0 mV/div</text>
+  <text x="510" y="486" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">700 ms/div</text>
+  <text x="640" y="486" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">7.0 segundos</text>
+  <text x="790" y="486" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">~2 contracciones</text>
   
   <rect x="50" y="492" width="845" height="20" fill="#eee"/>
   <text x="130" y="506" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#9b59b6">PPG</text>
-  <text x="250" y="506" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">800 a 1200 (AU)</text>
-  <text x="390" y="506" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">100 AU/div</text>
-  <text x="510" y="506" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">200 ms/div</text>
-  <text x="640" y="506" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">7 segundos</text>
-  <text x="790" y="506" text-anchor="middle" font-family="Arial" font-size="10" fill="#27ae60">7s/0.8s = 8-9 pulsos</text>
+  <text x="250" y="506" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">0 a 150 mV (AC)</text>
+  <text x="390" y="506" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">15 mV/div</text>
+  <text x="510" y="506" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">700 ms/div</text>
+  <text x="640" y="506" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">7.0 segundos</text>
+  <text x="790" y="506" text-anchor="middle" font-family="Arial" font-size="10" fill="#27ae60">~9 pulsos @75BPM</text>
   
   <!-- Footer -->
   <text x="472" y="525" text-anchor="middle" font-family="Comic Sans MS, cursive" font-size="10" fill="#999">BioSimulator Pro – Sistema de Visualización con Grid Clínico</text>

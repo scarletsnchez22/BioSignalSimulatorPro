@@ -120,7 +120,7 @@
   <text x="350" y="615" text-anchor="middle" class="box-bold">🔌 Salida BNC</text>
   <text x="350" y="635" text-anchor="middle" class="box-text">Señal Analógica</text>
   <text x="350" y="655" text-anchor="middle" class="box-code">0-3.3V @ 4kHz</text>
-  <text x="350" y="675" text-anchor="middle" class="small">Buffer TL072</text>
+  <text x="350" y="675" text-anchor="middle" class="small">Buffer MCP6002 + RC 1.6kHz</text>
   <text x="350" y="690" text-anchor="middle" class="small">→ Osciloscopio/Monitor</text>
   
   <!-- Web App -->
@@ -151,15 +151,15 @@
   <text x="50" y="745" class="box-bold">Parámetros Clave:</text>
   
   <text x="50" y="765" class="box-code">FS_TIMER_HZ = 4000</text>
-  <text x="50" y="780" class="small">Timer maestro DAC</text>
+  <text x="50" y="780" class="small">Timer + DAC (sin decim.)</text>
   
   <text x="200" y="765" class="box-code">SIGNAL_BUFFER_SIZE = 2048</text>
   <text x="200" y="780" class="small">~0.5 segundos de buffer</text>
   
   <text x="400" y="765" class="box-code">FDS_ECG=200, FDS_EMG/PPG=100</text>
-  <text x="400" y="780" class="small">Frecuencias display</text>
+  <text x="400" y="780" class="small">Freq. Nextion (decimado)</text>
   
-  <text x="560" y="765" class="box-code">Downsampling ratios</text>
+  <text x="560" y="765" class="box-code">Nextion downsampling</text>
   <text x="560" y="780" class="small">20:1, 40:1, 40:1</text>
   
   <!-- Footer -->

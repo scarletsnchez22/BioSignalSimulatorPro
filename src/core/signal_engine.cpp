@@ -33,10 +33,8 @@ static float currentModelValueMV = 0.0f;       // Último valor del modelo en mV
 static float previousModelValueMV = 0.0f;      // Valor anterior en mV
 static uint16_t interpolationCounter = 0;      // Contador para interpolación
 
-// Variables para decimación del DAC (oversampling + decimation para evitar aliasing)
-// El buffer se llena a 4000 Hz, pero el DAC escribe a Fds (200/100 Hz)
-DRAM_ATTR static volatile uint8_t dacDownsampleRatio = 20;   // Ratio de decimación (20 para ECG, 40 para EMG/PPG)
-DRAM_ATTR static volatile uint8_t dacDownsampleCounter = 0;  // Contador de decimación
+// NOTA: El DAC escribe a 4 kHz SIN decimación para espectro correcto
+// La decimación solo se aplica a Nextion y Serial Plotter (visualización)
 
 // ============================================================================
 // CONSTRUCTOR
@@ -55,6 +53,9 @@ SignalEngine::SignalEngine() {
     for (int i = 0; i < MA_WINDOW_SIZE; i++) {
         maBuffer[i] = 127.5f;
     }
+    
+    // Inicializar salida DAC EMG en RAW por defecto
+    emgDacOutput = EMGDACOutput::RAW;
 }
 
 SignalEngine* SignalEngine::getInstance() {
@@ -116,16 +117,9 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
         currentModelValueMV = 0.0f;
         previousModelValueMV = 0.0f;
         interpolationCounter = 0;
-        dacDownsampleCounter = 0;  // Reset contador de decimación
         
-        // Configurar ratio de decimación del DAC según tipo de señal
-        // Técnica: Oversampling (4000 Hz) + Decimación para evitar aliasing
-        // ECG: 4000/200 = 20:1, EMG/PPG: 4000/100 = 40:1
-        if (type == SignalType::ECG) {
-            dacDownsampleRatio = NEXTION_DOWNSAMPLE_ECG;  // 20:1 → 200 Hz
-        } else {
-            dacDownsampleRatio = NEXTION_DOWNSAMPLE_EMG;  // 40:1 → 100 Hz
-        }
+        // NOTA: DAC escribe a 4 kHz SIN decimación (espectro correcto)
+        // La decimación solo se usa para Nextion/Serial Plotter (visualización)
         
         // Configurar tipo de señal
         currentSignal.type = type;
@@ -248,24 +242,20 @@ void SignalEngine::stopTimer() {
 // ============================================================================
 // ISR DEL TIMER (en IRAM)
 // ============================================================================
-// Técnica: Oversampling + Decimación
-// - El buffer se llena a 4000 Hz (oversampling con interpolación)
-// - El DAC escribe a Fds (200 Hz ECG, 100 Hz EMG/PPG) mediante decimación
-// - Esto evita aliasing y mantiene coherencia con Nextion
+// DAC escribe a Fs_timer (4 kHz) SIN decimación para espectro correcto
+// - ECG: fmax=150 Hz, EMG: fmax=500 Hz → 4 kHz cumple Nyquist
+// - Nextion y Serial Plotter aplican su propia decimación (son solo visualización)
+// - Filtro RC analógico completa reconstrucción de señal continua
 void IRAM_ATTR SignalEngine::timerISR() {
     uint32_t startTime = micros();
     
-    // Leer del buffer circular (siempre avanzamos para mantener sincronía)
+    // Leer del buffer circular y escribir DIRECTAMENTE al DAC (sin decimación)
     if (bufferReadIndex != bufferWriteIndex) {
         lastDACValue = signalBuffer[bufferReadIndex];
         bufferReadIndex = (bufferReadIndex + 1) % SIGNAL_BUFFER_SIZE;
         
-        // Decimación: solo escribir al DAC cada N muestras
-        dacDownsampleCounter++;
-        if (dacDownsampleCounter >= dacDownsampleRatio) {
-            dacWrite(DAC_SIGNAL_PIN, lastDACValue);
-            dacDownsampleCounter = 0;
-        }
+        // DAC escribe a 4 kHz - espectro frecuencial correcto
+        dacWrite(DAC_SIGNAL_PIN, lastDACValue);
     } else {
         bufferUnderruns++;
     }
@@ -339,10 +329,18 @@ void SignalEngine::generationTask(void* parameter) {
                         break;
                     }
                     case SignalType::EMG: {
-                        // Usar tick() para actualizar secuencia + generar muestra (igual que main_debug)
+                        // Usar tick() para actualizar secuencia + generar muestra
                         engine->emgModel.tick(modelDeltaTime);
-                        currentModelSample = engine->emgModel.getRawDACValue();
-                        currentModelValueMV = engine->emgModel.getRawSample();
+                        
+                        // Seleccionar salida DAC según configuración (RAW o ENVELOPE)
+                        if (engine->emgDacOutput == EMGDACOutput::ENVELOPE) {
+                            currentModelSample = engine->emgModel.getProcessedDACValue();
+                            currentModelValueMV = engine->emgModel.getProcessedSample();
+                        } else {
+                            // Por defecto: RAW
+                            currentModelSample = engine->emgModel.getRawDACValue();
+                            currentModelValueMV = engine->emgModel.getRawSample();
+                        }
                         break;
                     }
                     case SignalType::PPG: {
@@ -512,4 +510,13 @@ void SignalEngine::setEMGParameters(const EMGParameters& params) {
 
 void SignalEngine::setPPGParameters(const PPGParameters& params) {
     ppgModel.setPendingParameters(params);
+}
+
+// ============================================================================
+// CONFIGURACIÓN SALIDA DAC EMG
+// ============================================================================
+void SignalEngine::setEMGDACOutput(EMGDACOutput output) {
+    emgDacOutput = output;
+    Serial.printf("[SignalEngine] EMG DAC Output: %s\n", 
+                  output == EMGDACOutput::RAW ? "RAW" : "ENVELOPE");
 }

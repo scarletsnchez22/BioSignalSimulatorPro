@@ -75,7 +75,11 @@ enum class UIEvent : uint8_t {
     SLIDER_PPG_HR,          // Slider frecuencia cardíaca (ID 4)
     SLIDER_PPG_PI,          // Slider índice de perfusión (ID 5)
     SLIDER_PPG_NOISE,       // Slider ruido (ID 6)
-    SLIDER_PPG_AMP          // Slider factor amplitud (ID 14)
+    SLIDER_PPG_AMP,         // Slider factor amplitud (ID 14)
+    
+    // EMG DAC Output Selection (waveform_emg página 7)
+    BUTTON_EMG_DAC_RAW,     // bt1 (ID 27) - Enviar RAW al DAC
+    BUTTON_EMG_DAC_ENV      // bt0 (ID 26) - Enviar Envelope al DAC
 };
 
 // ============================================================================
@@ -161,6 +165,9 @@ public:
     void addWaveformPoint(uint8_t componentId, uint8_t channel, uint8_t value);
     void clearWaveform(uint8_t componentId, uint8_t channel);
     void setWaveformWritePosition(uint8_t componentId, uint8_t channel, uint16_t position);
+    
+    // Comando genérico (para casos especiales)
+    void sendRawCommand(const char* cmd);
     
     // Sliders
     void setSliderValue(const char* component, int value);

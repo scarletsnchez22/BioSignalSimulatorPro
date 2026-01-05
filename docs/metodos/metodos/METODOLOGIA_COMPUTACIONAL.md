@@ -697,7 +697,7 @@ PPG @ 100 Hz: T = 700 / 100 = 7.0 s (~9 latidos @ 75 BPM)
 
 ## 9. Metodología de Diseño de Frecuencias
 
-Esta sección documenta la metodología sistemática utilizada para seleccionar las frecuencias de integración del modelo, oversampling, y decimación para salidas (DAC y Nextion).
+Esta sección documenta la metodología sistemática utilizada para seleccionar las frecuencias de integración del modelo, oversampling, y decimación para visualización en Nextion. El DAC escribe a 4 kHz sin decimación para preservar el espectro completo.
 
 ### 9.1 Contenido Espectral de Señales Biomédicas (Referencias Clínicas)
 
@@ -797,7 +797,7 @@ Donde:
 | **EMG** | 2000 Hz | 4000 Hz | **2:1** (2 muestras interpoladas) |
 | **PPG** | 100 Hz | 4000 Hz | **40:1** (40 muestras interpoladas) |
 
-### 9.5 Decimación para Salidas (DAC y Nextion)
+### 9.5 Decimación para Visualización (Solo Nextion)
 
 **Técnica:** Oversampling + Decimación para evitar aliasing en las salidas.
 
@@ -820,23 +820,90 @@ Simplificado: Fds = Ancho_waveform / T_ventana_deseada
 
 **Tabla 9.5b: Ratios de decimación (downsampling)**
 
-| Señal | Fs_timer | Fds_salida | Ratio decimación | Aplica a |
-|-------|----------|------------|------------------|----------|
-| **ECG** | 4000 Hz | 200 Hz | **20:1** | DAC y Nextion |
-| **EMG** | 4000 Hz | 100 Hz | **40:1** | DAC y Nextion |
-| **PPG** | 4000 Hz | 100 Hz | **40:1** | DAC y Nextion |
+| Señal | Fs_timer | Fds_Nextion | Ratio decimación | Aplica a |
+|-------|----------|-------------|------------------|----------|
+| **ECG** | 4000 Hz | 200 Hz | **20:1** | Solo Nextion (visualización) |
+| **EMG** | 4000 Hz | 100 Hz | **40:1** | Solo Nextion (visualización) |
+| **PPG** | 4000 Hz | 100 Hz | **40:1** | Solo Nextion (visualización) |
 
-**IMPORTANTE:** La decimación se aplica tanto al **DAC** como a **Nextion** con los mismos ratios para mantener coherencia y evitar aliasing en ambas salidas.
+**IMPORTANTE:** 
+- El **DAC escribe a 4000 Hz sin decimación** para preservar el espectro frecuencial completo de las señales (especialmente EMG con contenido hasta 500 Hz).
+- La **decimación solo se aplica a Nextion** (visualización) debido a limitaciones de ancho de banda UART.
+- El **filtro RC analógico** (fc = 1.59 kHz) actúa como filtro de reconstrucción, suavizando los escalones del DAC.
 
-### 9.6 Escalado y Visualización
+### 9.6 Escalado y Visualización en Nextion
 
-**Tabla 9.6: Parámetros de visualización**
+El waveform de Nextion tiene dimensiones de **700 × 380 píxeles**. A continuación se detallan los parámetros de visualización para cada señal.
 
-| Señal | Rango (mV) | Div. vert. | mV/div | Fds (Hz) | T_pantalla (ms) | ms/div |
-|-------|------------|------------|--------|----------|-----------------|--------|
-| ECG | −0.5 a 1.5 | 10 | 0.2 | 200 | 3500 | 350 |
-| EMG | ±5 | 10 | 1.0 | 100 | 7000 | 700 |
-| PPG | 0–150 | 10 | 15 | 100 | 7000 | 700 |
+#### 9.6.1 Grid Funcional - Escala Horizontal (Tiempo)
+
+**Cálculo del tiempo por píxel (Δt/px):**
+```
+Δt_por_pixel = 1 / Fds_Nextion
+
+ECG:  Δt = 1/200 Hz = 5 ms/px
+EMG:  Δt = 1/100 Hz = 10 ms/px
+PPG:  Δt = 1/100 Hz = 10 ms/px
+```
+
+**Tiempo total visible en pantalla:**
+```
+T_total = Ancho_px × Δt_por_pixel
+
+ECG:  T = 700 px × 5 ms  = 3500 ms = 3.5 s
+EMG:  T = 700 px × 10 ms = 7000 ms = 7.0 s
+PPG:  T = 700 px × 10 ms = 7000 ms = 7.0 s
+```
+
+**Tabla 9.6a: Parámetros de escala horizontal**
+
+| Señal | Fds (Hz) | Δt/px (ms) | Ancho (px) | T_total (s) | Divisiones | ms/div |
+|-------|----------|------------|------------|-------------|------------|--------|
+| **ECG** | 200 | 5 | 700 | 3.5 | 10 | **350** |
+| **EMG** | 100 | 10 | 700 | 7.0 | 10 | **700** |
+| **PPG** | 100 | 10 | 700 | 7.0 | 10 | **700** |
+
+#### 9.6.2 Grid Funcional - Escala Vertical (Amplitud)
+
+**Tabla 9.6b: Parámetros de escala vertical**
+
+| Señal | Rango (mV) | Vpp (mV) | Altura (px) | Divisiones | mV/div |
+|-------|------------|----------|-------------|------------|--------|
+| **ECG** | −0.5 a +1.5 | 2.0 | 380 | 10 | **0.2** |
+| **EMG Raw** | −5.0 a +5.0 | 10.0 | 380 | 10 | **1.0** |
+| **EMG Envelope** | 0 a +2.0 | 2.0 | *escalado en Raw* | — | — |
+| **PPG AC** | 0 a 150 | 150 | 380 | 10 | **15** |
+
+**Nota sobre EMG Envelope:** La envolvente RMS tiene rango 0–2 mV pero se grafica **superpuesta en la escala del Raw** (±5 mV) para visualización conjunta. Por tanto, el envelope ocupa aproximadamente el 20% superior del área del waveform cuando está en MVC (contracción máxima).
+
+#### 9.6.3 Resumen del Grid Funcional
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     GRID FUNCIONAL NEXTION (700×380 px)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ECG (Electrocardiograma)                                                   │
+│  ────────────────────────                                                   │
+│  Horizontal: 350 ms/div  │  10 divisiones  │  Total: 3.5 s                 │
+│  Vertical:   0.2 mV/div  │  10 divisiones  │  Rango: −0.5 a +1.5 mV        │
+│  Δt/punto:   5 ms        │  Fds: 200 Hz                                    │
+│                                                                             │
+│  EMG (Electromiografía)                                                     │
+│  ──────────────────────                                                     │
+│  Horizontal: 700 ms/div  │  10 divisiones  │  Total: 7.0 s                 │
+│  Vertical:   1.0 mV/div  │  10 divisiones  │  Rango: −5 a +5 mV (Raw)      │
+│  Envelope:   0–2 mV superpuesto en escala Raw (20% del rango)              │
+│  Δt/punto:   10 ms       │  Fds: 100 Hz                                    │
+│                                                                             │
+│  PPG (Fotopletismografía)                                                   │
+│  ────────────────────────                                                   │
+│  Horizontal: 700 ms/div  │  10 divisiones  │  Total: 7.0 s                 │
+│  Vertical:   15 mV/div   │  10 divisiones  │  Rango: 0 a 150 mV (AC)       │
+│  Δt/punto:   10 ms       │  Fds: 100 Hz                                    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ### 9.7 Resumen Metodológico
 
@@ -847,32 +914,41 @@ Simplificado: Fds = Ancho_waveform / T_ventana_deseada
 │                                                                             │
 │  FLUJO COMPLETO:                                                            │
 │                                                                             │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────┐  │
-│  │   MODELO     │───►│INTERPOLACIÓN │───►│  DECIMACIÓN  │───►│ SALIDAS  │  │
-│  │  (Fs_modelo) │    │ (Upsampling) │    │(Downsampling)│    │(DAC/Nex) │  │
-│  └──────────────┘    └──────────────┘    └──────────────┘    └──────────┘  │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │   MODELO     │───►│INTERPOLACIÓN │───►│     DAC      │                   │
+│  │  (Fs_modelo) │    │  (4000 Hz)   │    │  (4000 Hz)   │                   │
+│  └──────────────┘    └──────────────┘    └──────┬───────┘                   │
+│   750/2000/100 Hz       Upsampling          Sin decimación                  │
+│                                                  │                          │
+│                              ┌───────────────────┴───────────────────┐      │
+│                              │                                       │      │
+│                              ▼                                       ▼      │
+│                     ┌──────────────┐                        ┌────────────┐  │
+│                     │  FILTRO RC   │                        │  NEXTION   │  │
+│                     │  fc=1.59 kHz │                        │ (decimado) │  │
+│                     └──────────────┘                        └────────────┘  │
+│                       Reconstrucción                        200/100 Hz      │
 │                                                                             │
-│  1. Modelo genera muestras a Fs_modelo (750/2000/100 Hz)                   │
-│  2. Interpolación lineal sube a Fs_timer (4000 Hz) - OVERSAMPLING          │
-│  3. Decimación baja a Fds (200/100 Hz) - EVITA ALIASING                    │
-│  4. Salidas reciben señal decimada (DAC y Nextion igual)                   │
+│  SALIDAS:                                                                   │
+│  • DAC/BNC: 4000 Hz SIN decimación → espectro completo para osciloscopio   │
+│  • Nextion: Decimado 20:1/40:1 → visualización (limitación UART)           │
 │                                                                             │
 │  PASOS DE DISEÑO:                                                           │
 │  1. Analizar contenido espectral de señales (Tabla 9.1)                    │
 │  2. Elegir Fs_modelo según criterios de síntesis (Tabla 9.2)               │
 │  3. Definir Fs_timer = 2× Fs_modelo_máximo (Tabla 9.3)                     │
 │  4. Calcular ratios de interpolación (Tabla 9.4)                           │
-│  5. Definir Fds y ratios de decimación (Tabla 9.5)                         │
+│  5. Definir Fds_Nextion y ratios de decimación (Tabla 9.5)                 │
 │  6. Calcular parámetros de visualización (Tabla 9.6)                       │
 │                                                                             │
 │  IMPLEMENTACIÓN EN config.h:                                                │
-│  • FS_TIMER_HZ = 4000                                                       │
+│  • FS_TIMER_HZ = 4000 (también Fs_DAC)                                     │
 │  • MODEL_SAMPLE_RATE_ECG = 750                                              │
 │  • MODEL_SAMPLE_RATE_EMG = 2000                                             │
 │  • MODEL_SAMPLE_RATE_PPG = 100                                              │
-│  • DOWNSAMPLE_ECG = 4000 / 200 = 20                                         │
-│  • DOWNSAMPLE_EMG = 4000 / 100 = 40                                         │
-│  • DOWNSAMPLE_PPG = 4000 / 100 = 40                                         │
+│  • NEXTION_DOWNSAMPLE_ECG = 4000 / 200 = 20                                │
+│  • NEXTION_DOWNSAMPLE_EMG = 4000 / 100 = 40                                │
+│  • NEXTION_DOWNSAMPLE_PPG = 4000 / 100 = 40                                │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -883,48 +959,45 @@ Simplificado: Fds = Ancho_waveform / T_ventana_deseada
 
 Esta sección documenta la arquitectura de la **salida analógica funcional** del sistema (DAC → BNC), que es el elemento principal del dispositivo. El ADC loopback y Serial Plotter son únicamente herramientas de validación durante desarrollo.
 
-### 10.1 Técnica de Oversampling y Decimación
+### 10.1 Arquitectura DAC y Espectro Frecuencial
 
-**Objetivo:** Evitar aliasing en la salida analógica usando la técnica estándar de procesamiento de señales.
+**Objetivo:** Preservar el contenido espectral completo de las señales biomédicas en la salida analógica.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    OVERSAMPLING + DECIMACIÓN                                 │
+│                    ARQUITECTURA DE SALIDA ANALÓGICA                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ¿Por qué esta técnica?                                                     │
-│  ─────────────────────                                                      │
-│  • Los modelos generan señales a frecuencias bajas (100-2000 Hz)           │
-│  • Si enviamos directamente al DAC, pueden aparecer artefactos             │
-│  • La solución estándar es: OVERSAMPLE → PROCESAR → DECIMATE               │
+│  ¿Por qué DAC a 4 kHz SIN decimación?                                       │
+│  ────────────────────────────────────                                       │
+│  • EMG tiene contenido espectral hasta 500 Hz (Nyquist mínimo = 1 kHz)     │
+│  • Si decimamos a 100 Hz, Nyquist = 50 Hz → perdemos 90% del espectro      │
+│  • Solución: DAC escribe TODAS las muestras interpoladas a 4 kHz           │
 │                                                                             │
-│  PASO 1: OVERSAMPLING (Timer @ 4000 Hz)                                     │
-│  ───────────────────────────────────────                                    │
-│  • Interpolamos las muestras del modelo a 4000 Hz                          │
-│  • Esto "suaviza" las transiciones entre muestras                          │
-│  • Fs_timer = 2× Fs_modelo_máximo (EMG @ 2000 Hz)                          │
+│  FLUJO DE SEÑAL:                                                            │
+│  ───────────────                                                            │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────┐  │
+│  │   MODELO     │───►│INTERPOLACIÓN │───►│    DAC       │───►│ FILTRO   │  │
+│  │ (Fs_modelo)  │    │  (4000 Hz)   │    │  (4000 Hz)   │    │ RC 1.6kHz│  │
+│  └──────────────┘    └──────────────┘    └──────────────┘    └──────────┘  │
+│   750/2000/100 Hz      Upsampling          Sin decimación     Reconstrucción│
 │                                                                             │
-│  PASO 2: DECIMACIÓN (Downsampling a Fds)                                    │
-│  ───────────────────────────────────────                                    │
-│  • Reducimos la frecuencia a Fds (200 Hz ECG, 100 Hz EMG/PPG)              │
-│  • Misma decimación para DAC y Nextion (coherencia)                        │
-│  • El filtro RC actúa como filtro anti-aliasing analógico                  │
-│                                                                             │
-│  RESULTADO:                                                                 │
-│  • Señal sin aliasing                                                       │
-│  • DAC y Nextion muestran la misma señal                                   │
-│  • Filtro RC suaviza los escalones residuales                              │
+│  DECIMACIÓN SELECTIVA (solo visualización):                                 │
+│  ──────────────────────────────────────────                                 │
+│  • Nextion: Decimado a 200/100 Hz (limitación UART ~11.5 KB/s)             │
+│  • Serial Plotter: Decimado a 200/100 Hz (debug, no afecta salida)         │
+│  • DAC: SIN decimación → espectro completo para osciloscopio               │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Tabla 10.1: Frecuencias de salida DAC**
+**Tabla 10.1: Frecuencias del sistema**
 
-| Señal | Fs_timer | Ratio decimación | Fs_DAC | Periodo DAC |
-|-------|----------|------------------|--------|-------------|
-| **ECG** | 4000 Hz | 20:1 | **200 Hz** | 5 ms |
-| **EMG** | 4000 Hz | 40:1 | **100 Hz** | 10 ms |
-| **PPG** | 4000 Hz | 40:1 | **100 Hz** | 10 ms |
+| Señal | Fs_modelo | Fs_DAC | Fs_Nextion | Nyquist DAC | Contenido útil |
+|-------|-----------|--------|------------|-------------|----------------|
+| **ECG** | 750 Hz | **4000 Hz** | 200 Hz | 2000 Hz | 0.5–150 Hz ✓ |
+| **EMG** | 2000 Hz | **4000 Hz** | 100 Hz | 2000 Hz | 20–500 Hz ✓ |
+| **PPG** | 100 Hz | **4000 Hz** | 100 Hz | 2000 Hz | 0.5–10 Hz ✓ |
 
 ### 10.2 Cadena de Procesamiento Digital (Antes del DAC)
 
@@ -956,27 +1029,23 @@ La señal pasa por tres etapas de procesamiento digital antes de llegar al DAC:
 │           │                                                                 │
 │           │ Buffer circular @ 4000 Hz (oversampled)                        │
 │           ▼                                                                 │
-│  ETAPA 3: DECIMACIÓN (Downsampling para salida)                             │
+│  ETAPA 3: SALIDA DAC (Sin decimación - espectro completo)                   │
 │  ┌─────────────────────────────────────────────────────────────────┐        │
-│  │  ECG: 4000 Hz → 200 Hz (ratio 20:1)                             │        │
-│  │  EMG: 4000 Hz → 100 Hz (ratio 40:1)                             │        │
-│  │  PPG: 4000 Hz → 100 Hz (ratio 40:1)                             │        │
+│  │  Timer ISR @ 4000 Hz escribe directamente al DAC:               │        │
 │  │                                                                  │        │
-│  │  Implementación: Contador de ticks, enviar cada N muestras      │        │
-│  │  dacCounter++;                                                   │        │
-│  │  if (dacCounter >= DAC_DOWNSAMPLE_RATIO) {                      │        │
-│  │      dacWrite(GPIO25, signalBuffer[readIdx]);                   │        │
-│  │      dacCounter = 0;                                             │        │
+│  │  void IRAM_ATTR timerISR() {                                    │        │
+│  │      dacWrite(DAC_SIGNAL_PIN, lastDACValue);  // Cada tick      │        │
 │  │  }                                                               │        │
 │  │                                                                  │        │
-│  │  JUSTIFICACIÓN:                                                  │        │
-│  │  • Misma técnica que Nextion (coherencia de señales)            │        │
-│  │  • Evita aliasing en la salida analógica                        │        │
-│  │  • El filtro RC completa la reconstrucción                      │        │
+│  │  JUSTIFICACIÓN (espectro frecuencial):                          │        │
+│  │  • EMG tiene contenido hasta 500 Hz (Nyquist = 1 kHz mínimo)    │        │
+│  │  • DAC @ 4 kHz → Nyquist = 2 kHz → preserva todo el espectro   │        │
+│  │  • Si decimáramos a 100 Hz → Nyquist = 50 Hz → pérdida del 90% │        │
+│  │  • El filtro RC (fc=1.59 kHz) suaviza escalones del DAC         │        │
 │  └─────────────────────────────────────────────────────────────────┘        │
 │           │                                                                 │
 │           ▼                                                                 │
-│  [Timer ISR → DAC @ Fds (200/100 Hz)]                                       │
+│  [Timer ISR → DAC @ 4000 Hz (SIN decimación)]                               │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -990,32 +1059,34 @@ La señal pasa por tres etapas de procesamiento digital antes de llegar al DAC:
 │                                                                             │
 │  ESP32 DAC (GPIO25)                                                         │
 │  ┌─────────────────┐                                                        │
-│  │  8-bit DAC      │  ← Señal ya suavizada por Moving Average              │
+│  │  8-bit DAC      │  ← Señal interpolada a 4 kHz                          │
 │  │  0-3.3V         │                                                        │
-│  │  @ 4 kHz        │                                                        │
+│  │  @ 4000 Hz      │  ← SIN decimación (espectro completo)                 │
 │  └────────┬────────┘                                                        │
 │           │                                                                 │
 │           ▼                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────┐        │
 │  │                    FILTRO RC PASIVO                              │        │
 │  │                                                                  │        │
-│  │    DAC ───[R=10kΩ]───┬─── Vout                                  │        │
+│  │    DAC ───[R=100Ω]───┬─── Vout                                  │        │
 │  │                      │                                           │        │
-│  │                   [C=100nF]                                      │        │
+│  │                   [C=1µF]                                        │        │
 │  │                      │                                           │        │
 │  │                     GND                                          │        │
 │  │                                                                  │        │
-│  │    fc = 1/(2πRC) ≈ 159 Hz                                       │        │
+│  │    fc = 1/(2πRC) ≈ 1.59 kHz                                     │        │
 │  │                                                                  │        │
-│  │    FUNCIÓN:                                                      │        │
-│  │    • Suaviza escalones residuales del DAC de 8 bits             │        │
-│  │    • Atenúa armónicos de muestreo (-28 dB @ 4 kHz)              │        │
+│  │    FUNCIÓN (filtro de reconstrucción):                          │        │
+│  │    • Criterio: fmax_señal < fc < Fs_DAC/2                       │        │
+│  │    •           500 Hz < 1590 Hz < 2000 Hz  ✓                    │        │
+│  │    • Preserva banda útil (0-500 Hz para EMG)                    │        │
+│  │    • Atenúa stepping del DAC (~8 dB @ 4 kHz)                    │        │
 │  │    • Convierte señal escalonada en curva continua               │        │
 │  └─────────────────────────────────────────────────────────────────┘        │
 │           │                                                                 │
 │           ▼                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────┐        │
-│  │                    BUFFER SEGUIDOR (TL072/LM358)                 │        │
+│  │                    BUFFER SEGUIDOR (MCP6002)                     │        │
 │  │                                                                  │        │
 │  │    FUNCIONES:                                                    │        │
 │  │    1. Aislamiento de impedancia (no carga al filtro RC)         │        │
@@ -1155,10 +1226,11 @@ El filtro RC suaviza → ADC lee ~2.32V (correcto)
 │  • Detectar problemas de offset, atenuación o distorsión                   │
 │  • NO afecta la señal funcional del dispositivo                            │
 │                                                                             │
-│  COHERENCIA DAC-NEXTION-SERIAL:                                             │
-│  • DAC, Nextion y Serial Plotter usan misma decimación                     │
-│  • ECG: 200 Hz, EMG/PPG: 100 Hz                                            │
-│  • Lo que se ve en Serial Plotter ≈ Lo que sale por BNC                    │
+│  NOTA SOBRE DECIMACIÓN:                                                     │
+│  • DAC escribe a 4000 Hz SIN decimación (espectro completo)                │
+│  • Serial Plotter y Nextion usan decimación (visualización)                │
+│  • ECG: 200 Hz, EMG/PPG: 100 Hz (limitación UART)                          │
+│  • El osciloscopio ve la señal REAL a 4 kHz                                │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1251,17 +1323,18 @@ if (millis() - lastADCRead_ms >= downsampleInterval_ms) {
 
 | Elemento | Tipo | Frecuencia | Propósito |
 |----------|------|------------|-----------|
-| DAC GPIO25 | **Funcional** | 200/100 Hz (decimado) | Salida analógica principal |
-| Filtro RC | **Funcional** | Analógico (fc=159 Hz) | Reconstrucción de señal |
+| DAC GPIO25 | **Funcional** | **4000 Hz** (sin decimación) | Salida analógica principal |
+| Filtro RC | **Funcional** | Analógico (fc=1.59 kHz) | Reconstrucción de señal |
 | Buffer Op-Amp | **Funcional** | Analógico | Aislamiento de impedancia |
 | Conector BNC | **Funcional** | Analógico | Conexión a equipos externos |
-| ADC GPIO34 | Validación | 200/100 Hz | Lectura de señal para debug |
-| Serial Plotter | Validación | 200/100 Hz | Visualización durante desarrollo |
-| Nextion Waveform | Interfaz | 200/100 Hz | Visualización para usuario |
+| ADC GPIO34 | Validación | 200/100 Hz (muestreo) | Lectura de señal para debug |
+| Serial Plotter | Validación | 200/100 Hz (decimado) | Visualización durante desarrollo |
+| Nextion Waveform | Interfaz | 200/100 Hz (decimado) | Visualización para usuario |
 
-**Nota:** Todas las salidas (DAC, Nextion, Serial Plotter) usan la misma frecuencia decimada:
-- ECG: 200 Hz
-- EMG/PPG: 100 Hz
+**Nota importante sobre frecuencias:**
+- **DAC:** Escribe a **4000 Hz SIN decimación** para preservar espectro completo (EMG hasta 500 Hz)
+- **Nextion/Serial Plotter:** Decimados a 200/100 Hz por limitación de ancho de banda UART
+- El osciloscopio conectado al BNC ve la señal completa a 4 kHz
 
 ---
 

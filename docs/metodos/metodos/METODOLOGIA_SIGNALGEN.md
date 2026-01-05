@@ -393,26 +393,41 @@ Se seleccionó el modelo de Fuglevand por:
         │                                             │
         ▼                                             ▼
 ┌───────────────────────────────────────────────────────────────────┐
-│  SALIDA DAC (GPIO25) - Solo canal RAW                             │
-│  Función: getDACValue()                                           │
-│  Rango: 0-255 (8-bit)                                             │
-│  Voltaje: 0-3.3V                                                  │
+│  SALIDA DAC (GPIO25) - Seleccionable RAW o ENVELOPE               │
+│  Funciones: getRawDACValue() / getProcessedDACValue()             │
+│  Rango: 0-255 (8-bit) → Voltaje: 0-3.3V                           │
 │                                                                   │
-│  Fórmula: DAC = (mV + 5.0) / 10.0 × 255                           │
-│  Ejemplo (pico +2.5 mV): DAC = 7.5/10.0 × 255 = 191               │
-│  Vout = 191/255 × 3.3V = 2.47V                                    │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │  Modo RAW (por defecto):                                    │  │
+│  │  Rango señal: ±5 mV bipolar                                 │  │
+│  │  Fórmula: DAC = (mV + 5.0) / 10.0 × 255                     │  │
+│  │  Ejemplo (+2.5 mV): DAC = 7.5/10 × 255 = 191 → 2.47V        │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │  Modo ENVELOPE:                                             │  │
+│  │  Rango señal: 0-2 mV unipolar (EMG_RMS_MAX_MV)              │  │
+│  │  Fórmula: DAC = (mV / 2.0) × 255                            │  │
+│  │  Ejemplo (1.0 mV): DAC = 0.5 × 255 = 128 → 1.65V            │  │
+│  │  Full-scale DAC para máxima resolución de envolvente        │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                   │
+│  NOTA: El modo se selecciona desde UI (botones bt0/bt1 en HMI)    │
+│  mediante signalEngine->setEMGDACOutput(RAW|ENVELOPE)             │
 └───────────────────────────────────────────────────────────────────┘
         │                                             │
         ▼                                             ▼
 ┌───────────────────────────────────────────────────────────────────┐
 │  SALIDA NEXTION WAVEFORM (2 canales)                              │
-│  Funciones: getWaveformValue(), getEnvelopeWaveformValue()        │
+│  Funciones: getWaveformValue_Ch0(), getWaveformValue_Ch1()        │
 │                                                                   │
 │  Canal RAW (ch0):                   Canal ENV (ch1):              │
-│  Rango: 0-255                       Rango: 0-255                  │
-│  Fórmula:                           Fórmula:                      │
-│  val = (mV+5)/10 × 255              val = mV/2.0 × 255            │
-│  px = map(val, 0,255, 10,370)       px = map(val, 0,255, 10,370)  │
+│  Rango: 0-380 px                    Rango: 0-380 px               │
+│  Escala: ±5 mV → 0-380             Escala: 0-5 mV → 190-380      │
+│  (Envelope superpuesto en misma escala para comparación visual)   │
+│                                                                   │
+│  NOTA: Escala Nextion diferente a DAC real:                       │
+│  - Nextion ENV: 0-5 mV (compartida con RAW para superposición)    │
+│  - DAC ENV: 0-2 mV (full-scale para máxima resolución)            │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -450,8 +465,48 @@ La fatiga se modeló según Cifrek et al. [5] con tres componentes:
 
 ### 4.6 Escalado de Salida (Raw y Envolvente)
 
-- **Señal cruda**: tras sumar los MUAPs individuales, la señal se clampa a **±5 mV** (`EMG_OUTPUT_MIN/MAX_MV`) porque ese rango cubre el 95 % de amplitudes sEMG reportadas por De Luca, Merletti y Konrad. El clamp se aplica al final de `generateSample()` @src/models/emg_model.cpp#660-667 antes de llamar a `getDACValue()`, que convierte directamente a 0‑255 (0‑3.3 V) para el DAC y el waveform RAW.
-- **Envolvente RMS**: la señal cruda se rectifica y se integra con una ventana RMS de 30 ms (`updateEnvelopeBuffer()`, equivalente al pasabajos 3‑5 Hz recomendado por SENIAM). Ese valor se limita a **0‑2 mV** (`EMG_RMS_MAX_MV`) para que el indicador de nivel de contracción coincida con los ~2 mV RMS observados en EMG superficial durante MVC. Esta envolvente es la que se muestra como canal “env” en Nextion y Serial Plotter.
+#### 4.6.1 Señal Cruda (RAW)
+Tras sumar los MUAPs individuales, la señal se clampa a **±5 mV** (`EMG_OUTPUT_MIN/MAX_MV`) porque ese rango cubre el 95% de amplitudes sEMG reportadas por De Luca, Merletti y Konrad. El clamp se aplica al final de `generateSample()` antes de la conversión DAC.
+
+#### 4.6.2 Envolvente RMS
+La señal cruda se rectifica y se integra con una ventana RMS de 30 ms (`updateEnvelopeBuffer()`), equivalente al pasabajos 3-5 Hz recomendado por SENIAM. Ese valor se limita a **0-2 mV** (`EMG_RMS_MAX_MV`) para que el indicador de nivel de contracción coincida con los ~2 mV RMS observados en EMG superficial durante MVC.
+
+#### 4.6.3 Escalas Separadas DAC vs Nextion (Actualización v1.2)
+
+Se implementaron **escalas diferentes** para visualización Nextion y salida DAC real:
+
+| Destino | Señal | Rango mV | Escala DAC/Waveform | Justificación |
+|---------|-------|----------|---------------------|---------------|
+| **Nextion** | RAW | ±5 mV | 0-380 px | Visualización bipolar |
+| **Nextion** | ENV | 0-5 mV | 190-380 px | Superpuesto con RAW |
+| **DAC real** | RAW | ±5 mV | 0-255 (full) | Fidelidad espectral |
+| **DAC real** | ENV | 0-2 mV | 0-255 (full) | Máxima resolución |
+
+**Conversión DAC Envelope (0-2 mV → 0-255):**
+
+| Envelope (mV) | DAC (0-255) | Voltaje ESP32 |
+|---------------|-------------|---------------|
+| 0.0 mV        | 0           | 0.00 V        |
+| 0.5 mV        | 64          | 0.83 V        |
+| 1.0 mV        | 128         | 1.65 V        |
+| 2.0 mV (MVC)  | 255         | 3.30 V        |
+
+Esta separación permite que la visualización Nextion muestre RAW y Envelope **superpuestos en la misma escala** (para comparación visual directa), mientras que el DAC físico aprovecha **100% del rango** para cada modo, maximizando la resolución de salida analógica.
+
+#### 4.6.4 Selección de Modo DAC desde UI
+
+El usuario puede seleccionar qué señal sale por el DAC físico mediante botones dual-state en la página `waveform_emg`:
+
+- **bt0 (ID 26)**: Selecciona ENVELOPE → `signalEngine->setEMGDACOutput(ENVELOPE)`
+- **bt1 (ID 27)**: Selecciona RAW → `signalEngine->setEMGDACOutput(RAW)` (por defecto)
+
+Los botones tienen **exclusión mutua**: al presionar uno, el ESP32 desactiva el otro mediante comandos Nextion (`bt0.val=0` o `bt1.val=0`).
+
+**Configuración Nextion HMI (Touch Release Event):**
+```
+bt0: printh 65 07 1A 01 FF FF FF  (ENVELOPE)
+bt1: printh 65 07 1B 01 FF FF FF  (RAW)
+```
 
 ### 4.7 Sincronización Envelope-Waveform (Actualización v1.1)
 

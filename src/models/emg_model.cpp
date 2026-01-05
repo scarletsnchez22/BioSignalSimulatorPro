@@ -1170,13 +1170,17 @@ float EMGModel::getProcessedSample() {
 }
 
 /**
- * @brief Obtiene DAC de señal PROCESADA
- * @return DAC 0-255 (0 = 0mV, 255 = 5mV unipolar)
+ * @brief Obtiene DAC de señal PROCESADA (envelope)
+ * @return DAC 0-255 (0 = 0mV, 255 = 2mV - rango completo para envelope)
+ * 
+ * NOTA: Escala diferente a visualización Nextion.
+ * - Nextion: usa escala 0-5mV (compartida con RAW para superposición)
+ * - DAC real: usa escala 0-2mV (EMG_RMS_MAX_MV) para máxima resolución
  */
 uint8_t EMGModel::getProcessedDACValue() {
     float envelope = getProcessedSample();
-    envelope = constrain(envelope, 0.0f, EMG_OUTPUT_MAX_MV);
-    int dacValue = (int)((envelope / EMG_OUTPUT_MAX_MV) * 255.0f);
+    envelope = constrain(envelope, 0.0f, EMG_RMS_MAX_MV);  // 0-2 mV (rango real envelope)
+    int dacValue = (int)((envelope / EMG_RMS_MAX_MV) * 255.0f);  // Full scale DAC
     return (uint8_t)constrain(dacValue, 0, 255);
 }
 
