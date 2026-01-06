@@ -86,27 +86,39 @@
 const uint16_t FS_TIMER_HZ = 4000;             // Hz - Timer ISR @ 4 kHz
 const uint16_t SAMPLE_RATE_HZ = FS_TIMER_HZ;   // Alias legacy
 
-// Frecuencias internas de cada modelo
-// Criterios de síntesis: estabilidad RK4, resolución de detalles, costo CPU
-const uint16_t MODEL_SAMPLE_RATE_ECG = 750;    // Hz - ~60 muestras/QRS, estabilidad RK4
-const uint16_t MODEL_SAMPLE_RATE_PPG = 100;    // Hz - ~5 muestras/dicrótico, estándar clínico
-const uint16_t MODEL_SAMPLE_RATE_EMG = 2000;   // Hz - ~4 muestras/MUAP (Fuglevand)
+// ============================================================================
+// FRECUENCIAS DE MUESTREO DEL MODELO (Fs_modelo)
+// ============================================================================
+// Basadas en Nyquist de estándares clínicos: Fs = 2 × Fmax_clínico
+//
+// | Señal | BW clínico | Fmax  | Fs = 2×Fmax |
+// |-------|------------|-------|-------------|
+// | ECG   | 0.05-150Hz | 150Hz | 300 Hz      |
+// | EMG   | 20-500Hz   | 500Hz | 1000 Hz     |
+// | PPG   | 0.5-10Hz   | 10Hz  | 20 Hz       |
+//
+// Luego se interpola a FS_TIMER_HZ (4000 Hz) para salida al DAC.
+// ============================================================================
+
+const uint16_t MODEL_SAMPLE_RATE_ECG = 300;    // Hz - 2×150Hz (BW clínico ECG)
+const uint16_t MODEL_SAMPLE_RATE_EMG = 1000;   // Hz - 2×500Hz (BW clínico EMG)
+const uint16_t MODEL_SAMPLE_RATE_PPG = 20;     // Hz - 2×10Hz (BW clínico PPG)
 
 // deltaTime para cada modelo (segundos)
-const float MODEL_DT_ECG = 1.0f / MODEL_SAMPLE_RATE_ECG;  // 1.333 ms
-const float MODEL_DT_PPG = 1.0f / MODEL_SAMPLE_RATE_PPG;  // 10 ms
-const float MODEL_DT_EMG = 1.0f / MODEL_SAMPLE_RATE_EMG;  // 0.5 ms
+const float MODEL_DT_ECG = 1.0f / MODEL_SAMPLE_RATE_ECG;  // 3.333 ms
+const float MODEL_DT_EMG = 1.0f / MODEL_SAMPLE_RATE_EMG;  // 1.0 ms
+const float MODEL_DT_PPG = 1.0f / MODEL_SAMPLE_RATE_PPG;  // 50 ms
 
 // Intervalo de tick en microsegundos (para timing real)
-const uint32_t MODEL_TICK_US_ECG = 1000000 / MODEL_SAMPLE_RATE_ECG;  // 1333 us
-const uint32_t MODEL_TICK_US_PPG = 1000000 / MODEL_SAMPLE_RATE_PPG;  // 10000 us
-const uint32_t MODEL_TICK_US_EMG = 1000000 / MODEL_SAMPLE_RATE_EMG;  // 500 us
+const uint32_t MODEL_TICK_US_ECG = 1000000 / MODEL_SAMPLE_RATE_ECG;  // 3333 us
+const uint32_t MODEL_TICK_US_EMG = 1000000 / MODEL_SAMPLE_RATE_EMG;  // 1000 us
+const uint32_t MODEL_TICK_US_PPG = 1000000 / MODEL_SAMPLE_RATE_PPG;  // 50000 us
 
-// Ratios de upsampling: cuántas muestras del timer por cada muestra del modelo
+// Ratios de upsampling: interpolación de Fs_modelo a Fs_timer
 // Ratio = Fs_timer / Fs_modelo
-const uint8_t UPSAMPLE_RATIO_ECG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_ECG;  // 4000/750 ≈ 5
-const uint8_t UPSAMPLE_RATIO_PPG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_PPG;  // 4000/100 = 40
-const uint8_t UPSAMPLE_RATIO_EMG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_EMG;  // 4000/2000 = 2
+const uint8_t UPSAMPLE_RATIO_ECG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_ECG;  // 4000/300 ≈ 13
+const uint8_t UPSAMPLE_RATIO_EMG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_EMG;  // 4000/1000 = 4
+const uint8_t UPSAMPLE_RATIO_PPG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_PPG;  // 4000/20 = 200
 
 // Frecuencias de salida a displays
 const uint16_t FDS_ECG = 200;                  // Hz - display ECG
