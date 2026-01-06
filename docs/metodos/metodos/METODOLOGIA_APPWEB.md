@@ -3,7 +3,7 @@
 ## Metodología de Diseño y Desarrollo
 
 **Versión:** 1.0.0  
-**Fecha:** 18 Diciembre 2025  
+**Revisado:** 06.01.2026  
 **Documento:** Planificación y Diseño Conceptual
 
 ---
@@ -621,5 +621,6 @@ Esta metodología define el desarrollo de una **aplicación web progresiva** que
 
 ---
 
-*Documento BioSimulator Pro v1.0.0*  
+*Documento BioSignalSimulator Pro*  
+*Revisado: 06.01.2026*
 *18 de Diciembre de 2025*

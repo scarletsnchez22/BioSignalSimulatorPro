@@ -2,128 +2,91 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <title>BioSimulator Pro</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
+    <div class="app">
         <!-- Header -->
         <header class="header">
-            <h1>🫀 BioSimulator Pro</h1>
+            <div class="title">📊 BioSimulator</div>
             <div class="status">
-                <span id="connectionStatus" class="status-dot disconnected"></span>
-                <span id="connectionText">Desconectado</span>
+                <span id="dot" class="dot"></span>
+                <span id="conn">Offline</span>
             </div>
         </header>
 
-        <!-- Signal Info -->
-        <div class="signal-info">
-            <span id="signalType">--</span>
-            <span class="separator">|</span>
-            <span id="signalCondition">--</span>
-            <span class="separator">|</span>
-            <span id="signalState">--</span>
+        <!-- Info -->
+        <div class="info">
+            <span>Señal: <b id="sig" class="accent">--</b></span>
+            <span>Cond: <b id="cond">--</b></span>
+            <span id="state" class="badge">IDLE</span>
         </div>
 
-        <!-- Waveform Canvas -->
-        <div class="waveform-container">
-            <canvas id="waveformCanvas"></canvas>
-            <div class="scale-labels">
-                <span id="scaleY">-- mV/div</span>
-                <span id="scaleX">-- ms/div</span>
+        <!-- Plotter -->
+        <div class="plot-area">
+            <div class="canvas-wrap">
+                <div class="y-axis">
+                    <span id="yMax">+1.5</span>
+                    <span id="yMid">0</span>
+                    <span id="yMin">-0.5</span>
+                </div>
+                <canvas id="canvas"></canvas>
+                <div id="legend" class="legend">
+                    <span class="leg"><i class="lc c1"></i><span id="l1">Señal</span></span>
+                    <span id="l2w" class="leg" style="display:none"><i class="lc c2"></i><span id="l2">Env</span></span>
+                </div>
+            </div>
+            <div class="x-axis">
+                <span>0</span>
+                <span id="xMid">1.75s</span>
+                <span id="xMax">3.5s</span>
             </div>
         </div>
 
-        <!-- Metrics Panel - Cambia según tipo de señal -->
-        <div id="metricsECG" class="metrics-panel">
-            <div class="metric">
-                <span class="metric-label">HR</span>
-                <span id="metricHR" class="metric-value">--</span>
-                <span class="metric-unit">BPM</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">RR</span>
-                <span id="metricRR" class="metric-value">--</span>
-                <span class="metric-unit">ms</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">QRS</span>
-                <span id="metricQRS" class="metric-value">--</span>
-                <span class="metric-unit">mV</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">ST</span>
-                <span id="metricST" class="metric-value">--</span>
-                <span class="metric-unit">mV</span>
-            </div>
+        <!-- Metrics ECG -->
+        <div id="mECG" class="metrics" style="display:none">
+            <div class="m"><span class="ml">HR</span><span class="mv" id="ecgHR">--</span><span class="mu">bpm</span></div>
+            <div class="m"><span class="ml">RR</span><span class="mv" id="ecgRR">--</span><span class="mu">ms</span></div>
+            <div class="m"><span class="ml">QRS</span><span class="mv" id="ecgQRS">--</span><span class="mu">mV</span></div>
+            <div class="m"><span class="ml">ST</span><span class="mv" id="ecgST">--</span><span class="mu">mV</span></div>
+            <div class="m"><span class="ml">HRV</span><span class="mv" id="ecgHRV">--</span><span class="mu">σ</span></div>
         </div>
-        <div id="metricsEMG" class="metrics-panel" style="display:none;">
-            <div class="metric">
-                <span class="metric-label">RMS</span>
-                <span id="metricRMS" class="metric-value">--</span>
-                <span class="metric-unit">mV</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">EXC</span>
-                <span id="metricEXC" class="metric-value">--</span>
-                <span class="metric-unit">%</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">MUs</span>
-                <span id="metricMUs" class="metric-value">--</span>
-                <span class="metric-unit">act</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">FREQ</span>
-                <span id="metricFREQ" class="metric-value">--</span>
-                <span class="metric-unit">Hz</span>
-            </div>
+
+        <!-- Metrics EMG -->
+        <div id="mEMG" class="metrics" style="display:none">
+            <div class="m"><span class="ml">RMS</span><span class="mv" id="emgRMS">--</span><span class="mu">mV</span></div>
+            <div class="m"><span class="ml">EXC</span><span class="mv" id="emgEXC">--</span><span class="mu">%</span></div>
+            <div class="m"><span class="ml">MUs</span><span class="mv" id="emgMU">--</span><span class="mu">act</span></div>
+            <div class="m"><span class="ml">MDF</span><span class="mv" id="emgFRQ">--</span><span class="mu">Hz</span></div>
         </div>
-        <div id="metricsPPG" class="metrics-panel" style="display:none;">
-            <div class="metric">
-                <span class="metric-label">HR</span>
-                <span id="metricHRppg" class="metric-value">--</span>
-                <span class="metric-unit">BPM</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">PI</span>
-                <span id="metricPI" class="metric-value">--</span>
-                <span class="metric-unit">%</span>
-            </div>
-            <div class="metric">
-                <span class="metric-label">RR</span>
-                <span id="metricRRppg" class="metric-value">--</span>
-                <span class="metric-unit">ms</span>
-            </div>
+
+        <!-- Metrics PPG -->
+        <div id="mPPG" class="metrics" style="display:none">
+            <div class="m"><span class="ml">HR</span><span class="mv" id="ppgHR">--</span><span class="mu">bpm</span></div>
+            <div class="m"><span class="ml">RR</span><span class="mv" id="ppgRR">--</span><span class="mu">ms</span></div>
+            <div class="m"><span class="ml">PI</span><span class="mv" id="ppgPI">--</span><span class="mu">%</span></div>
+            <div class="m"><span class="ml">AC</span><span class="mv" id="ppgAC">--</span><span class="mu">mV</span></div>
         </div>
 
         <!-- Controls -->
         <div class="controls">
-            <div class="control-group">
-                <button id="btnZoomIn" class="btn">🔍+</button>
-                <button id="btnZoomOut" class="btn">🔍-</button>
-                <span id="zoomLevel">100%</span>
-            </div>
-            <div class="control-group">
-                <button id="btnPause" class="btn btn-primary">⏸ Pausar</button>
-            </div>
-            <div class="control-group">
-                <button id="btnDownload" class="btn">📥 CSV</button>
-                <button id="btnScreenshot" class="btn">📷</button>
-            </div>
+            <button id="btnZi" class="btn">➕</button>
+            <span id="zoom">100%</span>
+            <button id="btnZo" class="btn">➖</button>
+            <button id="btnP" class="btn pri">⏸</button>
+            <button id="btnC" class="btn">🗑</button>
+            <button id="btnS" class="btn">📷</button>
         </div>
 
         <!-- Footer -->
         <footer class="footer">
-            <span id="clientCount">0 clientes</span>
-            <span>|</span>
-            <span id="dataRate">0 pts/s</span>
+            <span id="rate">0 pts/s</span> | <span id="scale">--</span>
         </footer>
     </div>
-
     <script src="app.js"></script>
 </body>
 </html>

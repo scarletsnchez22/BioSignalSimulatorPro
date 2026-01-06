@@ -3,7 +3,7 @@
 **Autores:** Scarlet Gabriela Sánchez Aguirre, Rafael David Mata Puente  
 **Institución:** Escuela Superior Politécnica del Litoral (ESPOL)  
 **Facultad:** Ingeniería en Mecánica y Ciencias de la Producción  
-**Fecha:** Diciembre 2025
+**Revisado:** 06.01.2026
 
 ---
 

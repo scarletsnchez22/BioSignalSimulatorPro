@@ -87,6 +87,45 @@ void WiFiServer_BioSim::setupRoutes() {
         request->send(SPIFFS, "/index.html", "text/html");
     });
     
+    // =========================================================================
+    // CAPTIVE PORTAL DETECTION - Evita que Windows/Android desconecten
+    // Responde "success" a las peticiones de detección de conectividad
+    // =========================================================================
+    
+    // Windows 10/11 connectivity check
+    _server->on("/connecttest.txt", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "text/plain", "Microsoft Connect Test");
+    });
+    _server->on("/ncsi.txt", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "text/plain", "Microsoft NCSI");
+    });
+    _server->on("/redirect", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/");
+    });
+    
+    // Android connectivity check
+    _server->on("/generate_204", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(204);
+    });
+    _server->on("/gen_204", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(204);
+    });
+    
+    // Apple iOS/macOS connectivity check
+    _server->on("/hotspot-detect.html", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+    });
+    _server->on("/library/test/success.html", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+    });
+    
+    // Firefox connectivity check
+    _server->on("/success.txt", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "text/plain", "success\n");
+    });
+    
+    // =========================================================================
+    
     // Archivos estáticos
     _server->on("/app.js", HTTP_GET, [](AsyncWebServerRequest* request) {
         request->send(SPIFFS, "/app.js", "application/javascript");
@@ -197,6 +236,7 @@ String WiFiServer_BioSim::buildDataJson(const WSSignalData& data) {
     doc["signal"] = data.signalType;
     doc["t"] = data.timestamp;
     doc["v"] = data.value;
+    doc["env"] = data.envelope;  // Envelope para EMG
     doc["dac"] = data.dacValue;
     
     String json;
@@ -213,11 +253,14 @@ String WiFiServer_BioSim::buildMetricsJson(const WSSignalMetrics& metrics) {
     m["rr"] = metrics.rr;
     m["qrs"] = metrics.qrs;
     m["st"] = metrics.st;
+    m["hrv"] = metrics.hrv;
     m["rms"] = metrics.rms;
     m["exc"] = metrics.excitation;
     m["mus"] = metrics.activeUnits;
+    m["freq"] = metrics.freq;
     m["pi"] = metrics.pi;
     m["dc"] = metrics.dcLevel;
+    m["ac"] = metrics.ac;
     
     String json;
     serializeJson(doc, json);

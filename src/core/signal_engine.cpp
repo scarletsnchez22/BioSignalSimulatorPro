@@ -345,7 +345,8 @@ void SignalEngine::generationTask(void* parameter) {
                     }
                     case SignalType::PPG: {
                         currentModelSample = engine->ppgModel.getDACValue(modelDeltaTime);
-                        currentModelValueMV = 0.0f; // PPG maneja su propio waveform
+                        // Guardar valor AC para interpolación (evita escalones en Nextion)
+                        currentModelValueMV = engine->ppgModel.getLastACValue();
                         break;
                     }
                     default:

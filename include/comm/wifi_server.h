@@ -56,6 +56,7 @@ struct WSSignalData {
     const char* condition;      // "NORMAL", "TACHYCARDIA", etc.
     const char* state;          // "RUNNING", "PAUSED", "STOPPED"
     float value;                // Valor actual de la señal (mV)
+    float envelope;             // Envelope EMG (mV) - solo para EMG
     uint8_t dacValue;           // Valor DAC (0-255)
     uint32_t timestamp;         // Timestamp en ms
 };
@@ -69,15 +70,18 @@ struct WSSignalMetrics {
     int rr;                     // RR interval (ms)
     float qrs;                  // QRS amplitude (mV)
     float st;                   // ST deviation (mV)
+    float hrv;                  // HRV (%)
     
     // EMG
     float rms;                  // RMS value (mV)
     int excitation;             // Excitation level (%)
     int activeUnits;            // Active motor units
+    int freq;                   // Median frequency (Hz)
     
     // PPG
     float pi;                   // Perfusion Index (%)
     float dcLevel;              // DC baseline (mV)
+    float ac;                   // AC amplitude (mV)
 };
 
 // ============================================================================

@@ -42,7 +42,8 @@ void ParamController::setActiveSignal(SignalType type, uint8_t condition) {
 // PARÁMETROS TIPO A (INMEDIATOS)
 // ============================================================================
 void ParamController::setNoiseLevel(float noise) {
-    noise = clamp(noise, 0.0f, 1.0f);
+    // Límite global: 0-10% para todas las señales y condiciones
+    noise = clamp(noise, 0.0f, 0.10f);
     
     switch (activeSignalType) {
         case SignalType::ECG:
@@ -60,24 +61,20 @@ void ParamController::setNoiseLevel(float noise) {
 }
 
 void ParamController::setAmplitude(float amplitude) {
+    // Límite global: 50-200% (0.5-2.0) para todas las señales y condiciones
+    // El slider envía 50-200, convertimos a factor 0.5-2.0
+    float ampFactor = clamp(amplitude / 100.0f, 0.5f, 2.0f);
+    
     switch (activeSignalType) {
-        case SignalType::ECG: {
-            ECGLimits limits = getECGLimits(currentECG.condition);
-            currentECG.qrsAmplitude = clamp(amplitude, limits.qrsAmplitude.min, limits.qrsAmplitude.max);
+        case SignalType::ECG:
+            currentECG.qrsAmplitude = ampFactor;
             break;
-        }
-        case SignalType::EMG: {
-            EMGLimits limits = getEMGLimits(currentEMG.condition);
-            currentEMG.amplitude = clamp(amplitude, limits.amplitude.min, limits.amplitude.max);
+        case SignalType::EMG:
+            currentEMG.amplitude = ampFactor;
             break;
-        }
-        case SignalType::PPG: {
-            // PPG usa perfusionIndex como proxy de amplitud
-            PPGLimits limits = getPPGLimits(currentPPG.condition);
-            float pi = amplitude * 5.0f;
-            currentPPG.perfusionIndex = clamp(pi, limits.perfusionIndex.min, limits.perfusionIndex.max);
+        case SignalType::PPG:
+            currentPPG.amplification = ampFactor;
             break;
-        }
         default:
             break;
     }
@@ -182,10 +179,41 @@ void ParamController::setExcitationLevel(float level) {
     if (activeSignalType == SignalType::EMG) {
         EMGLimits limits = getEMGLimits(currentEMG.condition);
         EMGParameters pending = currentEMG;
-        pending.excitationLevel = clamp(level, limits.excitationLevel.min, limits.excitationLevel.max);
+        // level viene como porcentaje 0-100, convertir a 0.0-1.0
+        float levelNormalized = level / 100.0f;
+        pending.excitationLevel = clamp(levelNormalized, limits.excitationLevel.min, limits.excitationLevel.max);
         pendingEMG.hasPending = true;
         pendingEMG.pendingValue = pending;
         pendingEMG.requestTime = millis();
+    }
+}
+
+void ParamController::setHRVariability(float hrv) {
+    if (activeSignalType == SignalType::ECG) {
+        HRVRange limits = getHRVLimits(currentECG.condition);
+        // hrv viene como porcentaje 0-100, convertir a 0.0-1.0 (o dejar como %)
+        // Los límites de HRV ya están en % (1-35%)
+        float hrvClamped = clamp(hrv, limits.minVar, limits.maxVar);
+        
+        // Almacenar en parámetros pendientes (se aplica en próximo ciclo)
+        ECGParameters pending = currentECG;
+        // TODO: Añadir campo hrVariability a ECGParameters si no existe
+        // Por ahora, el HRV se maneja internamente en el modelo ECG
+        pendingECG.hasPending = true;
+        pendingECG.pendingValue = pending;
+        pendingECG.requestTime = millis();
+    }
+}
+
+void ParamController::setPerfusionIndex(float pi) {
+    if (activeSignalType == SignalType::PPG) {
+        PPGLimits limits = getPPGLimits(currentPPG.condition);
+        PPGParameters pending = currentPPG;
+        // PI viene directamente en % (0.3-20%)
+        pending.perfusionIndex = clamp(pi, limits.perfusionIndex.min, limits.perfusionIndex.max);
+        pendingPPG.hasPending = true;
+        pendingPPG.pendingValue = pending;
+        pendingPPG.requestTime = millis();
     }
 }
 

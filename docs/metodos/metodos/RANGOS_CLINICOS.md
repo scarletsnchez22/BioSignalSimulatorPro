@@ -229,4 +229,5 @@ Patología → HR,PI (aleatorios dentro del rango) → RR = 60/HR
 
 ---
 
-*BioSimulator Pro v2.0.0*
+*BioSignalSimulator Pro*  
+*Revisado: 06.01.2026*

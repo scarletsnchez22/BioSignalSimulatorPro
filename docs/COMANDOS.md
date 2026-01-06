@@ -508,6 +508,75 @@ printh 65 [page] [component_id] [event] FF FF FF
 
 ---
 
-**Última actualización:** Diciembre 2025  
-**Proyecto:** BioSimulator Pro v3.0.0  
+## 📊 Scripts de Análisis Python (tools/)
+
+### 🔬 Análisis FFT de Modelos Matemáticos
+
+Analiza el contenido frecuencial intrínseco de cada modelo (ECG McSharry, EMG Fuglevand, PPG Allen).
+
+```powershell
+# Ruta al Python correcto (no usar el de Inkscape)
+$PYTHON = "C:\Users\sgsa0\AppData\Local\Programs\Python\Python314\python.exe"
+
+# Analizar los 3 modelos (7 segundos, por defecto)
+& $PYTHON "tools/model_fft_analysis.py"
+
+# Especificar duración
+& $PYTHON "tools/model_fft_analysis.py" --duration 10
+
+# Analizar solo un modelo
+& $PYTHON "tools/model_fft_analysis.py" --signal ECG
+& $PYTHON "tools/model_fft_analysis.py" --signal EMG
+& $PYTHON "tools/model_fft_analysis.py" --signal PPG
+
+# EMG con nivel de excitación específico (0-1)
+& $PYTHON "tools/model_fft_analysis.py" --signal EMG --exc 0.8
+
+# Guardar en directorio específico
+& $PYTHON "tools/model_fft_analysis.py" --output "docs/fft_analysis"
+```
+
+**Salida:** Genera gráficos PNG y reporte TXT en `docs/fft_analysis/`
+
+---
+
+### 📡 Captura FFT desde Serial (Hardware)
+
+Captura datos del ESP32 vía Serial y analiza con FFT.
+
+```powershell
+# Listar puertos COM disponibles
+& $PYTHON "tools/fft_spectrum_analyzer.py" --list-ports
+
+# Capturar y analizar ECG (10 segundos)
+& $PYTHON "tools/fft_spectrum_analyzer.py" --port COM4 --signal ECG --duration 10
+
+# Capturar EMG con ventana Blackman
+& $PYTHON "tools/fft_spectrum_analyzer.py" --port COM4 --signal EMG --duration 7 --window blackman
+
+# Modo simulación (sin hardware)
+& $PYTHON "tools/fft_spectrum_analyzer.py" --simulate --signal PPG --duration 5
+```
+
+**Nota:** El ESP32 debe estar ejecutando señales (presionar PLAY en Nextion).
+
+---
+
+### 🏥 Validador de Rangos Clínicos
+
+```powershell
+# Ejecutar validador
+& $PYTHON "tools/clinical_ranges.py"
+
+# Test de todas las condiciones
+& $PYTHON "tools/test_all_conditions.py"
+
+# Validador de señales
+& $PYTHON "tools/signal_validator.py"
+```
+
+---
+
+**Revisado:** 06.01.2026  
+**Proyecto:** BioSignalSimulator Pro  
 **Hardware:** ESP32-WROOM-32

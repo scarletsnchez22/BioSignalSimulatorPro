@@ -170,7 +170,7 @@ Ver metodología completa: [`docs/APP_WEB_METODOLOGIA.md`](docs/APP_WEB_METODOLO
 ## 👨‍💻 Autor
 
 Desarrollado como Trabajo de Titulación  
-**Fecha:** Diciembre 2025  
+**Revisado:** 06.01.2026  
 **Versión:** 1.0.0
 
 ---

@@ -1,0 +1,116 @@
+
+================================================================================
+     REPORTE DE ANÁLISIS ESPECTRAL DE MODELOS - BioSignalSimulator Pro
+================================================================================
+Fecha: 2026-01-06 01:41:48
+Duración de simulación: 7.0 segundos
+
+================================================================================
+RESUMEN EJECUTIVO
+================================================================================
+
+| Señal | Fs modelo | Fmax(-20dB) | F 99% energía | Fc RC sugerida | R (C=1µF) |
+|-------|-----------|-------------|---------------|----------------|-----------|
+| ECG   |   300 Hz   |    24.0 Hz   |      21.6 Hz   |         48 Hz   |   3316 Ω   |
+| EMG   |  1000 Hz   |   158.0 Hz   |     146.3 Hz   |        316 Hz   |    504 Ω   |
+| PPG   |    20 Hz   |     4.9 Hz   |       4.9 Hz   |         10 Hz   |  16384 Ω   |
+
+================================================================================
+DETALLES POR SEÑAL
+================================================================================
+
+--- ECG: ECG McSharry ECGSYN @ 300 Hz ---
+
+Parámetros del modelo:
+  • Frecuencia de muestreo: 300 Hz
+  • Muestras generadas: 2100
+  • Resolución frecuencial: 0.1429 Hz
+
+Resultados espectrales:
+  • Frecuencia dominante: 1.14 Hz
+  • Amplitud en freq. dominante: 0.1170
+  • Ancho de banda a -3dB: 12.00 Hz
+  • Ancho de banda a -20dB: 24.00 Hz
+  • Frecuencia con 99% energía: 21.57 Hz
+  • Energía en banda clínica: 100.0%
+
+Validación clínica (0.05 - 150.00 Hz):
+  • ✓ Contenido dentro de BW clínico
+  • ✓ Fs modelo adecuada
+
+Filtro RC recomendado:
+  • Fc = 2 × Fmax(-20dB) = 48.0 Hz
+  • Con C = 1 µF: R = 3316 Ω
+
+
+--- EMG: EMG Fuglevand MUAP @ 1000 Hz ---
+
+Parámetros del modelo:
+  • Frecuencia de muestreo: 1000 Hz
+  • Muestras generadas: 7000
+  • Resolución frecuencial: 0.1429 Hz
+
+Resultados espectrales:
+  • Frecuencia dominante: 55.43 Hz
+  • Amplitud en freq. dominante: 0.0421
+  • Ancho de banda a -3dB: 96.57 Hz
+  • Ancho de banda a -20dB: 158.00 Hz
+  • Frecuencia con 99% energía: 146.29 Hz
+  • Energía en banda clínica: 99.7%
+
+Validación clínica (20.00 - 500.00 Hz):
+  • ✓ Contenido dentro de BW clínico
+  • ✓ Fs modelo adecuada
+
+Filtro RC recomendado:
+  • Fc = 2 × Fmax(-20dB) = 316.0 Hz
+  • Con C = 1 µF: R = 504 Ω
+
+
+--- PPG: PPG Allen Gaussiano @ 20 Hz ---
+
+Parámetros del modelo:
+  • Frecuencia de muestreo: 20 Hz
+  • Muestras generadas: 140
+  • Resolución frecuencial: 0.1429 Hz
+
+Resultados espectrales:
+  • Frecuencia dominante: 1.14 Hz
+  • Amplitud en freq. dominante: 0.3007
+  • Ancho de banda a -3dB: 1.29 Hz
+  • Ancho de banda a -20dB: 4.86 Hz
+  • Frecuencia con 99% energía: 4.86 Hz
+  • Energía en banda clínica: 99.9%
+
+Validación clínica (0.50 - 10.00 Hz):
+  • ✓ Contenido dentro de BW clínico
+  • ✓ Fs modelo adecuada
+
+Filtro RC recomendado:
+  • Fc = 2 × Fmax(-20dB) = 9.7 Hz
+  • Con C = 1 µF: R = 16384 Ω
+
+
+================================================================================
+CONCLUSIONES Y RECOMENDACIONES
+================================================================================
+
+1. FRECUENCIAS DE MUESTREO DEL MODELO (config.h):
+   - ECG @ 300 Hz: ADECUADA
+   - EMG @ 1000 Hz: ADECUADA
+   - PPG @ 20 Hz: ADECUADA
+
+2. FILTROS RC POST-DAC (con C = 1 µF):
+   - ECG: R ≈ 3316 Ω
+   - EMG: R ≈ 504 Ω
+   - PPG: R ≈ 16384 Ω
+
+3. NOTAS:
+   - Los modelos generan señales con contenido frecuencial BIEN DEFINIDO
+   - El EMG tiene el mayor ancho de banda debido a los MUAPs rápidos
+   - El PPG tiene el menor ancho de banda (señal lenta, pulsátil)
+   - El ECG está dominado por el QRS que aporta componentes hasta ~30-40 Hz
+
+================================================================================
+                              FIN DEL REPORTE
+================================================================================

@@ -74,6 +74,8 @@ public:
     void setHeartRate(float hr);            // ECG, PPG
     void setCondition(uint8_t condition);   // Todos
     void setExcitationLevel(float level);   // Solo EMG
+    void setHRVariability(float hrv);       // Solo ECG
+    void setPerfusionIndex(float pi);       // Solo PPG
     
     // Aplicar parámetros pendientes (llamar en fin de ciclo)
     bool applyPendingParams();

@@ -1,7 +1,6 @@
 # BioSignalSimulator Pro - Metodología de Diseño Electrónico
 
-**Versión:** 3.0.0  
-**Fecha:** Enero 2025  
+**Revisado:** 06.01.2026  
 **Autor:** [Nombre del Tesista]  
 **Documento para:** Trabajo de Titulación
 
@@ -264,6 +263,52 @@ f_c = 1 / (2π × R × C)
 - **Ripple residual del XL6009:** A 400 kHz, la atenuación es >48 dB, eliminando cualquier componente de conmutación que haya pasado el filtro π.
 
 > **Nota:** Se eligió 1 µF (en lugar de 100 nF) para colocar fc entre la frecuencia máxima de las señales biomédicas (500 Hz) y la frecuencia de muestreo del DAC (4 kHz), cumpliendo el criterio de filtro de reconstrucción: fmax < fc < Fs/2.
+
+#### 2.5.3.1 Alternativa: Filtros RC Optimizados por Señal (Mejora Futura)
+
+Basándose en el análisis espectral FFT de las señales generadas por los modelos matemáticos, se identificó que cada señal tiene un ancho de banda significativamente diferente. Para maximizar la atenuación del stepping del DAC preservando el contenido espectral útil, se propone una mejora futura con filtros RC dedicados por señal, conmutados mediante relés:
+
+**Tabla: Filtros RC optimizados (propuesta)**
+
+| Señal | Contenido Espectral | fc Objetivo | R (con C=1µF) | Atenuación @ 4kHz |
+|-------|---------------------|-------------|---------------|-------------------|
+| **ECG** | 0.5-40 Hz | 48 Hz | 3.3 kΩ | -38 dB |
+| **EMG** | 20-500 Hz | 339 Hz | 470 Ω | -21 dB |
+| **PPG** | 0.5-8 Hz | 10.6 Hz | 15 kΩ | -51 dB |
+
+
+Comparación con tus valores anteriores (basados en FFT)
+Señal	fc anterior	fc nuevo	Diferencia
+ECG	48 Hz (3.3kΩ)	100 Hz (1.5kΩ)	Más permisivo, pasa más armónicos QRS
+EMG	339 Hz (470Ω)	482 Hz (330Ω)	Muy similar, 330Ω da más margen
+PPG	10.6 Hz (15kΩ)	10.6 Hz (15kΩ)	Idéntico ✓
+
+
+**Implementación sugerida:**
+
+```
+                            ┌─── R_ECG (3.3kΩ) ───┐
+                            │                     │
+DAC GPIO25 ───► RELÉ 3CH ───┼─── R_EMG (470Ω) ───┼───► C (1µF) ───► MCP6002 ───► BNC
+                            │                     │
+                            └─── R_PPG (15kΩ) ───┘
+
+Control: 
+- Relé activado por GPIO según señal activa
+- ESP32 conmuta al cambiar de modo (ECG/EMG/PPG)
+```
+
+**Ventajas de esta mejora:**
+- ECG: -38 dB vs -8 dB actual (4.7× mejor rechazo de stepping)
+- PPG: -51 dB, señal prácticamente libre de ruido del DAC
+- EMG: fc más cercana al contenido útil pero suficiente margen
+
+**Componentes adicionales requeridos:**
+- 1× Módulo relé 3 canales 5V (SPDT)
+- 3× Resistencias: 3.3 kΩ, 470 Ω, 15 kΩ (1%)
+- 3× GPIOs adicionales para control de relés
+
+> **Nota:** Esta mejora es opcional y no está implementada en el prototipo actual. El filtro RC único (fc=1.59 kHz) es suficiente para aplicaciones educativas.
 
 #### 2.5.4 Consumos y Autonomía
 

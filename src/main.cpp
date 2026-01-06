@@ -369,11 +369,13 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             if (stateMachine.getState() == SystemState::PAUSED) {
                 // Reanudar desde donde se pausó (continuar onda)
                 stateMachine.processEvent(SystemEvent::RESUME);
+                wifiServer.setStreamingEnabled(true);  // Reanudar streaming WiFi
                 Serial.println("[UI] PLAY: Reanudando señal");
             } else {
                 // Reiniciar desde cero (limpiar waveform)
                 nextion->clearWaveform(WAVEFORM_COMPONENT_ID, 0);
                 stateMachine.processEvent(SystemEvent::START_SIMULATION);
+                wifiServer.setStreamingEnabled(true);  // Habilitar streaming WiFi
                 Serial.println("[UI] PLAY: Iniciando/Reiniciando señal");
             }
             break;
@@ -981,10 +983,24 @@ void updateDisplay() {
                     nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 1, ch1_mapped);
                     
                 } else if (type == SignalType::PPG) {
-                    // PPG: Un solo canal (AC: 0 a 150 mV) - señal UNIPOLAR
-                    // La amplificación ya está aplicada en el modelo (getWaveformValue)
-                    uint8_t ppgValue = signalEngine->getPPGModel().getWaveformValue();
-                    waveValue = map(ppgValue, 0, 255, 20, 235);
+                    // PPG: Un solo canal (AC interpolado a 100 Hz)
+                    // Usar valor interpolado del displayBuffer para evitar escalones
+                    float acValue_mV = 0.0f;
+                    bool hasValue = signalEngine->getDisplaySample(sampleIndex, acValue_mV);
+                    
+                    if (hasValue) {
+                        // Aplicar factor de amplificación (50-200% → 0.5-2.0)
+                        PPGParameters ppgParams = signalEngine->getPPGModel().getParameters();
+                        acValue_mV *= ppgParams.amplification;
+                        
+                        // Mapeo unipolar: 0 → 20, 150 mV → 235
+                        const float AC_DISPLAY_MAX = 150.0f;  // mV
+                        float normalized = acValue_mV / AC_DISPLAY_MAX;
+                        normalized = constrain(normalized, 0.0f, 1.0f);
+                        waveValue = (int)(20 + (normalized * 215));
+                    } else {
+                        waveValue = 20;  // Base si no hay muestra
+                    }
                     
                     nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, (uint8_t)waveValue);
                     
@@ -1287,6 +1303,7 @@ void loop() {
                 wsData.condition = ecg.getConditionName();
                 wsData.state = "RUNNING";
                 wsData.value = ecg.getCurrentValueMV();
+                wsData.envelope = 0;
                 wsData.dacValue = signalEngine->getLastDACValue();
                 wsData.timestamp = millis();
                 
@@ -1294,6 +1311,7 @@ void loop() {
                 wsMetrics.rr = (int)ecg.getCurrentRRInterval();
                 wsMetrics.qrs = ecg.getQRSAmplitude();
                 wsMetrics.st = ecg.getSTDeviation_mV();
+                wsMetrics.hrv = ecg.getHRStd();  // HRV como desviación estándar del HR
                 break;
             }
             case SignalType::EMG: {
@@ -1302,12 +1320,14 @@ void loop() {
                 wsData.condition = emg.getConditionName();
                 wsData.state = "RUNNING";
                 wsData.value = emg.getCurrentValueMV();
+                wsData.envelope = emg.getProcessedSample();  // Envelope RMS
                 wsData.dacValue = signalEngine->getLastDACValue();
                 wsData.timestamp = millis();
                 
                 wsMetrics.rms = emg.getRMSAmplitude();
                 wsMetrics.excitation = (int)(emg.getExcitation() * 100);
                 wsMetrics.activeUnits = emg.getActiveMotorUnits();
+                wsMetrics.freq = (int)emg.getFatigueMDF();  // Frecuencia mediana (MDF)
                 break;
             }
             case SignalType::PPG: {
@@ -1316,12 +1336,14 @@ void loop() {
                 wsData.condition = ppg.getConditionName();
                 wsData.state = "RUNNING";
                 wsData.value = ppg.getLastACValue();
+                wsData.envelope = 0;
                 wsData.dacValue = signalEngine->getLastDACValue();
                 wsData.timestamp = millis();
                 
                 wsMetrics.hr = (int)ppg.getCurrentHeartRate();
                 wsMetrics.rr = (int)ppg.getCurrentRRInterval();
                 wsMetrics.pi = ppg.getPerfusionIndex();
+                wsMetrics.ac = ppg.getLastACValue();
                 break;
             }
             default:

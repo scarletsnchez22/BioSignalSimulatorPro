@@ -1,7 +1,7 @@
 # Metodología de Generación de Señales Fisiológicas Sintéticas
 
-**BioSimulator Pro v1.0.0**  
-**Fecha:** 18 de Diciembre de 2025  
+**BioSignalSimulator Pro**  
+**Revisado:** 06.01.2026  
 **Documento de Sustentación Técnica**
 
 ---
@@ -47,11 +47,11 @@ $$f_s \geq 5 \times f_{max}$$
 
 **Tabla 2.1: Frecuencias de muestreo por señal**
 
-| Señal | $f_{max}$ fisiológica | $f_s$ implementada | Justificación |
-|-------|----------------------|-------------------|---------------|
-| ECG | 150 Hz (QRS) | 750 Hz | Preservación complejo QRS |
-| EMG | 400 Hz (MUAP) | 2000 Hz | Captura potenciales de acción |
-| PPG | 20 Hz (pulso) | 100 Hz | Morfología de onda de pulso |
+| Señal | $f_{max}$ clínico | $f_s$ implementada | Justificación |
+|-------|-------------------|-------------------|---------------|
+| ECG | 150 Hz (QRS) | 300 Hz | Nyquist clínico (2× fmax) |
+| EMG | 500 Hz (MUAP) | 1000 Hz | Nyquist sEMG (2× fmax) |
+| PPG | 10 Hz (pulso) | 20 Hz | Nyquist forma lenta (2× fmax) |
 
 ### 2.2 Principio de Fidelidad Fisiológica
 
@@ -1238,5 +1238,6 @@ float amplifiedAC = lastACValue * params.amplification;
 
 ---
 
-*Documento generado para BioSimulator Pro v1.0.0*  
+*Documento generado para BioSignalSimulator Pro*  
+*Revisado: 06.01.2026*
 *18 de Diciembre de 2025*

@@ -1,7 +1,7 @@
 # Metodología de Arquitectura Computacional del Sistema
 
-**BioSimulator Pro v1.0.0**  
-**Fecha:** 3 de Enero de 2026 (Actualizado)  
+**BioSignalSimulator Pro**  
+**Revisado:** 06.01.2026  
 **Documento de Sustentación Técnica**
 
 ---
@@ -86,7 +86,7 @@ El siguiente diagrama muestra la arquitectura computacional completa del sistema
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                           BioSimulator Pro v1.0.0 - ARQUITECTURA COMPLETA                    │
+│                           BioSignalSimulator Pro - ARQUITECTURA COMPLETA                    │
 │                              ESP32 Dual-Core + WiFi AP + Nextion                             │
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                             │
@@ -739,11 +739,11 @@ Esta sección documenta la metodología sistemática utilizada para seleccionar 
 
 **Tabla 9.2: Frecuencias internas de los modelos**
 
-| Señal | fmax clínico | Detalle más fino | Fs_modelo elegido | Justificación |
+| Señal | fmax clínico | Criterio Nyquist | Fs_modelo elegido | Justificación |
 |-------|--------------|------------------|-------------------|---------------|
-| **ECG** | 150 Hz | QRS ~80 ms | **750 Hz** | ~60 muestras/QRS, estabilidad RK4 |
-| **EMG** | 500 Hz | MUAP ~1-3 ms | **2000 Hz** | ~4 muestras/MUAP (Fuglevand) |
-| **PPG** | 15 Hz | Dicrótico ~50 ms | **100 Hz** | ~5 muestras/dicrótico, estándar clínico |
+| **ECG** | 150 Hz | 2× fmax | **300 Hz** | Nyquist clínico (IEC 60601-2-51) |
+| **EMG** | 500 Hz | 2× fmax | **1000 Hz** | Nyquist sEMG estándar |
+| **PPG** | 10 Hz | 2× fmax | **20 Hz** | Forma de onda lenta, Nyquist clínico |
 
 **Modelos matemáticos implementados:**
 - **ECG:** McSharry ECGSYN (EDOs con integración RK4)
@@ -756,21 +756,21 @@ Esta sección documenta la metodología sistemática utilizada para seleccionar 
 
 **Criterios de selección del timer:**
 1. **Fs_timer > Fs_modelo_máximo** (para no perder información del modelo más rápido)
-2. **Factor de seguridad 2×** sobre el modelo más exigente
+2. **Factor de seguridad 4×** sobre el modelo más exigente
 3. **Divisibilidad** por frecuencias de salida (100 Hz, 200 Hz) para decimación entera
 
 **Cálculo:**
 ```
-Fs_modelo_máximo = EMG @ 2000 Hz
-Factor de seguridad = 2×
-Fs_timer = 2000 Hz × 2 = 4000 Hz
+Fs_modelo_máximo = EMG @ 1000 Hz
+Factor de seguridad = 4×
+Fs_timer = 1000 Hz × 4 = 4000 Hz
 ```
 
 **Tabla 9.3: Configuración del timer maestro**
 
 | Parámetro | Valor | Justificación |
 |-----------|-------|---------------|
-| FS_TIMER_HZ | 4000 Hz | 2× EMG (2000 Hz), factor seguridad |
+| FS_TIMER_HZ | 4000 Hz | 4× EMG (1000 Hz), factor seguridad |
 | Buffer circular | 2048 muestras | ~0.5 s de autonomía |
 | Jitter esperado | < 0.25 ms | 1 tick de timer |
 
@@ -793,9 +793,9 @@ Donde:
 
 | Señal | Fs_modelo | Fs_timer | Ratio upsampling |
 |-------|-----------|----------|------------------|
-| **ECG** | 750 Hz | 4000 Hz | **5.3:1** (~5 muestras interpoladas) |
-| **EMG** | 2000 Hz | 4000 Hz | **2:1** (2 muestras interpoladas) |
-| **PPG** | 100 Hz | 4000 Hz | **40:1** (40 muestras interpoladas) |
+| **ECG** | 300 Hz | 4000 Hz | **13:1** (~13 muestras interpoladas) |
+| **EMG** | 1000 Hz | 4000 Hz | **4:1** (4 muestras interpoladas) |
+| **PPG** | 20 Hz | 4000 Hz | **200:1** (~200 muestras interpoladas) |
 
 ### 9.5 Decimación para Visualización (Solo Nextion)
 
@@ -995,9 +995,9 @@ Esta sección documenta la arquitectura de la **salida analógica funcional** de
 
 | Señal | Fs_modelo | Fs_DAC | Fs_Nextion | Nyquist DAC | Contenido útil |
 |-------|-----------|--------|------------|-------------|----------------|
-| **ECG** | 750 Hz | **4000 Hz** | 200 Hz | 2000 Hz | 0.5–150 Hz ✓ |
-| **EMG** | 2000 Hz | **4000 Hz** | 100 Hz | 2000 Hz | 20–500 Hz ✓ |
-| **PPG** | 100 Hz | **4000 Hz** | 100 Hz | 2000 Hz | 0.5–10 Hz ✓ |
+| **ECG** | 300 Hz | **4000 Hz** | 200 Hz | 2000 Hz | 0.5–150 Hz ✓ |
+| **EMG** | 1000 Hz | **4000 Hz** | 100 Hz | 2000 Hz | 20–500 Hz ✓ |
+| **PPG** | 20 Hz | **4000 Hz** | 100 Hz | 2000 Hz | 0.5–10 Hz ✓ |
 
 ### 10.2 Cadena de Procesamiento Digital (Antes del DAC)
 
@@ -1010,9 +1010,9 @@ La señal pasa por tres etapas de procesamiento digital antes de llegar al DAC:
 │                                                                             │
 │  ETAPA 1: MODELO MATEMÁTICO                                                 │
 │  ┌─────────────────────────────────────────────────────────────────┐        │
-│  │  ECG: McSharry RK4 @ 750 Hz (genera muestras discretas)         │        │
-│  │  EMG: Fuglevand MU @ 2000 Hz (100 unidades motoras)             │        │
-│  │  PPG: Allen Gaussiano @ 100 Hz (pulso cardiovascular)           │        │
+│  │  ECG: McSharry RK4 @ 300 Hz (genera muestras discretas)         │        │
+│  │  EMG: Fuglevand MU @ 1000 Hz (100 unidades motoras)             │        │
+│  │  PPG: Allen Gaussiano @ 20 Hz (pulso cardiovascular)            │        │
 │  └─────────────────────────────────────────────────────────────────┘        │
 │           │                                                                 │
 │           │ Muestras a frecuencia del modelo (variable)                     │
@@ -1176,9 +1176,9 @@ El filtro RC suaviza → ADC lee ~2.32V (correcto)
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  [Modelo Matemático]                                                        │
-│        │ ECG: McSharry RK4 @ 750 Hz                                         │
-│        │ EMG: Fuglevand MU @ 2000 Hz                                        │
-│        │ PPG: Allen Gaussiano @ 100 Hz                                      │
+│        │ ECG: McSharry RK4 @ 300 Hz                                         │
+│        │ EMG: Fuglevand MU @ 1000 Hz                                        │
+│        │ PPG: Allen Gaussiano @ 20 Hz                                       │
 │        ▼                                                                    │
 │  [Interpolación Lineal] ──► Upsampling a 4000 Hz (OVERSAMPLING)             │
 │        ▼                                                                    │
@@ -1356,5 +1356,5 @@ if (millis() - lastADCRead_ms >= downsampleInterval_ms) {
 
 ---
 
-*Documento de arquitectura computacional para BioSimulator Pro v1.0.0*  
-*Actualizado: 4 de Enero de 2026*
+*Documento de arquitectura computacional para BioSignalSimulator Pro*  
+*Revisado: 06.01.2026*
