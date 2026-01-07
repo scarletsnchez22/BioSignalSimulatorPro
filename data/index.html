@@ -12,21 +12,21 @@
     <div class="app">
         <!-- Header -->
         <header class="header">
-            <div class="title">📊 BioSimulator</div>
+            <div class="title">📊 BioSimulator Pro</div>
             <div class="status">
                 <span id="dot" class="dot"></span>
-                <span id="conn">Offline</span>
+                <span id="conn">Conectando...</span>
             </div>
         </header>
 
-        <!-- Info -->
+        <!-- Info Bar -->
         <div class="info">
             <span>Señal: <b id="sig" class="accent">--</b></span>
-            <span>Cond: <b id="cond">--</b></span>
+            <span>Condición: <b id="cond" class="accent">--</b></span>
             <span id="state" class="badge">IDLE</span>
         </div>
 
-        <!-- Plotter -->
+        <!-- Plot Area -->
         <div class="plot-area">
             <div class="canvas-wrap">
                 <div class="y-axis">
@@ -36,12 +36,12 @@
                 </div>
                 <canvas id="canvas"></canvas>
                 <div id="legend" class="legend">
-                    <span class="leg"><i class="lc c1"></i><span id="l1">Señal</span></span>
+                    <span class="leg"><i class="lc c1"></i><span id="l1">ECG</span></span>
                     <span id="l2w" class="leg" style="display:none"><i class="lc c2"></i><span id="l2">Env</span></span>
                 </div>
             </div>
             <div class="x-axis">
-                <span>0</span>
+                <span>0s</span>
                 <span id="xMid">1.75s</span>
                 <span id="xMax">3.5s</span>
             </div>
@@ -49,42 +49,89 @@
 
         <!-- Metrics ECG -->
         <div id="mECG" class="metrics" style="display:none">
-            <div class="m"><span class="ml">HR</span><span class="mv" id="ecgHR">--</span><span class="mu">bpm</span></div>
-            <div class="m"><span class="ml">RR</span><span class="mv" id="ecgRR">--</span><span class="mu">ms</span></div>
-            <div class="m"><span class="ml">QRS</span><span class="mv" id="ecgQRS">--</span><span class="mu">mV</span></div>
-            <div class="m"><span class="ml">ST</span><span class="mv" id="ecgST">--</span><span class="mu">mV</span></div>
-            <div class="m"><span class="ml">HRV</span><span class="mv" id="ecgHRV">--</span><span class="mu">σ</span></div>
+            <div class="m">
+                <span class="ml">HR</span>
+                <div class="m-vals"><span class="mv" id="ecgHR">--</span><span class="mu">bpm</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">RR</span>
+                <div class="m-vals"><span class="mv" id="ecgRR">--</span><span class="mu">ms</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">QRS</span>
+                <div class="m-vals"><span class="mv" id="ecgQRS">--</span><span class="mu">mV</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">ST</span>
+                <div class="m-vals"><span class="mv" id="ecgST">--</span><span class="mu">mV</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">HRV</span>
+                <div class="m-vals"><span class="mv" id="ecgHRV">--</span><span class="mu">σ</span></div>
+            </div>
         </div>
 
         <!-- Metrics EMG -->
         <div id="mEMG" class="metrics" style="display:none">
-            <div class="m"><span class="ml">RMS</span><span class="mv" id="emgRMS">--</span><span class="mu">mV</span></div>
-            <div class="m"><span class="ml">EXC</span><span class="mv" id="emgEXC">--</span><span class="mu">%</span></div>
-            <div class="m"><span class="ml">MUs</span><span class="mv" id="emgMU">--</span><span class="mu">act</span></div>
-            <div class="m"><span class="ml">MDF</span><span class="mv" id="emgFRQ">--</span><span class="mu">Hz</span></div>
+            <div class="m">
+                <span class="ml">RMS</span>
+                <div class="m-vals"><span class="mv" id="emgRMS">--</span><span class="mu">mV</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">Excit</span>
+                <div class="m-vals"><span class="mv" id="emgEXC">--</span><span class="mu">%</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">MUs</span>
+                <div class="m-vals"><span class="mv" id="emgMU">--</span><span class="mu">act</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">MDF</span>
+                <div class="m-vals"><span class="mv" id="emgFRQ">--</span><span class="mu">Hz</span></div>
+            </div>
         </div>
 
         <!-- Metrics PPG -->
         <div id="mPPG" class="metrics" style="display:none">
-            <div class="m"><span class="ml">HR</span><span class="mv" id="ppgHR">--</span><span class="mu">bpm</span></div>
-            <div class="m"><span class="ml">RR</span><span class="mv" id="ppgRR">--</span><span class="mu">ms</span></div>
-            <div class="m"><span class="ml">PI</span><span class="mv" id="ppgPI">--</span><span class="mu">%</span></div>
-            <div class="m"><span class="ml">AC</span><span class="mv" id="ppgAC">--</span><span class="mu">mV</span></div>
+            <div class="m">
+                <span class="ml">HR</span>
+                <div class="m-vals"><span class="mv" id="ppgHR">--</span><span class="mu">bpm</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">RR</span>
+                <div class="m-vals"><span class="mv" id="ppgRR">--</span><span class="mu">ms</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">PI</span>
+                <div class="m-vals"><span class="mv" id="ppgPI">--</span><span class="mu">%</span></div>
+            </div>
+            <div class="m">
+                <span class="ml">AC</span>
+                <div class="m-vals"><span class="mv" id="ppgAC">--</span><span class="mu">mV</span></div>
+            </div>
         </div>
 
         <!-- Controls -->
         <div class="controls">
-            <button id="btnZi" class="btn">➕</button>
-            <span id="zoom">100%</span>
-            <button id="btnZo" class="btn">➖</button>
-            <button id="btnP" class="btn pri">⏸</button>
-            <button id="btnC" class="btn">🗑</button>
-            <button id="btnS" class="btn">📷</button>
+            <div class="ctrl-group">
+                <button id="btnZi" class="btn" title="Zoom In">🔍+</button>
+                <span id="zoom">100%</span>
+                <button id="btnZo" class="btn" title="Zoom Out">🔍-</button>
+            </div>
+            <div class="ctrl-group">
+                <button id="btnUp" class="btn" title="Subir">⬆</button>
+                <button id="btnDn" class="btn" title="Bajar">⬇</button>
+                <button id="btnRst" class="btn" title="Reset Vista">⟲</button>
+            </div>
+            <button id="btnP" class="btn pri" title="Pausar">⏸ Pausar</button>
+            <button id="btnC" class="btn" title="Limpiar">🗑</button>
+            <button id="btnS" class="btn" title="Captura">📷</button>
+            <button id="btnD" class="btn" title="Descargar CSV">💾</button>
         </div>
 
         <!-- Footer -->
         <footer class="footer">
-            <span id="rate">0 pts/s</span> | <span id="scale">--</span>
+            <span id="rate">0 pts/s</span> · <span id="scale">0.25 mV/div</span> · <span id="offset">Offset: 0</span>
         </footer>
     </div>
     <script src="app.js"></script>

@@ -124,7 +124,7 @@ struct ECGParameters {
         qrsAmplitude(1.0f),
         tWaveAmplitude(1.0f),
         stShift(0.0f),
-        noiseLevel(0.05f),
+        noiseLevel(0.0f),          // Sin ruido por defecto
         condition(ECGCondition::NORMAL)
     {}
 };
@@ -143,7 +143,7 @@ struct EMGParameters {
     EMGParameters() :
         excitationLevel(0.0f),
         amplitude(1.0f),
-        noiseLevel(0.05f),
+        noiseLevel(0.0f),          // Sin ruido por defecto
         condition(EMGCondition::REST)
     {}
 };
@@ -203,7 +203,7 @@ struct PPGParameters {
         heartRate(75.0f),
         perfusionIndex(5.0f),
         dicroticNotch(0.3f),
-        noiseLevel(0.05f),
+        noiseLevel(0.0f),          // Sin ruido por defecto
         amplification(1.0f),
         condition(PPGCondition::NORMAL)
     {}

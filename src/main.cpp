@@ -492,7 +492,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     params.condition = emg.getCondition();
                     params.excitationLevel = emgSliderValues.exc / 100.0f;  // 50 → 0.5
                     params.amplitude = emgSliderValues.amp / 100.0f;        // 150 → 1.5
-                    params.noiseLevel = emgSliderValues.noise / 100.0f;     // 5 → 0.05
+                    params.noiseLevel = emgSliderValues.noise / 100.0f;     // 0 → 0.00 (sin ruido)
                     emg.setParameters(params);
                     yield();  // Alimentar watchdog para evitar reset
                     delay(50);  // Dar tiempo al sistema para estabilizarse
@@ -508,7 +508,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                     params.condition = ppg.getCondition();
                     params.heartRate = (float)ppgSliderValues.hr;
                     params.perfusionIndex = ppgSliderValues.pi / 10.0f;  // 52 → 5.2
-                    params.noiseLevel = ppgSliderValues.noise / 100.0f;  // 5 → 0.05
+                    params.noiseLevel = ppgSliderValues.noise / 100.0f;  // 0 → 0.00 (sin ruido)
                     params.amplification = ppgSliderValues.amp / 100.0f; // 150 → 1.5
                     params.dicroticNotch = 0.4f;  // Mantener valor por defecto
                     ppg.setParameters(params);

@@ -31,6 +31,11 @@ WiFiServer_BioSim::WiFiServer_BioSim()
 bool WiFiServer_BioSim::begin() {
     Serial.println("[WiFi] Iniciando Access Point...");
     
+    // Desconectar cualquier conexión previa y resetear WiFi
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    delay(100);
+    
     // Inicializar SPIFFS para archivos web
     if (!SPIFFS.begin(true)) {
         Serial.println("[WiFi] ERROR: No se pudo montar SPIFFS");
@@ -40,11 +45,20 @@ bool WiFiServer_BioSim::begin() {
     
     // Configurar WiFi como Access Point
     WiFi.mode(WIFI_AP);
+    delay(100);
+    
     WiFi.softAPConfig(WIFI_LOCAL_IP, WIFI_GATEWAY, WIFI_SUBNET);
     
-    if (!WiFi.softAP(WIFI_SSID, WIFI_PASSWORD, WIFI_CHANNEL, false, WIFI_MAX_CLIENTS)) {
-        Serial.println("[WiFi] ERROR: No se pudo crear AP");
-        return false;
+    // Intentar crear AP hasta 3 veces
+    int attempts = 0;
+    while (!WiFi.softAP(WIFI_SSID, WIFI_PASSWORD, WIFI_CHANNEL, false, WIFI_MAX_CLIENTS)) {
+        attempts++;
+        Serial.printf("[WiFi] Intento %d de crear AP fallido\n", attempts);
+        if (attempts >= 3) {
+            Serial.println("[WiFi] ERROR: No se pudo crear AP después de 3 intentos");
+            return false;
+        }
+        delay(500);
     }
     
     Serial.printf("[WiFi] AP creado: %s\n", WIFI_SSID);
@@ -198,18 +212,23 @@ void WiFiServer_BioSim::onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
 // ============================================================================
 
 void WiFiServer_BioSim::sendSignalData(const WSSignalData& data) {
-    if (!_isActive || !_streamingEnabled || _ws->count() == 0) return;
+    if (!_isActive || !_streamingEnabled || !_ws || _ws->count() == 0) return;
     
     uint32_t now = millis();
     if (now - _lastSendTime < WS_SEND_INTERVAL_MS) return;
     _lastSendTime = now;
+    
+    // Limpiar clientes antes de enviar
+    _ws->cleanupClients();
+    
+    if (_ws->count() == 0) return;
     
     String json = buildDataJson(data);
     _ws->textAll(json);
 }
 
 void WiFiServer_BioSim::sendMetrics(const WSSignalMetrics& metrics) {
-    if (!_isActive || _ws->count() == 0) return;
+    if (!_isActive || !_ws || _ws->count() == 0) return;
     
     uint32_t now = millis();
     if (now - _lastMetricsTime < WS_METRICS_INTERVAL_MS) return;
@@ -231,12 +250,14 @@ void WiFiServer_BioSim::sendStateChange(const char* signalType, const char* cond
 // ============================================================================
 
 String WiFiServer_BioSim::buildDataJson(const WSSignalData& data) {
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<320> doc;
     doc["type"] = "data";
     doc["signal"] = data.signalType;
+    doc["condition"] = data.condition;
+    doc["state"] = data.state;
     doc["t"] = data.timestamp;
     doc["v"] = data.value;
-    doc["env"] = data.envelope;  // Envelope para EMG
+    doc["env"] = data.envelope;
     doc["dac"] = data.dacValue;
     
     String json;
@@ -290,6 +311,22 @@ uint8_t WiFiServer_BioSim::getClientCount() {
 void WiFiServer_BioSim::loop() {
     if (_ws) {
         _ws->cleanupClients();
+    }
+    
+    // Verificar que el WiFi AP sigue activo cada 5 segundos
+    static uint32_t lastCheck = 0;
+    if (millis() - lastCheck > 5000) {
+        lastCheck = millis();
+        
+        // Si el WiFi no está en modo AP, reiniciar
+        if (WiFi.getMode() != WIFI_AP && WiFi.getMode() != WIFI_AP_STA) {
+            Serial.println("[WiFi] AP no activo, reiniciando...");
+            WiFi.mode(WIFI_AP);
+            delay(100);
+            WiFi.softAPConfig(WIFI_LOCAL_IP, WIFI_GATEWAY, WIFI_SUBNET);
+            WiFi.softAP(WIFI_SSID, WIFI_PASSWORD, WIFI_CHANNEL, false, WIFI_MAX_CLIENTS);
+            Serial.printf("[WiFi] AP reiniciado: %s\n", WIFI_SSID);
+        }
     }
 }
 

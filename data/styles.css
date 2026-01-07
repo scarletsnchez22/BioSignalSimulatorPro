@@ -1,218 +1,518 @@
-/* BioSimulator Pro - Responsive Plotter */
+/* BioSimulator Pro - Diseño Profesional Responsive */
 :root {
-    --bg: #1a1a24;
-    --bg2: #22222e;
-    --bg3: #2a2a38;
-    --fg: #e0e0e0;
-    --fg2: #888;
+    --bg-dark: #0d1117;
+    --bg-card: #161b22;
+    --bg-input: #21262d;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
     --accent: #00ff88;
-    --accent2: #ff6b6b;
-    --grid: #2a3040;
-    --gridMaj: #3a4050;
+    --accent-dim: #00cc6a;
+    --warn: #ff6b6b;
+    --blue: #58a6ff;
 }
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { height: 100%; overflow: hidden; }
-body { font-family: 'Segoe UI', system-ui, sans-serif; background:var(--bg); color:var(--fg); }
 
-/* Main Layout */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { 
+    height: 100%; 
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-dark);
+    color: var(--text);
+}
+
+/* ============================================
+   LAYOUT PRINCIPAL
+   ============================================ */
 .app {
-    display: flex;
-    flex-direction: column;
+    display: grid;
     height: 100vh;
     height: 100dvh;
-    padding: 4px;
-    gap: 4px;
+    padding: 8px;
+    gap: 8px;
+    /* Mobile: una columna */
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr auto auto auto;
+    grid-template-areas:
+        "header"
+        "info"
+        "plot"
+        "metrics"
+        "controls"
+        "footer";
 }
 
-/* Header - compacto */
+/* ============================================
+   HEADER
+   ============================================ */
 .header {
+    grid-area: header;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 4px 8px;
-    background: var(--bg2);
-    border-radius: 4px;
-    min-height: 32px;
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
 }
-.title { font-weight: 600; font-size: 0.9rem; }
-.status { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #f44; }
-.dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
 
-/* Info Bar - compacto */
+.title {
+    font-weight: 600;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    padding: 4px 10px;
+    background: var(--bg-input);
+    border-radius: 20px;
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--warn);
+    transition: all 0.3s;
+}
+
+.dot.on {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+}
+
+/* ============================================
+   INFO BAR
+   ============================================ */
 .info {
+    grid-area: info;
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 12px;
-    padding: 3px 6px;
-    background: var(--bg2);
-    border-radius: 4px;
-    font-size: 0.75rem;
+    gap: 16px;
+    padding: 6px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.85rem;
     flex-wrap: wrap;
 }
-.accent { color: var(--accent); font-weight: 600; }
-.badge {
-    padding: 1px 8px;
-    border-radius: 3px;
-    font-size: 0.65rem;
-    font-weight: 600;
-    background: var(--fg2);
-    color: var(--bg);
-}
-.badge.run { background: var(--accent); }
-.badge.pause { background: #ffa502; }
 
-/* Plotter Area */
+.accent { 
+    color: var(--accent); 
+    font-weight: 600; 
+}
+
+.badge {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: var(--bg-input);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+}
+
+.badge.run { 
+    background: var(--accent); 
+    color: var(--bg-dark); 
+    border-color: var(--accent);
+}
+
+.badge.pause { 
+    background: #ffa502; 
+    color: var(--bg-dark);
+    border-color: #ffa502;
+}
+
+/* ============================================
+   PLOT AREA - El gráfico
+   ============================================ */
 .plot-area {
-    flex: 1;
+    grid-area: plot;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    min-height: 150px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 .canvas-wrap {
     flex: 1;
     display: flex;
-    background: #0a0a12;
-    border: 1px solid var(--grid);
-    border-radius: 3px;
     position: relative;
-    min-height: 120px;
+    background: #0a0a12;
+    min-height: 0;
 }
+
 .y-axis {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 4px 3px;
-    font-size: 0.6rem;
-    color: var(--fg2);
+    padding: 8px 4px;
+    font-size: 0.7rem;
+    color: var(--text-dim);
     text-align: right;
-    min-width: 38px;
-    background: var(--bg3);
-    border-right: 1px solid var(--grid);
+    min-width: 42px;
+    background: var(--bg-input);
+    border-right: 1px solid var(--border);
+    font-family: 'Consolas', 'Monaco', monospace;
 }
-#canvas { flex: 1; display: block; }
+
+#canvas { 
+    flex: 1; 
+    display: block;
+    cursor: grab;
+}
+
+#canvas:active {
+    cursor: grabbing;
+}
+
 .legend {
     position: absolute;
-    top: 4px;
-    right: 4px;
+    top: 8px;
+    right: 8px;
     display: flex;
-    gap: 8px;
-    font-size: 0.65rem;
-    background: rgba(0,0,0,0.7);
-    padding: 2px 6px;
-    border-radius: 3px;
+    gap: 12px;
+    font-size: 0.75rem;
+    background: rgba(22, 27, 34, 0.9);
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
 }
-.leg { display: flex; align-items: center; gap: 3px; }
-.lc { width: 10px; height: 2px; border-radius: 1px; }
+
+.leg { 
+    display: flex; 
+    align-items: center; 
+    gap: 5px; 
+}
+
+.lc { 
+    width: 16px; 
+    height: 3px; 
+    border-radius: 2px; 
+}
+
 .lc.c1 { background: var(--accent); }
-.lc.c2 { background: var(--accent2); }
+.lc.c2 { background: var(--warn); }
 
 .x-axis {
     display: flex;
     justify-content: space-between;
-    padding: 1px 42px;
-    font-size: 0.6rem;
-    color: var(--fg2);
+    padding: 4px 50px 4px 50px;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    background: var(--bg-input);
+    border-top: 1px solid var(--border);
+    font-family: 'Consolas', 'Monaco', monospace;
 }
 
-/* Metrics - COMPACTO con flex horizontal */
+/* ============================================
+   METRICS - Métricas en tarjetas
+   ============================================ */
 .metrics {
+    grid-area: metrics;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 4px;
-    padding: 4px;
-    background: var(--bg2);
-    border-radius: 4px;
+    gap: 8px;
+    padding: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
 }
+
 .m {
     display: flex;
-    align-items: baseline;
-    gap: 3px;
-    padding: 3px 8px;
-    background: var(--bg3);
-    border-radius: 4px;
-    white-space: nowrap;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-width: 70px;
 }
+
+.ml {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
 .mv {
-    font-size: 1rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: var(--accent);
-    font-family: 'Consolas', monospace;
+    font-family: 'Consolas', 'Monaco', monospace;
+    line-height: 1.2;
 }
-.mu { font-size: 0.6rem; color: var(--fg2); }
-.ml { font-size: 0.65rem; color: var(--fg); margin-left: 2px; }
-.ml::after { content: ':'; }
 
-/* Controls - compacto */
+.mu { 
+    font-size: 0.6rem; 
+    color: var(--text-dim);
+    margin-top: 1px;
+}
+
+/* ============================================
+   CONTROLS - Botones de control
+   ============================================ */
 .controls {
+    grid-area: controls;
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 6px;
-    padding: 4px;
-    background: var(--bg2);
-    border-radius: 4px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     flex-wrap: wrap;
 }
+
 .btn {
-    background: var(--bg3);
-    border: 1px solid var(--grid);
-    color: var(--fg);
-    padding: 5px 10px;
-    border-radius: 3px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.9rem;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
-.btn:active { transform: scale(0.95); background: var(--gridMaj); }
-.btn.pri { background: var(--accent); color: var(--bg); }
-#zoom { font-family: monospace; font-size: 0.7rem; min-width: 40px; text-align: center; }
 
-/* Footer */
-.footer {
+.btn:hover {
+    background: var(--border);
+    border-color: var(--text-dim);
+}
+
+.btn:active { 
+    transform: scale(0.95); 
+}
+
+.btn.pri { 
+    background: var(--accent); 
+    color: var(--bg-dark); 
+    border-color: var(--accent);
+    font-weight: 600;
+}
+
+.btn.pri:hover {
+    background: var(--accent-dim);
+}
+
+#zoom { 
+    font-family: 'Consolas', monospace; 
+    font-size: 0.85rem; 
+    min-width: 50px; 
     text-align: center;
-    padding: 2px;
-    font-size: 0.65rem;
-    color: var(--fg2);
+    padding: 0 8px;
+    color: var(--text-dim);
 }
 
-/* ===== RESPONSIVE ===== */
-
-/* Tablet/Desktop */
-@media (min-width: 600px) {
-    .app { padding: 6px; gap: 5px; }
-    .header { padding: 6px 12px; min-height: 36px; }
-    .title { font-size: 1rem; }
-    .status { font-size: 0.8rem; }
-    .info { padding: 4px 10px; font-size: 0.8rem; gap: 16px; }
-    .y-axis { min-width: 45px; font-size: 0.65rem; padding: 6px 4px; }
-    .x-axis { padding: 2px 50px; font-size: 0.65rem; }
-    .metrics { gap: 6px; padding: 6px; }
-    .m { padding: 4px 10px; }
-    .mv { font-size: 1.1rem; }
-    .btn { padding: 6px 12px; font-size: 0.8rem; }
+.ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    background: var(--bg-dark);
+    border-radius: 6px;
 }
 
-/* Very small phones */
-@media (max-width: 360px) {
-    .header { padding: 3px 6px; }
-    .title { font-size: 0.8rem; }
-    .info { font-size: 0.65rem; gap: 8px; }
-    .m { padding: 2px 6px; }
-    .mv { font-size: 0.9rem; }
-    .y-axis { min-width: 32px; font-size: 0.55rem; }
+/* ============================================
+   FOOTER
+   ============================================ */
+.footer {
+    grid-area: footer;
+    text-align: center;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
 }
 
-/* Landscape mode on phones */
-@media (max-height: 500px) and (orientation: landscape) {
-    .header { min-height: 28px; padding: 2px 8px; }
-    .info { padding: 2px 6px; }
-    .metrics { padding: 3px; gap: 3px; }
-    .m { padding: 2px 6px; }
-    .mv { font-size: 0.85rem; }
-    .controls { padding: 3px; gap: 4px; }
-    .btn { padding: 4px 8px; font-size: 0.7rem; }
-    .footer { display: none; }
+/* ============================================
+   RESPONSIVE - TABLET Y DESKTOP
+   ============================================ */
+@media (min-width: 768px) {
+    .app {
+        padding: 12px;
+        gap: 10px;
+        max-width: 1400px;
+        margin: 0 auto;
+        /* Desktop: métricas al lado del gráfico */
+        grid-template-columns: 1fr 200px;
+        grid-template-rows: auto auto 1fr auto auto;
+        grid-template-areas:
+            "header header"
+            "info info"
+            "plot metrics"
+            "controls controls"
+            "footer footer";
+    }
+    
+    .header {
+        padding: 10px 16px;
+    }
+    
+    .title {
+        font-size: 1.1rem;
+    }
+    
+    .info {
+        gap: 24px;
+        font-size: 0.9rem;
+    }
+    
+    .plot-area {
+        min-height: 300px;
+    }
+    
+    .y-axis {
+        min-width: 50px;
+        font-size: 0.75rem;
+        padding: 10px 6px;
+    }
+    
+    .x-axis {
+        font-size: 0.75rem;
+        padding: 6px 60px;
+    }
+    
+    /* Métricas en columna vertical al lado */
+    .metrics {
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: stretch;
+        padding: 10px;
+        gap: 8px;
+    }
+    
+    .m {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 12px;
+        min-width: unset;
+    }
+    
+    .ml {
+        margin-bottom: 0;
+        font-size: 0.7rem;
+    }
+    
+    .mv {
+        font-size: 1.3rem;
+    }
+    
+    .mu {
+        margin-top: 0;
+        margin-left: 4px;
+    }
+    
+    .m-vals {
+        display: flex;
+        align-items: baseline;
+    }
+    
+    .controls {
+        gap: 12px;
+        padding: 10px 16px;
+    }
+    
+    .btn {
+        padding: 10px 18px;
+        font-size: 1rem;
+    }
+}
+
+/* Desktop grande */
+@media (min-width: 1200px) {
+    .app {
+        grid-template-columns: 1fr 240px;
+    }
+    
+    .metrics {
+        padding: 12px;
+        gap: 10px;
+    }
+    
+    .m {
+        padding: 12px 14px;
+    }
+    
+    .mv {
+        font-size: 1.4rem;
+    }
+}
+
+/* Móviles pequeños */
+@media (max-width: 400px) {
+    .app {
+        padding: 4px;
+        gap: 4px;
+    }
+    
+    .header {
+        padding: 6px 8px;
+    }
+    
+    .title {
+        font-size: 0.9rem;
+    }
+    
+    .info {
+        gap: 8px;
+        font-size: 0.75rem;
+        padding: 4px 8px;
+    }
+    
+    .m {
+        padding: 6px 10px;
+        min-width: 60px;
+    }
+    
+    .mv {
+        font-size: 1rem;
+    }
+    
+    .btn {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
+}
+
+/* ============================================
+   SCROLLBAR PERSONALIZADO
+   ============================================ */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-dim);
 }

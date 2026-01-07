@@ -40,8 +40,8 @@
 // CONFIGURACIÓN STREAMING
 // ============================================================================
 
-#define WS_SEND_INTERVAL_MS     10      // 100 Hz de streaming
-#define WS_METRICS_INTERVAL_MS  250     // 4 Hz para métricas
+#define WS_SEND_INTERVAL_MS     20      // 50 Hz de streaming (menos agresivo)
+#define WS_METRICS_INTERVAL_MS  500     // 2 Hz para métricas
 #define WS_MAX_QUEUE_SIZE       10      // Buffer de mensajes
 
 // ============================================================================

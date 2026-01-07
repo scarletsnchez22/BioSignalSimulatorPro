@@ -270,11 +270,11 @@ Basándose en el análisis espectral FFT de las señales generadas por los model
 
 **Tabla: Filtros RC optimizados (propuesta)**
 
-| Señal | Contenido Espectral | fc Objetivo | R (con C=1µF) | Atenuación @ 4kHz |
+| Señal | Contenido Espectral | fc Objetivo / fc con mayor utilidad | R (con C=1µF) | Atenuación @ 4kHz |
 |-------|---------------------|-------------|---------------|-------------------|
-| **ECG** | 0.5-40 Hz | 48 Hz | 3.3 kΩ | -38 dB |
-| **EMG** | 20-500 Hz | 339 Hz | 470 Ω | -21 dB |
-| **PPG** | 0.5-8 Hz | 10.6 Hz | 15 kΩ | -51 dB |
+| **ECG** | 0.5-150 Hz / 50Hz | 40 Hz | 3.3 kΩ | -38 dB |
+| **EMG** | 20-500 Hz / 20-150 Hz | 339 Hz | 470 Ω | -21 dB | https://www.colibri.udelar.edu.uy/jspui/bitstream/20.500.12008/8156/1/uy24-17718.pdf
+| **PPG** | 0.5-10 Hz | 10.6 Hz | 15 kΩ | -51 dB | https://www.redalyc.org/journal/3442/344247320003/html/
 
 
 Comparación con tus valores anteriores (basados en FFT)
