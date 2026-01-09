@@ -6,6 +6,10 @@
 ![Platform](https://img.shields.io/badge/platform-ESP32-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
+**Grupo #22:** Scarlet Sánchez y Rafael Mata  
+**Institución:** Escuela Superior Politécnica del Litoral (ESPOL)  
+**Trabajo de Titulación - Ingeniería en Mecatrónica**
+
 ---
 
 ## 📋 Descripción
@@ -43,19 +47,31 @@ BioSignalSimulator Pro es un dispositivo portátil que genera señales biomédic
 
 | Componente | Función |
 |------------|---------|
-| ESP32 WROOM-32 | Microcontrolador dual-core |
+| ESP32 WROOM-32 | Microcontrolador dual-core @ 240 MHz |
 | Nextion NX8048T070 | Display táctil 7" 800×480 |
-| 2× 18650 Li-ion | Alimentación (4400mAh) |
-| TL072 | Buffer salida analógica |
-| MT3608 | Regulador Step-Up 5V |
-| TP4056 + DW01 | Carga y protección batería |
+| 2× 18650 Li-ion | Alimentación (5200 mAh en paralelo) |
+| LM358 | Buffer salida analógica (seguidor de voltaje) |
+| CD4051 | Multiplexor analógico para filtros RC selectivos |
+| XL6009 | Regulador Step-Up 5V (η≈92%) |
+| IP5306 + BMS 1S 3A | Carga USB-C y protección batería |
 
 ### Diagrama de Conexiones
 
 ```
-USB 5V → TP4056 → Baterías 2P → Switch → MT3608 → ESP32 + Nextion
-                                           ↓
-                              ESP32 DAC → TL072 → BNC (salida)
+USB-C → IP5306 → BMS 1S 3A → Baterías 2×18650 → Switch → XL6009 → ESP32 + Nextion
+                                                           ↓
+                                      ESP32 DAC (GPIO25) → LM358 → CD4051 → RC Filter → BNC
+                                                                     ↑
+                                                          GPIO26/27 (S0/S1)
+```
+
+### Cadena de Acondicionamiento de Señal
+
+```
+DAC 8-bit → LM358 Buffer → CD4051 Multiplexor → Filtro RC Selectivo → BNC
+  (4 kHz)    (ganancia ×1)   CH0: 6.8kΩ (ECG, Fc=23.4Hz)    C=1µF
+                             CH1: Directo (EMG, bypass)
+                             CH2: 33kΩ (PPG, Fc=4.82Hz)
 ```
 
 ---
@@ -117,16 +133,17 @@ pio device monitor         # Monitor serial
 
 ## 📊 Especificaciones Técnicas
 
-| Parámetro | Valor |
-|-----------|-------|
-| Frecuencia muestreo ECG | 750 Hz |
-| Frecuencia muestreo EMG | 2000 Hz |
-| Frecuencia muestreo PPG | 100 Hz |
-| Resolución DAC | 8 bits (0-255) |
-| Voltaje salida | 0-3.3V |
-| Refresh display | 100 Hz |
-| Autonomía | ~3.7 horas |
-| Costo total | ~$106 USD |
+| Parámetro | Valor | Justificación |
+|-----------|-------|---------------|
+| Fs Timer (DAC) | 4000 Hz | Nyquist ×4 sobre EMG 500 Hz |
+| Fs Modelo ECG | 300 Hz | F99% energía = 21.6 Hz |
+| Fs Modelo EMG | 1000 Hz | F99% energía = 146.3 Hz |
+| Fs Modelo PPG | 20 Hz | F99% energía = 4.9 Hz |
+| Resolución DAC | 8 bits (0-255) | Suficiente para aplicación educativa |
+| Voltaje salida | 0-3.3V | Rango DAC ESP32 |
+| Refresh Nextion | 100-200 Hz | Downsampling desde 4 kHz |
+| Autonomía | ~3.8 horas | 5200 mAh @ 1.26 A promedio |
+| Costo total | ~$154 USD | Componentes disponibles localmente |
 
 ---
 
@@ -167,10 +184,16 @@ Ver metodología completa: [`docs/APP_WEB_METODOLOGIA.md`](docs/APP_WEB_METODOLO
 
 ---
 
-## 👨‍💻 Autor
+## 👨‍💻 Autores
 
-Desarrollado como Trabajo de Titulación  
-**Revisado:** 06.01.2026  
+**Grupo #22 - Trabajo de Titulación ESPOL**
+
+- **Scarlet Gabriela Sánchez Aguirre**
+- **Rafael David Mata Puente**
+
+**Institución:** Escuela Superior Politécnica del Litoral (ESPOL)  
+**Facultad:** Ingeniería en Mecánica y Ciencias de la Producción  
+**Carrera:** Ingeniería en Mecatrónica  
 **Versión:** 1.0.0
 
 ---

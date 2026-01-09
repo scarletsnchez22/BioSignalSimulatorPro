@@ -1,8 +1,8 @@
-# BioSignalSimulator Pro - Metodología de Diseño Electrónico
+# Metodología de Diseño Electrónico del Sistema BioSignalSimulator Pro
 
-**Revisado:** 06.01.2026  
-**Autor:** [Nombre del Tesista]  
-**Documento para:** Trabajo de Titulación
+**Grupo #22:** Scarlet Sánchez y Rafael Mata  
+**Institución:** Escuela Superior Politécnica del Litoral (ESPOL)  
+**Documento de Sustentación Técnica para Trabajo de Titulación**
 
 ---
 
@@ -10,9 +10,10 @@
 
 1. [Introducción](#1-introducción)
 2. [Metodología de Diseño Electrónico](#2-metodología-de-diseño-electrónico)
-3. [Lista de Materiales (BOM Electrónico)](#3-lista-de-materiales-bom-electrónico)
-4. [Manual de Usuario](#4-manual-de-usuario)
-5. [Referencias](#5-referencias)
+3. [Topología de Acondicionamiento de Señal](#3-topología-de-acondicionamiento-de-señal)
+4. [Lista de Materiales (BOM Electrónico)](#4-lista-de-materiales-bom-electrónico)
+5. [Manual de Usuario](#5-manual-de-usuario)
+6. [Referencias](#6-referencias)
 
 ---
 
@@ -264,51 +265,73 @@ f_c = 1 / (2π × R × C)
 
 > **Nota:** Se eligió 1 µF (en lugar de 100 nF) para colocar fc entre la frecuencia máxima de las señales biomédicas (500 Hz) y la frecuencia de muestreo del DAC (4 kHz), cumpliendo el criterio de filtro de reconstrucción: fmax < fc < Fs/2.
 
-#### 2.5.3.1 Alternativa: Filtros RC Optimizados por Señal (Mejora Futura)
+#### 2.5.3.1 Implementación: Multiplexor CD4051 para Selección de Filtros RC
 
-Basándose en el análisis espectral FFT de las señales generadas por los modelos matemáticos, se identificó que cada señal tiene un ancho de banda significativamente diferente. Para maximizar la atenuación del stepping del DAC preservando el contenido espectral útil, se propone una mejora futura con filtros RC dedicados por señal, conmutados mediante relés:
+Basándose en el análisis espectral FFT de las señales generadas por los modelos matemáticos, se implementó un sistema de selección de filtros RC mediante el multiplexor analógico CD4051. Este enfoque permite optimizar la frecuencia de corte según el tipo de señal activa, maximizando la atenuación del stepping del DAC mientras se preserva el contenido espectral útil.
 
-**Tabla: Filtros RC optimizados (propuesta)**
-
-| Señal | Contenido Espectral | fc Objetivo / fc con mayor utilidad | R (con C=1µF) | Atenuación @ 4kHz |
-|-------|---------------------|-------------|---------------|-------------------|
-| **ECG** | 0.5-150 Hz / 50Hz | 40 Hz | 3.3 kΩ | -38 dB |
-| **EMG** | 20-500 Hz / 20-150 Hz | 339 Hz | 470 Ω | -21 dB | https://www.colibri.udelar.edu.uy/jspui/bitstream/20.500.12008/8156/1/uy24-17718.pdf
-| **PPG** | 0.5-10 Hz | 10.6 Hz | 15 kΩ | -51 dB | https://www.redalyc.org/journal/3442/344247320003/html/
-
-
-Comparación con tus valores anteriores (basados en FFT)
-Señal	fc anterior	fc nuevo	Diferencia
-ECG	48 Hz (3.3kΩ)	100 Hz (1.5kΩ)	Más permisivo, pasa más armónicos QRS
-EMG	339 Hz (470Ω)	482 Hz (330Ω)	Muy similar, 330Ω da más margen
-PPG	10.6 Hz (15kΩ)	10.6 Hz (15kΩ)	Idéntico ✓
-
-
-**Implementación sugerida:**
+**Topología implementada: DAC → LM358 Buffer → CD4051 → RC Filter → BNC**
 
 ```
-                            ┌─── R_ECG (3.3kΩ) ───┐
-                            │                     │
-DAC GPIO25 ───► RELÉ 3CH ───┼─── R_EMG (470Ω) ───┼───► C (1µF) ───► MCP6002 ───► BNC
-                            │                     │
-                            └─── R_PPG (15kΩ) ───┘
-
-Control: 
-- Relé activado por GPIO según señal activa
-- ESP32 conmuta al cambiar de modo (ECG/EMG/PPG)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              CADENA DE ACONDICIONAMIENTO DE SEÑAL ANALÓGICA                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ESP32           LM358              CD4051                   Filtro RC      │
+│  ┌──────┐       ┌──────┐          ┌──────────┐             ┌──────────┐    │
+│  │GPIO25│──DAC──│Buffer│──────────│► COM     │             │          │    │
+│  │(DAC1)│       │ ×1   │          │          │             │   ───┬── │    │
+│  └──────┘       └──────┘          │ CH0 ◄────│──[6.8kΩ]────│►     │   │    │
+│                                   │          │             │      C   │──►BNC
+│  ┌──────┐                         │ CH1 ◄────│──[Directo]──│►   1µF   │    │
+│  │GPIO26│─────────────────────────│► S0      │             │      │   │    │
+│  │GPIO27│─────────────────────────│► S1      │             │   ───┴── │    │
+│  └──────┘                         │ S2=GND   │             │    GND   │    │
+│                                   └──────────┘             └──────────┘    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Ventajas de esta mejora:**
-- ECG: -38 dB vs -8 dB actual (4.7× mejor rechazo de stepping)
-- PPG: -51 dB, señal prácticamente libre de ruido del DAC
-- EMG: fc más cercana al contenido útil pero suficiente margen
+**Tabla: Filtros RC implementados según análisis FFT**
 
-**Componentes adicionales requeridos:**
-- 1× Módulo relé 3 canales 5V (SPDT)
-- 3× Resistencias: 3.3 kΩ, 470 Ω, 15 kΩ (1%)
-- 3× GPIOs adicionales para control de relés
+| Señal | F 99% Energía | Fc Diseño | R (C=1µF) | Canal CD4051 | Atenuación @ 4kHz |
+|-------|---------------|-----------|-----------|--------------|-------------------|
+| **ECG** | 21.6 Hz | 23.4 Hz | 6.8 kΩ | CH0 (S1=0, S0=0) | -44 dB |
+| **EMG** | 146.3 Hz | Bypass | Directo | CH1 (S1=0, S0=1) | (filtrado digital) |
+| **PPG** | 4.9 Hz | 4.82 Hz | 33 kΩ | CH2 (S1=1, S0=0) | -58 dB |
 
-> **Nota:** Esta mejora es opcional y no está implementada en el prototipo actual. El filtro RC único (fc=1.59 kHz) es suficiente para aplicaciones educativas.
+**Justificación de la selección de componentes:**
+
+1. **Buffer LM358:** Proporciona impedancia de salida baja (<100Ω) para alimentar el multiplexor sin pérdidas significativas. Configurado como seguidor de voltaje (ganancia unitaria).
+
+2. **Multiplexor CD4051:** Seleccionado por su baja resistencia Ron (80Ω típico @ VDD=5V), bajo consumo y disponibilidad local. El pin S2 se conectó a GND permanentemente, limitando la selección a canales 0-3.
+
+3. **Capacitor común (1µF):** Un único capacitor cerámico X7R compartido por todas las ramas simplifica el diseño y reduce costos. Las diferentes Fc se logran variando únicamente la resistencia.
+
+**Cálculo de frecuencias de corte:**
+
+$$F_c = \frac{1}{2\pi R C}$$
+
+- **ECG:** $F_c = \frac{1}{2\pi \times 6800 \times 10^{-6}} = 23.4 \, Hz$ (ligeramente superior a F99%=21.6 Hz)
+- **PPG:** $F_c = \frac{1}{2\pi \times 33000 \times 10^{-6}} = 4.82 \, Hz$ (coincide con F99%=4.9 Hz)
+- **EMG:** Bypass directo; el filtrado se realiza digitalmente (Butterworth 20-450 Hz) antes del DAC
+
+**Análisis de error por resistencia Ron del CD4051:**
+
+| Canal | R nominal | Ron (típ.) | R total | Fc nominal | Fc real | Error |
+|-------|-----------|------------|---------|------------|---------|-------|
+| CH0 (ECG) | 6.8 kΩ | 80 Ω | 6.88 kΩ | 23.4 Hz | 23.1 Hz | <1.2% |
+| CH2 (PPG) | 33 kΩ | 80 Ω | 33.08 kΩ | 4.82 Hz | 4.81 Hz | <0.3% |
+
+El error introducido por Ron es inferior al 1.2% en todos los casos, despreciable para la aplicación educativa.
+
+**Ventajas de esta implementación vs. filtro RC único:**
+
+| Parámetro | Filtro RC único (Fc=1.59kHz) | CD4051 + RC selectivo |
+|-----------|------------------------------|------------------------|
+| Atenuación ECG @ 4kHz | -8 dB | -44 dB (5.5× mejor) |
+| Atenuación PPG @ 4kHz | -8 dB | -58 dB (7.3× mejor) |
+| Complejidad | 2 componentes | 5 componentes + control GPIO |
+| Costo adicional | $0 | ~$2 (CD4051 + resistores) |
 
 #### 2.5.4 Consumos y Autonomía
 

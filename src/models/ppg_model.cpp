@@ -518,23 +518,50 @@ float PPGModel::generateSample(float deltaTime) {
 // ============================================================================
 // CONVERSIÓN A DAC
 // ============================================================================
+// NOTA: La salida DAC solo contiene la componente AC de la señal PPG.
+// Justificación: El componente DC (baseline ~1000 mV) representa la absorción
+// constante de luz y no aporta información diagnóstica. La utilidad clínica
+// de la señal PPG reside en la componente pulsátil (AC), que refleja:
+//   - Volumen sanguíneo pulsátil (forma de onda)
+//   - Índice de perfusión (PI = AC/DC × 100%)
+//   - Variabilidad de la frecuencia cardíaca
+// Al enviar solo AC al DAC, la señal es directamente comparable con la
+// visualización en Nextion y facilita la conexión a equipos externos.
+// ============================================================================
 uint8_t PPGModel::getDACValue(float deltaTime) {
-    float voltage = generateSample(deltaTime);
-    return voltageToDACValue(voltage);
+    // Generar muestra completa (actualiza lastACValue internamente)
+    generateSample(deltaTime);
+    
+    // Convertir solo la componente AC a valor DAC
+    return acValueToDACValue(lastACValue);
 }
 
 uint8_t PPGModel::voltageToDACValue(float voltage) {
-    // Mapeo dinámico basado en DC baseline
+    // Mantener para compatibilidad - mapea señal completa DC+AC
     float rangeMin = dcBaseline - 200.0f;
     float rangeMax = dcBaseline + 200.0f;
     
-    // Para DC=0 (señal AC pura)
     if (dcBaseline == 0.0f) {
         rangeMin = -100.0f;
         rangeMax = 100.0f;
     }
     
     float normalized = (voltage - rangeMin) / (rangeMax - rangeMin);
+    normalized = constrain(normalized, 0.0f, 1.0f);
+    return (uint8_t)(normalized * 255.0f);
+}
+
+uint8_t PPGModel::acValueToDACValue(float acValue_mV) {
+    // Mapeo de componente AC pura a DAC 8-bit
+    // La señal AC del PPG es UNIPOLAR: va de 0 (valle) a ~150 mV (pico sistólico)
+    // donde AC_max = PI_max × 15 mV/% ≈ 10% × 15 = 150 mV
+    // 
+    // Escalado idéntico al usado en Nextion waveform:
+    //   0 mV → DAC 0 → 0.0V
+    //   150 mV → DAC 255 → 3.3V
+    const float AC_MAX_MV = 150.0f;  // Máximo AC (PI~10%)
+    
+    float normalized = acValue_mV / AC_MAX_MV;
     normalized = constrain(normalized, 0.0f, 1.0f);
     return (uint8_t)(normalized * 255.0f);
 }

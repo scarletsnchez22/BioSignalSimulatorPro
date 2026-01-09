@@ -27,10 +27,14 @@
 #define FLASH_SIZE_MB           4
 
 // ============================================================================
-// CONFIGURACIÓN DE PINES - DAC
+// CONFIGURACIÓN DE PINES - DAC Y MULTIPLEXOR
 // ============================================================================
-#define DAC_SIGNAL_PIN          25      // GPIO25 - DAC1 (Salida principal)
-#define DAC_REFERENCE_PIN       26      // GPIO26 - DAC2 (Opcional)
+#define DAC_SIGNAL_PIN          25      // GPIO25 - DAC1 (Salida a LM358 buffer)
+
+// Multiplexor CD4051 (selección de atenuación)
+#define MUX_SELECT_S0           26      // GPIO26 - CD4051 pin 11 (Selector A)
+#define MUX_SELECT_S1           27      // GPIO27 - CD4051 pin 10 (Selector B)
+// CD4051 S2 (pin 9) conectado a GND
 
 // ============================================================================
 // CONFIGURACIÓN DE PINES - NEXTION
@@ -43,10 +47,11 @@
 // ============================================================================
 // CONFIGURACIÓN DE PINES - LED RGB
 // ============================================================================
+// Nota: se restablece LED RGB a GPIO21/22/23 (bus I2C/VSPI se mantiene libre por ahora)
 #define LED_RGB_ENABLED         true
-#define LED_RGB_RED             21      // GPIO21
-#define LED_RGB_GREEN           22      // GPIO22
-#define LED_RGB_BLUE            23      // GPIO23
+#define LED_RGB_RED             21      // GPIO21 - I2C SDA (no usado)
+#define LED_RGB_GREEN           22      // GPIO22 - I2C SCL (no usado)
+#define LED_RGB_BLUE            23      // GPIO23 - VSPI MOSI (no usado)
 #define LED_RGB_COMMON_ANODE    false   // false = cátodo común
 
 // ============================================================================

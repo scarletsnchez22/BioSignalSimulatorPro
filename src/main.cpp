@@ -27,6 +27,7 @@
 #include "comm/nextion_driver.h"
 #include "comm/serial_handler.h"
 #include "comm/wifi_server.h"
+#include "hw/cd4051_mux.h"
 
 // ============================================================================
 // INSTANCIAS GLOBALES
@@ -112,7 +113,7 @@ void setLEDState(SignalState state) {
     switch (state) {
         case SignalState::STOPPED:
             // Amarillo cálido: rojo completo, verde reducido
-            r = 255; g = 85; b = 0;
+            r = 255; g = 50; b = 0;
             break;
         case SignalState::RUNNING:
             // Verde: señal activa, generando forma de onda
@@ -1108,8 +1109,9 @@ void updateDisplay() {
                     int sys = (int)ppg.getMeasuredSystoleTime();
                     int dia = (int)ppg.getMeasuredDiastoleTime();
                     
-                    // DC Baseline: valor en mV (típico 1000 mV)
-                    int dc = (int)ppg.getDCBaseline();
+                    // DC Baseline: 0 porque el DAC solo envía componente AC
+                    // (El modelo interno usa DC=1000mV pero no se envía al DAC)
+                    int dc = 0;
                     
                     nextion->updatePPGValuesPage(ac_x10, hr, rr, pi_x10, sys, dia, dc, ppg.getConditionName());
                     
@@ -1160,6 +1162,11 @@ void setup() {
     // Inicializar SerialHandler
     serialHandler = new SerialHandler(Serial);
     serialHandler->setCommandCallback(handleSerialCommand);
+    
+    // Inicializar multiplexor CD4051
+    if (!mux.begin()) {
+        Serial.println("[ERROR] No se pudo inicializar multiplexor CD4051");
+    }
     
     // Inicializar motor de señales
     signalEngine = SignalEngine::getInstance();

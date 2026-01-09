@@ -160,6 +160,7 @@ private:
     
     // Conversión
     uint8_t voltageToDACValue(float voltage);
+    uint8_t acValueToDACValue(float acValue_mV);  // Solo componente AC para DAC
     
 public:
     PPGModel();

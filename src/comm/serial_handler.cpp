@@ -7,6 +7,7 @@
 
 #include "comm/serial_handler.h"
 #include "config.h"
+#include "hw/cd4051_mux.h"
 
 // ============================================================================
 // CONSTRUCTOR
@@ -37,9 +38,22 @@ void SerialHandler::process() {
             printHelp();
         } else if (c == 'i' || c == 'I') {
             printSystemInfo();
+        } else if (c == 'm' || c == 'M') {
+            // Mostrar estado del multiplexor
+            serial.println("\n--- Multiplexor CD4051 ---");
+            serial.printf("Canal actual: %d (%s)\n", mux.getCurrentChannel(), mux.getChannelName());
+            serial.printf("Factor atenuacion: %.1f\n", mux.getAttenuationFactor());
+            serial.println("Comandos: 0=CH0(6.8k), 1=CH1(directo), 2=CH2(33k)\n");
+        } else if (c == '0') {
+            mux.setAttenuation(AttenuationLevel::ATTEN_MEDIUM);
+            serial.println("[MUX] Canal 0 (6.8k ohm - Atenuacion media)");
+        } else if (c == '1') {
+            mux.setAttenuation(AttenuationLevel::ATTEN_NONE);
+            serial.println("[MUX] Canal 1 (Directo - Sin atenuacion)");
+        } else if (c == '2') {
+            mux.setAttenuation(AttenuationLevel::ATTEN_HIGH);
+            serial.println("[MUX] Canal 2 (33k ohm - Atenuacion alta)");
         }
-        
-        // TODO: Implementar protocolo binario completo
     }
 }
 
@@ -108,15 +122,15 @@ void SerialHandler::sendError(uint8_t errorCode) {
 // DEBUG
 // ============================================================================
 void SerialHandler::printHelp() {
-    serial.println("\n╔════════════════════════════════════════════════════════╗");
-    serial.println("║     " DEVICE_NAME " v" FIRMWARE_VERSION "    ║");
-    serial.println("╠════════════════════════════════════════════════════════╣");
-    serial.println("║  COMANDOS:                                             ║");
-    serial.println("║    h - Esta ayuda                                      ║");
-    serial.println("║    i - Información del sistema                         ║");
-    serial.println("║                                                        ║");
-    serial.println("║  Use la pantalla Nextion para control interactivo      ║");
-    serial.println("╚════════════════════════════════════════════════════════╝\n");
+    serial.println("\n======== " DEVICE_NAME " v" FIRMWARE_VERSION " ========");
+    serial.println("COMANDOS:");
+    serial.println("  h - Esta ayuda");
+    serial.println("  i - Informacion del sistema");
+    serial.println("  m - Estado del multiplexor CD4051");
+    serial.println("  0 - Seleccionar CH0 (6.8k ohm)");
+    serial.println("  1 - Seleccionar CH1 (directo)");
+    serial.println("  2 - Seleccionar CH2 (33k ohm)");
+    serial.println("\nUse la pantalla Nextion para control interactivo");
 }
 
 void SerialHandler::printSystemInfo() {

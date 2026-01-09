@@ -1,0 +1,146 @@
+/**
+ * @file cd4051_mux.h
+ * @brief Driver para multiplexor analógico CD4051
+ * @version 1.0.0
+ * @date 08 Enero 2026
+ * 
+ * Control del CD4051 para selección de atenuación de señal.
+ * 
+ * Configuración de hardware:
+ * - ESP32 GPIO25 (PWM) → LM358 (buffer) → CD4051 COM (pin 3)
+ * - ESP32 GPIO26 → CD4051 S0/A (pin 11)
+ * - ESP32 GPIO27 → CD4051 S1/B (pin 10)
+ * - CD4051 S2/C (pin 9) → GND (fijo en 0)
+ * 
+ * Canales disponibles (S2=0):
+ * - CH0 (S1=0, S0=0): Resistencia 6.8kΩ  → Atenuación media
+ * - CH1 (S1=0, S0=1): Conexión directa   → Sin atenuación
+ * - CH2 (S1=1, S0=0): Resistencia 33kΩ   → Atenuación alta
+ * 
+ * Red de salida:
+ * CH0 ──[6.8kΩ]──┬── NODO_A ──[1µF]── GND
+ * CH1 ───────────┤              │
+ * CH2 ──[33kΩ]───┘              └──► BNC (+)
+ */
+
+#ifndef CD4051_MUX_H
+#define CD4051_MUX_H
+
+#include <Arduino.h>
+#include "../config.h"
+
+// ============================================================================
+// CONFIGURACIÓN DE PINES (desde config.h)
+// ============================================================================
+// MUX_SELECT_S0 = GPIO26 - Selector A (LSB)
+// MUX_SELECT_S1 = GPIO27 - Selector B
+// S2 está conectado a GND (siempre 0)
+
+#define MUX_S0_PIN          MUX_SELECT_S0
+#define MUX_S1_PIN          MUX_SELECT_S1
+#define MUX_ENABLE_PIN      -1      // No usado (ENABLE conectado a GND)
+
+// ============================================================================
+// CANALES DEL MULTIPLEXOR
+// ============================================================================
+enum class MuxChannel : uint8_t {
+    CH0_6K8_OHM     = 0,    // Canal 0: Resistencia 6.8kΩ (atenuación media)
+    CH1_DIRECT      = 1,    // Canal 1: Conexión directa (sin atenuación)  
+    CH2_33K_OHM     = 2,    // Canal 2: Resistencia 33kΩ (atenuación alta)
+    CH3_UNUSED      = 3,    // Canal 3: No conectado
+    CH4_UNUSED      = 4,    // Canal 4: No conectado
+    CH5_UNUSED      = 5,    // Canal 5: No conectado
+    CH6_UNUSED      = 6,    // Canal 6: No conectado
+    CH7_UNUSED      = 7     // Canal 7: No conectado (requiere S2=1)
+};
+
+// Alias para facilidad de uso
+#define MUX_ATTEN_MEDIUM    MuxChannel::CH0_6K8_OHM
+#define MUX_ATTEN_NONE      MuxChannel::CH1_DIRECT
+#define MUX_ATTEN_HIGH      MuxChannel::CH2_33K_OHM
+
+// ============================================================================
+// NIVELES DE ATENUACIÓN PREDEFINIDOS
+// ============================================================================
+enum class AttenuationLevel : uint8_t {
+    ATTEN_NONE    = 0,    // Sin atenuación (CH1 directo) - Máxima amplitud
+    ATTEN_MEDIUM  = 1,    // Atenuación media (CH0: 6.8kΩ)
+    ATTEN_HIGH    = 2     // Atenuación alta (CH2: 33kΩ) - Mínima amplitud
+};
+
+// ============================================================================
+// CLASE CD4051 MULTIPLEXER
+// ============================================================================
+class CD4051Mux {
+public:
+    /**
+     * @brief Constructor
+     */
+    CD4051Mux();
+    
+    /**
+     * @brief Inicializa los pines GPIO para control del multiplexor
+     * @return true si la inicialización fue exitosa
+     */
+    bool begin();
+    
+    /**
+     * @brief Selecciona un canal del multiplexor (0-7)
+     * @param channel Canal a seleccionar (0-7, pero solo 0-2 están conectados)
+     */
+    void selectChannel(uint8_t channel);
+    
+    /**
+     * @brief Selecciona un canal usando el enum MuxChannel
+     * @param channel Canal a seleccionar
+     */
+    void selectChannel(MuxChannel channel);
+    
+    /**
+     * @brief Configura el nivel de atenuación
+     * @param level Nivel de atenuación deseado
+     */
+    void setAttenuation(AttenuationLevel level);
+    
+    /**
+     * @brief Obtiene el canal actualmente seleccionado
+     * @return Canal actual (0-7)
+     */
+    uint8_t getCurrentChannel() const { return currentChannel; }
+    
+    /**
+     * @brief Obtiene el nivel de atenuación actual
+     * @return Nivel de atenuación
+     */
+    AttenuationLevel getCurrentAttenuation() const;
+    
+    /**
+     * @brief Obtiene el nombre del canal actual
+     * @return String con descripción del canal
+     */
+    const char* getChannelName() const;
+    
+    /**
+     * @brief Obtiene el factor de atenuación teórico del canal actual
+     * @return Factor de atenuación (0.0 - 1.0)
+     * @note Los valores exactos dependen de la impedancia de carga
+     */
+    float getAttenuationFactor() const;
+
+private:
+    uint8_t currentChannel;
+    bool initialized;
+    
+    /**
+     * @brief Aplica los bits de selección a los pines GPIO
+     * @param channel Canal (0-7)
+     */
+    void applyChannelBits(uint8_t channel);
+};
+
+// ============================================================================
+// INSTANCIA GLOBAL (SINGLETON)
+// ============================================================================
+extern CD4051Mux mux;
+
+#endif // CD4051_MUX_H

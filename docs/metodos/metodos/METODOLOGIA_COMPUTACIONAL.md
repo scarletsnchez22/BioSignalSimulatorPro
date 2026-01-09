@@ -1,8 +1,8 @@
-# Metodología de Arquitectura Computacional del Sistema
+# Metodología Computacional del Sistema BioSignalSimulator Pro
 
-**BioSignalSimulator Pro**  
-**Revisado:** 06.01.2026  
-**Documento de Sustentación Técnica**
+**Grupo #22:** Scarlet Sánchez y Rafael Mata  
+**Institución:** Escuela Superior Politécnica del Litoral (ESPOL)  
+**Documento de Sustentación Técnica para Trabajo de Titulación**
 
 ---
 
@@ -12,13 +12,15 @@
 2. [Arquitectura de Hardware](#2-arquitectura-de-hardware)
 3. [Arquitectura de Software Embebido](#3-arquitectura-de-software-embebido)
 4. [Motor de Generación de Señales](#4-motor-de-generación-de-señales)
-5. [Subsistema de Visualización Nextion](#5-subsistema-de-visualización-nextion)
-6. [Subsistema de Comunicación WiFi](#6-subsistema-de-comunicación-wifi)
-7. [Flujo de Datos Integrado](#7-flujo-de-datos-integrado)
-8. [Cálculos Computacionales Representativos](#8-cálculos-computacionales-representativos)
-9. [Metodología de Diseño de Frecuencias](#9-metodología-de-diseño-de-frecuencias)
-10. [Salida Analógica y Acondicionamiento de Señal](#10-salida-analógica-y-acondicionamiento-de-señal)
-11. [Referencias](#11-referencias)
+5. [Análisis Espectral y Justificación de Frecuencias](#5-análisis-espectral-y-justificación-de-frecuencias)
+6. [Estrategia de Muestreo: Upsampling y Downsampling](#6-estrategia-de-muestreo-upsampling-y-downsampling)
+7. [Filtrado Digital de Señales](#7-filtrado-digital-de-señales)
+8. [Control del Multiplexor CD4051](#8-control-del-multiplexor-cd4051)
+9. [Subsistema de Visualización Nextion](#9-subsistema-de-visualización-nextion)
+10. [Subsistema de Comunicación WiFi](#10-subsistema-de-comunicación-wifi)
+11. [Estructura del Programa](#11-estructura-del-programa)
+12. [Consideraciones de Implementación](#12-consideraciones-de-implementación)
+13. [Referencias](#13-referencias)
 
 ---
 
@@ -331,9 +333,281 @@ $$T_{buffer} = \frac{N_{muestras}}{f_s} = \frac{2048}{4000\,Hz} = 0.512\,s$$
 
 ---
 
-## 5. Subsistema de Visualización Nextion
+## 5. Análisis Espectral y Justificación de Frecuencias
 
-### 5.1 Comunicación Serial con Nextion
+El diseño de las frecuencias de muestreo del sistema se fundamentó en un análisis espectral riguroso mediante Transformada Rápida de Fourier (FFT) aplicado a cada modelo matemático. Este análisis permitió determinar el contenido frecuencial real de las señales generadas y optimizar los parámetros del sistema.
+
+### 5.1 Resultados del Análisis FFT
+
+Se ejecutó un análisis espectral de 7 segundos de duración sobre cada modelo, aplicando ventana de Hanning para reducir la fuga espectral. Los resultados se resumen en la siguiente tabla:
+
+**Tabla 5.1: Contenido espectral por señal biomédica**
+
+| Señal | Frecuencia Dominante | BW -3dB | BW -20dB | F 99% Energía | Energía en Banda Clínica |
+|-------|---------------------|---------|----------|---------------|--------------------------|
+| **ECG** | 1.14 Hz (≈68 BPM) | 12.0 Hz | 24.0 Hz | **21.6 Hz** | 100% (0.05-150 Hz) |
+| **EMG** | 55.4 Hz | 96.6 Hz | 158.0 Hz | **146.3 Hz** | 99.7% (20-500 Hz) |
+| **PPG** | 1.14 Hz (≈68 BPM) | 1.29 Hz | 4.86 Hz | **4.9 Hz** | 99.9% (0.5-10 Hz) |
+
+Los valores de F 99% Energía (21.6 Hz para ECG, 146.3 Hz para EMG, 4.9 Hz para PPG) representan las frecuencias donde se concentra el 99% de la energía espectral de cada señal, constituyendo el límite práctico del contenido útil.
+
+### 5.2 Justificación de Fs_timer = 4 kHz
+
+La frecuencia del timer maestro del DAC (Fs_timer = 4000 Hz) se seleccionó mediante el siguiente análisis:
+
+**Criterio de Nyquist aplicado:**
+
+El teorema de Nyquist-Shannon establece que la frecuencia de muestreo debe ser al menos el doble de la frecuencia máxima de la señal:
+
+$$F_s \geq 2 \times F_{max}$$
+
+Para el sistema BioSignalSimulator Pro, la señal con mayor contenido frecuencial es el EMG, cuyo ancho de banda clínico se extiende hasta 500 Hz. Aplicando el criterio de Nyquist con margen de seguridad:
+
+$$F_{s,timer} = 2 \times F_{max,EMG} \times Factor_{seguridad} = 2 \times 500 \times 4 = 4000 \, Hz$$
+
+**Verificación de cumplimiento de Nyquist:**
+
+| Señal | Fmax Real (99% energía) | Fs Timer | Relación Fs/Fmax | Cumplimiento |
+|-------|-------------------------|----------|------------------|--------------|
+| ECG | 21.6 Hz | 4000 Hz | 185× | ✓ Holgado |
+| EMG | 146.3 Hz | 4000 Hz | 27× | ✓ Holgado |
+| PPG | 4.9 Hz | 4000 Hz | 816× | ✓ Holgado |
+
+El factor de 4× sobre Nyquist se justificó por:
+1. **Margen para filtro anti-aliasing pasivo:** Los filtros RC de primer orden requieren separación entre Fc y Fs/2.
+2. **Suavizado de escalones del DAC:** Mayor sobremuestreo produce transiciones más suaves.
+3. **Uniformidad del timer:** Un único Fs_timer simplifica la arquitectura de interrupciones.
+
+### 5.3 Frecuencias de Muestreo de los Modelos
+
+Cada modelo matemático opera a su propia frecuencia de muestreo interna (Fs_modelo), optimizada para su complejidad computacional:
+
+**Tabla 5.2: Frecuencias de muestreo por modelo**
+
+| Modelo | Fs Modelo | Fmax Clínica | Nyquist Mínimo | Margen Real |
+|--------|-----------|--------------|----------------|-------------|
+| ECG (McSharry) | 300 Hz | 150 Hz | 300 Hz | 100% |
+| EMG (Fuglevand) | 1000 Hz | 500 Hz | 1000 Hz | 100% |
+| PPG (Allen) | 20 Hz | 10 Hz | 20 Hz | 100% |
+
+---
+
+## 6. Estrategia de Muestreo: Upsampling y Downsampling
+
+El sistema implementó una estrategia de muestreo en dos etapas para conciliar las diferentes frecuencias de los modelos con los requisitos de salida DAC y visualización.
+
+### 6.1 Upsampling: Modelo → Timer DAC
+
+Los modelos generan muestras a frecuencias nativas (Fs_modelo) que posteriormente se interpolan para alimentar el timer del DAC a 4 kHz:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         UPSAMPLING (Interpolación)                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  PPG:   20 Hz  ──[×200]──► 4000 Hz   (interpolación lineal)            │
+│  ECG:  300 Hz  ──[×13.3]─► 4000 Hz   (interpolación lineal)            │
+│  EMG: 1000 Hz  ──[×4]────► 4000 Hz   (interpolación lineal)            │
+│                                                                         │
+│  Fórmula: Ratio_up = Fs_timer / Fs_modelo                               │
+│                                                                         │
+│  Implementación:                                                        │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  // Interpolación lineal entre muestras del modelo                │  │
+│  │  float t_modelo = sampleCount / Fs_timer;                         │  │
+│  │  int idx = (int)(t_modelo * Fs_modelo);                           │  │
+│  │  float frac = (t_modelo * Fs_modelo) - idx;                       │  │
+│  │  sample = modelo[idx] * (1-frac) + modelo[idx+1] * frac;          │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Caso crítico: PPG (20 Hz → 4000 Hz)**
+
+El modelo PPG opera a solo 20 Hz debido a su bajo contenido frecuencial (F99% = 4.9 Hz). La interpolación 200:1 fue validada espectralmente, confirmando que no introduce artefactos significativos dado que el contenido original está muy por debajo del límite de Nyquist.
+
+### 6.2 Downsampling: Timer DAC → Visualización
+
+Las interfaces de visualización (Nextion y WebSocket) no requieren la tasa completa de 4 kHz. Se aplicó decimación selectiva:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    DOWNSAMPLING (Decimación para Display)                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Timer @ 4 kHz ────┬──► Decimación 20:1 ──► Nextion ECG 200 Hz          │
+│                    │                                                    │
+│                    ├──► Decimación 40:1 ──► Nextion EMG 100 Hz          │
+│                    │                                                    │
+│                    ├──► Decimación 40:1 ──► Nextion PPG 100 Hz          │
+│                    │                                                    │
+│                    └──► Decimación 40:1 ──► WebSocket 100 Hz            │
+│                                                                         │
+│  Fórmula: Ratio_down = Fs_timer / Fs_display                            │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Tabla 6.1: Parámetros de downsampling**
+
+| Destino | Señal | Fs_timer | Fs_display | Ratio | Justificación |
+|---------|-------|----------|------------|-------|---------------|
+| Nextion | ECG | 4000 Hz | 200 Hz | 20:1 | Resolución temporal QRS (5 ms) |
+| Nextion | EMG | 4000 Hz | 100 Hz | 40:1 | Fluidez visual suficiente |
+| Nextion | PPG | 4000 Hz | 100 Hz | 40:1 | F99%=4.9 Hz, 100 Hz es holgado |
+| WebSocket | Todas | 4000 Hz | 100 Hz | 40:1 | Ancho de banda WiFi limitado |
+
+El downsampling se implementó mediante contador de muestras:
+
+```cpp
+// Enviar cada N muestras al display
+if (sampleCount % DOWNSAMPLE_RATIO == 0) {
+    nextion.addWaveformPoint(waveformId, channel, dacValue);
+}
+```
+
+---
+
+## 7. Filtrado Digital de Señales
+
+### 7.1 Filtrado del Modelo EMG
+
+El modelo EMG de Fuglevand genera señales de potenciales de acción de unidades motoras (MUAPs) que requieren procesamiento adicional para simular la adquisición electromiográfica superficial real.
+
+**Cadena de filtrado implementada:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    FILTRADO DIGITAL EMG                                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  MUAPs crudos ──► HPF 20Hz ──► LPF 450Hz ──► Rectificación ──► ENV 6Hz │
+│   (Fuglevand)    (Butterworth) (Butterworth)  (|x|)         (LPF suave) │
+│                                                                         │
+│  Especificaciones:                                                      │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  HPF: Butterworth 2do orden, Fc = 20 Hz                           │  │
+│  │       Elimina artefactos de movimiento y offset DC                │  │
+│  │                                                                   │  │
+│  │  LPF: Butterworth 2do orden, Fc = 450 Hz                          │  │
+│  │       Limita ancho de banda según SENIAM (20-500 Hz)              │  │
+│  │                                                                   │  │
+│  │  Envolvente: LPF 1er orden, Fc = 6 Hz                             │  │
+│  │       Extrae la envolvente de activación muscular                 │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Justificación del rango 20-450 Hz:**
+
+El estándar SENIAM (Surface ElectroMyoGraphy for Non-Invasive Assessment of Muscles) establece el rango de frecuencias clínicamente relevante para EMG superficial entre 20 Hz y 500 Hz. El límite inferior de 20 Hz elimina artefactos de movimiento y la componente DC, mientras que el límite superior de 450 Hz (ligeramente conservador) captura el contenido principal de los MUAPs sin incluir ruido de alta frecuencia.
+
+### 7.2 Procesamiento de Envolvente
+
+La envolvente del EMG se calcula mediante rectificación de onda completa seguida de filtrado paso-bajo:
+
+$$ENV(t) = LPF_{6Hz}\left[ |EMG_{filtrado}(t)| \right]$$
+
+El filtro de envolvente a 6 Hz produce una señal suave que representa el nivel de activación muscular, útil para visualización y métricas RMS.
+
+---
+
+## 8. Control del Multiplexor CD4051
+
+Se implementó un sistema de selección de filtros RC analógicos mediante el multiplexor CD4051, permitiendo optimizar la frecuencia de corte del filtro de reconstrucción según el tipo de señal activa.
+
+### 8.1 Arquitectura del Control
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    CONTROL DEL MULTIPLEXOR CD4051                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ESP32                           CD4051                    Filtro RC    │
+│  ┌──────────┐                   ┌──────────┐              ┌──────────┐  │
+│  │ GPIO25   │──► DAC ──► LM358 ─│► COM     │              │          │  │
+│  │ (PWM/DAC)│                   │          │              │   ───┬── │  │
+│  │          │                   │ CH0 ◄────│──[6.8kΩ]─────│►     │   │  │
+│  │ GPIO26   │──────────────────►│ S0       │              │      C   │──► BNC
+│  │ (Select) │                   │ CH1 ◄────│──[Directo]───│►   1µF   │  │
+│  │          │                   │          │              │      │   │  │
+│  │ GPIO27   │──────────────────►│ S1       │              │   ───┴── │  │
+│  │ (Select) │                   │ CH2 ◄────│──[33kΩ]──────│►    GND  │  │
+│  └──────────┘                   └──────────┘              └──────────┘  │
+│                                                                         │
+│  Tabla de selección:                                                    │
+│  ┌─────────┬─────┬─────┬────────────┬────────────────────────────────┐  │
+│  │ Canal   │ S1  │ S0  │ Resistor   │ Fc (con C=1µF)                 │  │
+│  ├─────────┼─────┼─────┼────────────┼────────────────────────────────┤  │
+│  │ CH0     │  0  │  0  │ 6.8 kΩ     │ 23.4 Hz → ECG                  │  │
+│  │ CH1     │  0  │  1  │ Directo    │ Sin filtro → EMG               │  │
+│  │ CH2     │  1  │  0  │ 33 kΩ      │ 4.82 Hz → PPG                  │  │
+│  └─────────┴─────┴─────┴────────────┴────────────────────────────────┘  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 8.2 Cálculo de Frecuencias de Corte
+
+Las frecuencias de corte de los filtros RC se calcularon a partir del análisis FFT para cada señal:
+
+**ECG (CH0):** Fc = 23.4 Hz
+
+$$F_c = \frac{1}{2\pi R C} = \frac{1}{2\pi \times 6800 \times 10^{-6}} = 23.4 \, Hz$$
+
+Esta Fc está ligeramente por encima de F99% = 21.6 Hz del ECG, preservando todo el contenido espectral útil mientras atenúa el stepping del DAC.
+
+**PPG (CH2):** Fc = 4.82 Hz
+
+$$F_c = \frac{1}{2\pi \times 33000 \times 10^{-6}} = 4.82 \, Hz$$
+
+Fc coincide con F99% = 4.9 Hz del PPG, proporcionando máxima atenuación del ruido de muestreo.
+
+**EMG (CH1):** Bypass (sin filtro RC adicional)
+
+El EMG utiliza conexión directa (bypass) porque su contenido frecuencial se extiende hasta 146.3 Hz (F99%). Un filtro RC con Fc apropiado requeriría una resistencia muy baja que introduciría otros problemas. En su lugar, el EMG se filtra digitalmente (Butterworth 20-450 Hz) antes de la conversión DAC.
+
+### 8.3 Implementación del Driver
+
+El driver del CD4051 se implementó como clase singleton con interfaz simple:
+
+```cpp
+// Selección automática según tipo de señal
+void SignalEngine::setSignalType(SignalType type) {
+    switch(type) {
+        case SIGNAL_ECG:
+            mux.setAttenuation(AttenuationLevel::ATTEN_MEDIUM);  // CH0: 6.8kΩ
+            break;
+        case SIGNAL_EMG:
+            mux.setAttenuation(AttenuationLevel::ATTEN_NONE);    // CH1: Directo
+            break;
+        case SIGNAL_PPG:
+            mux.setAttenuation(AttenuationLevel::ATTEN_HIGH);    // CH2: 33kΩ
+            break;
+    }
+}
+```
+
+### 8.4 Consideraciones de Resistencia Ron
+
+El CD4051 presenta una resistencia de encendido (Ron) típica de 80Ω a VDD=5V. Esta resistencia se suma a la resistencia del filtro RC, introduciendo un error sistemático:
+
+**Análisis de error por Ron:**
+
+| Canal | R nominal | Ron | R total | Fc nominal | Fc real | Error |
+|-------|-----------|-----|---------|------------|---------|-------|
+| CH0 | 6.8 kΩ | 80Ω | 6.88 kΩ | 23.4 Hz | 23.1 Hz | 1.2% |
+| CH2 | 33 kΩ | 80Ω | 33.08 kΩ | 4.82 Hz | 4.81 Hz | 0.2% |
+
+El error introducido por Ron es inferior al 1.2% en todos los casos, considerado despreciable para la aplicación educativa.
+
+---
+
+## 9. Subsistema de Visualización Nextion
+
+### 9.1 Comunicación Serial con Nextion
 
 La pantalla Nextion NX8048T070 se comunicó con el ESP32 mediante UART2:
 
@@ -418,7 +692,88 @@ Código:
   }
 ```
 
-### 5.5 Actualización de Métricas
+### 9.5 Sistema de Escalas del Waveform: mV/div y ms/div
+
+El waveform de Nextion opera como un **rolling display** (desplazamiento continuo), donde cada comando `add` desplaza toda la forma de onda 1 píxel a la izquierda y dibuja el nuevo valor a la derecha. Este comportamiento está documentado en el [Nextion Instruction Set](https://nextion.tech/instruction-set/#s5).
+
+#### 9.5.1 Cálculo de la Escala Temporal (ms/div)
+
+A diferencia de un osciloscopio digital que captura en memoria y permite re-escalar, el waveform de Nextion tiene una **escala temporal fija** determinada por:
+
+1. **Ancho del waveform en píxeles** (700 px según `config.h`)
+2. **Frecuencia de envío de puntos** (Fs_display)
+3. **Comportamiento de Nextion**: 1 comando `add` = 1 píxel de desplazamiento
+
+**Fórmula de cálculo:**
+
+$$T_{pixel} = \frac{1}{F_{display}} \quad ; \quad T_{total} = W_{px} \times T_{pixel} \quad ; \quad \frac{ms}{div} = \frac{T_{total}}{N_{div}}$$
+
+Donde:
+- $T_{pixel}$ = tiempo que representa cada píxel
+- $F_{display}$ = frecuencia de envío (puntos/segundo)
+- $W_{px}$ = ancho del waveform (700 píxeles)
+- $N_{div}$ = número de divisiones horizontales (10)
+
+**Tabla 9.5: Cálculo de escalas temporales**
+
+| Señal | Fs_display | T/pixel | T_total (700px) | Divisiones | **ms/div** |
+|-------|------------|---------|-----------------|------------|------------|
+| ECG | 200 Hz | 5 ms | 3500 ms | 10 | **350 ms/div** |
+| EMG | 100 Hz | 10 ms | 7000 ms | 10 | **700 ms/div** |
+| PPG | 100 Hz | 10 ms | 7000 ms | 10 | **700 ms/div** |
+
+**Ejemplo de cálculo para ECG:**
+```
+Fs_display = 200 Hz → T_pixel = 1/200 = 5 ms/píxel
+T_total = 700 px × 5 ms/px = 3500 ms = 3.5 segundos visibles
+ms/div = 3500 ms / 10 divisiones = 350 ms/div
+```
+
+#### 9.5.2 Cálculo de la Escala de Amplitud (mV/div)
+
+La escala vertical depende del rango de voltaje del modelo y la altura del waveform:
+
+**Tabla 9.6: Escalas de amplitud por señal**
+
+| Señal | Rango modelo | Altura útil | Divisiones | **mV/div** |
+|-------|--------------|-------------|------------|------------|
+| ECG | -0.5 a +1.5 mV (2.0 mV) | 380 px | 10 | **0.2 mV/div** |
+| EMG RAW | -5.0 a +5.0 mV (10 mV) | 380 px | 10 | **1.0 mV/div** |
+| EMG ENV | 0 a +2.0 mV | 380 px | 10 | **0.2 mV/div** |
+| PPG (AC) | -100 a +100 mV (200 mV) | 380 px | 10 | **20 mV/div** |
+
+**Nota sobre PPG:** La salida DAC y el waveform Nextion muestran únicamente la componente AC de la señal PPG. El componente DC (~1000 mV) se omite porque no aporta información clínica; la utilidad diagnóstica reside en la componente pulsátil.
+
+#### 9.5.3 Diferencia con Osciloscopio Digital
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│        COMPARACIÓN: OSCILOSCOPIO DIGITAL vs NEXTION WAVEFORM                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  OSCILOSCOPIO DIGITAL:                   NEXTION WAVEFORM:                  │
+│  ┌───────────────────────────┐           ┌───────────────────────────┐      │
+│  │ 1. ADC muestrea a Fs fija │           │ 1. ESP32 envía puntos     │      │
+│  │ 2. Almacena en memoria    │           │    a Fs_display fija      │      │
+│  │ 3. Usuario ajusta ms/div  │           │ 2. NO hay memoria         │      │
+│  │ 4. Software re-escala     │           │ 3. ms/div es FIJO         │      │
+│  │ 5. Muestra ventana        │           │ 4. Rolling display        │      │
+│  └───────────────────────────┘           └───────────────────────────┘      │
+│                                                                             │
+│  Característica         Osciloscopio      Nextion Waveform                  │
+│  ─────────────────────────────────────────────────────────────────────────  │
+│  Escala temporal        Ajustable         Fija (350/700 ms/div)             │
+│  Escala amplitud        Ajustable         Fija (vía ganancia software)      │
+│  Memoria                Sí (captura)      No (streaming continuo)           │
+│  Zoom temporal          Post-captura      No disponible                     │
+│  Zoom amplitud          Hardware          Software (ganancia)               │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+El usuario puede ajustar la **ganancia** (zoom de amplitud) desde los sliders de Nextion, pero la escala temporal permanece fija porque está determinada por la frecuencia de envío de puntos.
+
+### 9.6 Actualización de Métricas
 
 Las métricas numéricas se actualizaron a 4 Hz (250 ms) para permitir legibilidad:
 
@@ -673,9 +1028,9 @@ El mapeo de valores en mV a valores DAC (0-255) se realizó con las siguientes f
 
 | Señal | Rango entrada (mV) | Fórmula DAC |
 |-------|-------------------|-------------|
-| ECG | [-0.5, +1.5] | `DAC = (mV + 0.5) / 2.0 × 255` |
-| EMG | [-5.0, +5.0] | `DAC = (mV + 5.0) / 10.0 × 255` |
-| PPG | [800, 1200] | `DAC = (mV - 800) / 400 × 255` |
+| ECG | [-0.5, +1.5] mV | `DAC = (mV + 0.5) / 2.0 × 255` |
+| EMG | [-5.0, +5.0] mV | `DAC = (mV + 5.0) / 10.0 × 255` |
+| PPG (AC) | [0, 150] mV | `DAC = AC / 150 × 255` |
 
 **Ejemplo cálculo ECG (pico R = +1.0 mV):**
 $$DAC = \frac{(1.0 + 0.5)}{2.0} \times 255 = \frac{1.5}{2.0} \times 255 = 191$$
@@ -1338,15 +1693,187 @@ if (millis() - lastADCRead_ms >= downsampleInterval_ms) {
 
 ---
 
-## 11. Referencias
+## 11. Estructura del Programa BioSignalSimulator Pro
 
-[1] Espressif Systems, "ESP32 Technical Reference Manual," Version 4.5, 2022.
+El firmware del BioSignalSimulator Pro se organizó siguiendo principios de modularidad y separación de responsabilidades. A continuación se presenta el desglose completo de la estructura de archivos y sus funciones.
 
-[2] FreeRTOS, "FreeRTOS Reference Manual," Version 10.4.3, 2021.
+### 11.1 Árbol de Directorios
 
-[3] ITEAD Studio, "Nextion Instruction Set," Version 1.0, 2023.
+```
+BioSignalSimulator Pro/
+├── include/                          # Archivos de cabecera (.h)
+│   ├── config.h                      # Configuración global: pines, frecuencias, constantes
+│   ├── data/                         # Estructuras de datos
+│   │   ├── signal_types.h            # Enums: SignalType, SignalCondition, SignalState
+│   │   └── param_limits.h            # Límites de parámetros por señal y condición
+│   ├── models/                       # Modelos matemáticos de señales
+│   │   ├── ecg_model.h               # Modelo McSharry ECG (ODE + RK4)
+│   │   ├── emg_model.h               # Modelo Fuglevand EMG (MUAPs + filtrado)
+│   │   └── ppg_model.h               # Modelo Allen PPG (doble gaussiana)
+│   ├── core/                         # Núcleo del sistema
+│   │   ├── signal_engine.h           # Motor de generación: buffer, timer ISR, DAC
+│   │   ├── state_machine.h           # Máquina de estados del sistema
+│   │   └── param_controller.h        # Controlador de parámetros con validación
+│   ├── comm/                         # Comunicaciones
+│   │   ├── nextion_driver.h          # Driver para pantalla Nextion (UART2)
+│   │   ├── serial_handler.h          # Manejador de comandos serial (debug)
+│   │   └── wifi_server.h             # Servidor WiFi AP + WebSocket
+│   └── hw/                           # Hardware adicional
+│       └── cd4051_mux.h              # Driver del multiplexor CD4051
+│
+├── src/                              # Implementaciones (.cpp)
+│   ├── main.cpp                      # Punto de entrada, setup(), loop()
+│   ├── models/                       # Implementación de modelos
+│   │   ├── ecg_model.cpp             # ~600 líneas: ODE, condiciones clínicas
+│   │   ├── emg_model.cpp             # ~500 líneas: MUAPs, reclutamiento
+│   │   └── ppg_model.cpp             # ~400 líneas: pulso, PI dinámico
+│   ├── core/                         # Implementación del núcleo
+│   │   ├── signal_engine.cpp         # ~500 líneas: timer, buffer, interpolación
+│   │   ├── state_machine.cpp         # ~200 líneas: transiciones de estado
+│   │   └── param_controller.cpp      # ~300 líneas: validación, aplicación
+│   ├── comm/                         # Implementación de comunicaciones
+│   │   ├── nextion_driver.cpp        # ~400 líneas: waveform, métricas, páginas
+│   │   ├── serial_handler.cpp        # ~150 líneas: comandos de debug
+│   │   └── wifi_server.cpp           # ~350 líneas: AP, HTTP, WebSocket
+│   └── hw/                           # Implementación de hardware
+│       └── cd4051_mux.cpp            # ~150 líneas: selección de canal
+│
+├── data/                             # Archivos para SPIFFS (app web)
+│   ├── index.html                    # Interfaz web principal
+│   ├── app.js                        # Lógica JavaScript (WebSocket, gráficos)
+│   └── styles.css                    # Estilos CSS
+│
+├── docs/                             # Documentación técnica
+│   ├── metodos/metodos/              # Metodologías de diseño
+│   │   ├── METODOLOGIA_COMPUTACIONAL.md
+│   │   ├── METODOLOGIA_ELECTRONICA.md
+│   │   ├── METODOLOGIA_MECANICA.md
+│   │   ├── METODOLOGIA_SIGNALGEN.md
+│   │   ├── METODOLOGIA_APPWEB.md
+│   │   └── RANGOS_CLINICOS.md
+│   ├── fft_analysis/                 # Análisis espectral
+│   │   ├── FFT_ANALYSIS_DOCUMENTATION.md
+│   │   └── fft_modelo_*.png
+│   └── COMANDOS.md                   # Referencia de comandos serial
+│
+├── tools/                            # Scripts de desarrollo
+│   ├── model_fft_analysis.py         # Análisis FFT de modelos
+│   ├── signal_validator.py           # Validador de señales vía serial
+│   └── clinical_ranges.py            # Rangos clínicos de referencia
+│
+└── platformio.ini                    # Configuración de PlatformIO
+```
 
-[4] WebSocket Protocol, RFC 6455, IETF, 2011.
+### 11.2 Módulos Principales y sus Responsabilidades
+
+**Tabla 11.1: Descripción de módulos del sistema**
+
+| Módulo | Archivo Principal | Responsabilidad | Dependencias |
+|--------|-------------------|-----------------|--------------|
+| **SignalEngine** | `signal_engine.cpp` | Generación de muestras, buffer circular, timer ISR, salida DAC | Modelos, config.h |
+| **ECGModel** | `ecg_model.cpp` | Síntesis de ECG (McSharry ODE + RK4), 8 condiciones clínicas | config.h |
+| **EMGModel** | `emg_model.cpp` | Síntesis de EMG (Fuglevand MUAPs), filtrado Butterworth | config.h |
+| **PPGModel** | `ppg_model.cpp` | Síntesis de PPG (Allen gaussiano), PI y SpO2 dinámicos | config.h |
+| **StateMachine** | `state_machine.cpp` | Estados del sistema: INIT→PORTADA→MENU→SIMULATING | - |
+| **ParamController** | `param_controller.cpp` | Validación y aplicación de parámetros | param_limits.h |
+| **NextionDriver** | `nextion_driver.cpp` | Comunicación UART2, waveforms, métricas, eventos táctiles | Serial2 |
+| **WiFiServer** | `wifi_server.cpp` | Access Point, servidor HTTP/WebSocket, streaming | ESPAsyncWebServer |
+| **CD4051Mux** | `cd4051_mux.cpp` | Selección de canal del multiplexor para filtros RC | GPIO26/27 |
+
+### 11.3 Flujo de Ejecución
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        FLUJO DE EJECUCIÓN DEL FIRMWARE                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. INICIALIZACIÓN (setup())                                                │
+│     ├── Serial.begin(115200)                                                │
+│     ├── SignalEngine::getInstance().begin()                                 │
+│     │   ├── Configurar timer ISR @ 4 kHz                                    │
+│     │   └── Inicializar buffer circular (2048 muestras)                     │
+│     ├── mux.begin()  →  GPIO26/27 como salidas, CH1 por defecto             │
+│     ├── nextion.begin()  →  UART2 @ 115200 baud                             │
+│     ├── wifiServer.begin()  →  AP "BioSimulator_Pro", IP 192.168.4.1        │
+│     ├── stateMachine.init()  →  Estado inicial: INIT                        │
+│     └── xTaskCreatePinnedToCore(generationTask, Core 1)                     │
+│                                                                             │
+│  2. BUCLE PRINCIPAL (loop() en Core 0)                                      │
+│     ├── nextion.process()  →  Leer eventos táctiles                         │
+│     ├── serialHandler.process()  →  Comandos de debug                       │
+│     ├── wifiServer.process()  →  Clientes WebSocket                         │
+│     ├── stateMachine.update()  →  Transiciones de estado                    │
+│     └── updateLEDStatus()  →  RGB según estado                              │
+│                                                                             │
+│  3. TAREA DE GENERACIÓN (generationTask en Core 1)                          │
+│     └── while(true):                                                        │
+│         ├── if (state == RUNNING):                                          │
+│         │   ├── Calcular espacio disponible en buffer                       │
+│         │   ├── Generar muestras con modelo activo                          │
+│         │   ├── Interpolar a 4 kHz                                          │
+│         │   └── Escribir en buffer circular                                 │
+│         └── vTaskDelay(1)  →  Yield a otras tareas                          │
+│                                                                             │
+│  4. ISR DEL TIMER (timerISR @ 4 kHz, IRAM_ATTR)                             │
+│     ├── Leer muestra de buffer[readIndex]                                   │
+│     ├── dacWrite(GPIO25, value)                                             │
+│     ├── readIndex = (readIndex + 1) % BUFFER_SIZE                           │
+│     └── Detectar underruns (estadística)                                    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 11.4 Constantes de Configuración Principales
+
+**Tabla 11.2: Constantes definidas en config.h**
+
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `FS_TIMER_HZ` | 4000 | Frecuencia del timer DAC (Hz) |
+| `SIGNAL_BUFFER_SIZE` | 2048 | Tamaño del buffer circular |
+| `DAC_SIGNAL_PIN` | 25 | GPIO para salida DAC |
+| `MUX_SELECT_S0` | 26 | GPIO selector S0 del CD4051 |
+| `MUX_SELECT_S1` | 27 | GPIO selector S1 del CD4051 |
+| `NEXTION_RX_PIN` | 16 | GPIO RX para Nextion |
+| `NEXTION_TX_PIN` | 17 | GPIO TX para Nextion |
+| `NEXTION_BAUD` | 115200 | Baudios comunicación Nextion |
+| `LED_RGB_RED` | 21 | GPIO LED rojo |
+| `LED_RGB_GREEN` | 22 | GPIO LED verde |
+| `LED_RGB_BLUE` | 23 | GPIO LED azul |
+
+---
+
+## 12. Consideraciones de Implementación
+
+### 12.1 Optimizaciones Realizadas
+
+1. **Atributo IRAM_ATTR:** La función `timerISR()` se colocó en RAM interna para ejecución rápida (<5 µs).
+
+2. **Aritmética de punto fijo:** Los cálculos de interpolación utilizaron multiplicaciones enteras donde fue posible.
+
+3. **Buffer circular con índices volátiles:** Acceso ISR-safe sin necesidad de mutexes adicionales.
+
+4. **Downsampling por contador:** Evita divisiones en tiempo real; solo operaciones módulo.
+
+### 12.2 Limitaciones Conocidas
+
+| Limitación | Descripción | Mitigación |
+|------------|-------------|------------|
+| DAC 8-bit | Resolución limitada (256 niveles) | Suficiente para aplicación educativa |
+| WiFi bloquea ADC2 | No se puede leer ADC2 con WiFi activo | ADC loopback usa GPIO34 (ADC1) |
+| Buffer underrun | Posible si Core 1 se bloquea | Detección y contador de eventos |
+
+---
+
+## 13. Referencias
+
+[1] Espressif Systems, "ESP32 Technical Reference Manual," Version 4.5.
+
+[2] FreeRTOS, "FreeRTOS Reference Manual," Version 10.4.3.
+
+[3] ITEAD Studio, "Nextion Instruction Set," Version 1.0.
+
+[4] WebSocket Protocol, RFC 6455, IETF.
 
 [5] McSharry PE, Clifford GD, Tarassenko L, Smith LA. "A dynamical model for generating synthetic electrocardiogram signals." IEEE Trans Biomed Eng. 2003;50(3):289-294.
 
@@ -1354,7 +1881,13 @@ if (millis() - lastADCRead_ms >= downsampleInterval_ms) {
 
 [7] Allen J, Murray A. "Age-related changes in peripheral pulse timing characteristics at the ears, fingers and toes." J Hum Hypertens. 2002;16(10):711-717.
 
+[8] SENIAM Project, "Surface ElectroMyoGraphy for the Non-Invasive Assessment of Muscles," European Recommendations.
+
+[9] Texas Instruments, "Input and Output Capacitor Selection," Application Report SLTA055.
+
+[10] CD4051B Datasheet, Texas Instruments, SCHS047H.
+
 ---
 
-*Documento de arquitectura computacional para BioSignalSimulator Pro*  
-*Revisado: 06.01.2026*
+*Documento de Metodología Computacional - BioSignalSimulator Pro*  
+*Grupo #22: Scarlet Sánchez y Rafael Mata - ESPOL*

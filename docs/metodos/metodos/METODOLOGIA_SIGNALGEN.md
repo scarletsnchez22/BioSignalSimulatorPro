@@ -671,9 +671,21 @@ El modelo gaussiano fue seleccionado por:
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  RETORNAR signal (mV)                                           │
-│  Rango señal completa: [800, 1200] mV (DC + AC)                 │
-│  Rango AC puro: [-100, +100] mV (para waveform)                 │
+│  RETORNAR signal (mV) y almacenar lastACValue                   │
+│  signal completo: DC + AC (solo para métricas internas)         │
+│  lastACValue: componente AC pura [-100, +100] mV                │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              SALIDA UNIFICADA: SOLO COMPONENTE AC               │
+│                                                                 │
+│  Justificación: El componente DC (~1000 mV) representa la       │
+│  absorción constante de luz y NO aporta información clínica.    │
+│  La utilidad de la señal PPG reside en la componente pulsátil   │
+│  (AC), que refleja el volumen sanguíneo y el índice de          │
+│  perfusión. Al enviar solo AC, la señal del DAC es idéntica     │
+│  a la visualización en Nextion.                                 │
 └─────────────────────────────────────────────────────────────────┘
                                │
         ┌──────────────────────┴──────────────────────┐
@@ -681,16 +693,18 @@ El modelo gaussiano fue seleccionado por:
 ┌───────────────────────────────────┐   ┌───────────────────────────────────┐
 │  SALIDA DAC (GPIO25)              │   │  SALIDA NEXTION WAVEFORM          │
 │  Función: getDACValue()           │   │  Función: getWaveformValue()      │
+│  Entrada: lastACValue (solo AC)   │   │  Entrada: lastACValue (solo AC)   │
 │  Rango: 0-255 (8-bit)             │   │  Rango: 0-255 (8-bit)             │
-│  Voltaje: 0-3.3V                  │   │  Altura: 10-370 px                │
+│  Voltaje: 0-3.3V                  │   │  Altura: 20-235 px                │
 │                                   │   │                                   │
-│  Fórmula (señal completa):        │   │  Fórmula (solo AC):               │
-│  DAC = (mV - 800) / 400 × 255     │   │  val = (AC + 100) / 200 × 255     │
-│                                   │   │  px = map(val, 0, 255, 10, 370)   │
-│  Ejemplo (DC=1000, AC=+50 mV):    │   │  Ejemplo (AC = +50 mV):           │
-│  signal = 1050 mV                 │   │  val = 150/200 × 255 = 191        │
-│  DAC = 250/400 × 255 = 159        │   │  px = 279                         │
-│  Vout = 159/255 × 3.3V = 2.06V    │   │                                   │
+│  Fórmula (solo AC):               │   │  Fórmula (solo AC):               │
+│  DAC = (AC + 100) / 200 × 255     │   │  val = (AC + 100) / 200 × 255     │
+│                                   │   │                                   │
+│  Ejemplo (AC = +50 mV, PI≈3.3%):  │   │  Ejemplo (AC = +50 mV):           │
+│  DAC = 150/200 × 255 = 191        │   │  val = 191                        │
+│  Vout = 191/255 × 3.3V = 2.47V    │   │  px = map(191, 0, 255, 20, 235)   │
+│                                   │   │     = 181 px                      │
+│  Centro (AC=0): 127 → 1.65V       │   │  Centro: 127 px (mitad waveform)  │
 └───────────────────────────────────┘   └───────────────────────────────────┘
 ```
 
@@ -757,7 +771,7 @@ Previo a la integración con la pantalla Nextion, todas las señales fueron vali
 |-------|-------------------|--------|-------------|
 | ECG | -0.5 a +1.5 | 0.5 mV | $DAC = \frac{(mV + 0.5)}{2.0} \times 255$ |
 | EMG | -5.0 a +5.0 | 0.0 mV | $DAC = \frac{(mV + 5.0)}{10.0} \times 255$ |
-| PPG | 800 a 1200 | 1000 mV | $DAC = \frac{(mV - 800)}{400} \times 255$ |
+| PPG (AC) | 0 a 150 | 0 mV | $DAC = \frac{AC}{150} \times 255$ |
 
 **Cálculos representativos de escalado DAC:**
 
@@ -822,9 +836,9 @@ $$V_{out} = \frac{159}{255} \times 3.3V = 2.06V$$
 |----------------|-----|-----|-----|
 | **Modelo base** | McSharry ECGSYN | Fuglevand MU | Allen Gaussiano |
 | **Tipo de modelo** | EDOs (RK4) | Estocástico | Determinista |
-| **fs generación** | 750 Hz | 2000 Hz | 100 Hz |
+| **fs generación** | 300 Hz | 1000 Hz | 20 Hz |
 | **fs display** | 200 Hz | 100 Hz | 100 Hz |
-| **Rango salida** | -0.5 a +1.5 mV | -5.0 a +5.0 mV | 800-1200 mV |
+| **Rango salida DAC** | -0.5 a +1.5 mV | -5.0 a +5.0 mV | ±100 mV (AC) |
 | **Condiciones** | 8 | 6 | 6 |
 | **Canales waveform** | 1 | 2 (raw + env) | 1 |
 | **HRV** | Sí | N/A | Sí |
