@@ -7,10 +7,10 @@
  * Control del CD4051 para selección de filtro RC por señal.
  * 
  * Configuración de hardware:
- * - ESP32 GPIO25 (DAC) → LM358 (buffer) → CD4051 COM (pin 3)
- * - ESP32 GPIO32 → CD4051 S0/A (pin 11)
- * - ESP32 GPIO33 → CD4051 S1/B (pin 10)
- * - CD4051 S2/C (pin 9) → GND (fijo en 0)
+ * - ESP32 GPIO25 (DAC1) → LM358 (buffer) → CD4051 COM (pin 3)
+ * - ESP32 GPIO32 → CD4051 S0/A (pin 11) - Selector A (LSB)
+ * - ESP32 GPIO33 → CD4051 S1/B (pin 10) - Selector B
+ * - CD4051 S2/C (pin 9) → GND (fijo en 0, solo usamos canales 0-3)
  * 
  * Canales disponibles (S2=0) con filtro RC (C=1µF):
  * - CH0 (S1=0, S0=0): R=6.8kΩ  → Fc=23.4 Hz  (ECG, F99%=21.6 Hz)
@@ -32,8 +32,8 @@
 // ============================================================================
 // CONFIGURACIÓN DE PINES (desde config.h)
 // ============================================================================
-// MUX_SELECT_S0 = GPIO26 - Selector A (LSB)
-// MUX_SELECT_S1 = GPIO27 - Selector B
+// MUX_SELECT_S0 = GPIO32 - Selector A (LSB)
+// MUX_SELECT_S1 = GPIO33 - Selector B
 // S2 está conectado a GND (siempre 0)
 
 #define MUX_S0_PIN          MUX_SELECT_S0

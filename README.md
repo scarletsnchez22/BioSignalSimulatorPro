@@ -62,7 +62,7 @@ USB-C → IP5306 → BMS 1S 3A → Baterías 2×18650 → Switch → XL6009 → 
                                                            ↓
                                       ESP32 DAC (GPIO25) → LM358 → CD4051 → RC Filter → BNC
                                                                      ↑
-                                                          GPIO26/27 (S0/S1)
+                                                          GPIO32/33 (S0/S1)
 ```
 
 ### Cadena de Acondicionamiento de Señal

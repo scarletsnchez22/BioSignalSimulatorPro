@@ -140,8 +140,8 @@ void CD4051Mux::applyChannelBits(uint8_t channel) {
     //   6   |   1   |   1   |   0  (no accesible)
     //   7   |   1   |   1   |   1  (no accesible)
     
-    uint8_t s0 = (channel >> 0) & 0x01;  // Bit 0 → S0 (GPIO26)
-    uint8_t s1 = (channel >> 1) & 0x01;  // Bit 1 → S1 (GPIO27)
+    uint8_t s0 = (channel >> 0) & 0x01;  // Bit 0 → S0 (GPIO32)
+    uint8_t s1 = (channel >> 1) & 0x01;  // Bit 1 → S1 (GPIO33)
     // S2 = GND (siempre 0)
     
     digitalWrite(MUX_S0_PIN, s0);

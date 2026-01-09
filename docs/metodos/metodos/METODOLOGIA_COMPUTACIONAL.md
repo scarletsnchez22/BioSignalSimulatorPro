@@ -1780,7 +1780,7 @@ BioSignalSimulator Pro/
 | **ParamController** | `param_controller.cpp` | Validación y aplicación de parámetros | param_limits.h |
 | **NextionDriver** | `nextion_driver.cpp` | Comunicación UART2, waveforms, métricas, eventos táctiles | Serial2 |
 | **WiFiServer** | `wifi_server.cpp` | Access Point, servidor HTTP/WebSocket, streaming | ESPAsyncWebServer |
-| **CD4051Mux** | `cd4051_mux.cpp` | Selección de canal del multiplexor para filtros RC | GPIO26/27 |
+| **CD4051Mux** | `cd4051_mux.cpp` | Selección de canal del multiplexor para filtros RC | GPIO32/33 |
 
 ### 11.3 Flujo de Ejecución
 
@@ -1794,7 +1794,7 @@ BioSignalSimulator Pro/
 │     ├── SignalEngine::getInstance().begin()                                 │
 │     │   ├── Configurar timer ISR @ 4 kHz                                    │
 │     │   └── Inicializar buffer circular (2048 muestras)                     │
-│     ├── mux.begin()  →  GPIO26/27 como salidas, CH1 por defecto             │
+│     ├── mux.begin()  →  GPIO32/33 como salidas, CH1 por defecto             │
 │     ├── nextion.begin()  →  UART2 @ 115200 baud                             │
 │     ├── wifiServer.begin()  →  AP "BioSimulator_Pro", IP 192.168.4.1        │
 │     ├── stateMachine.init()  →  Estado inicial: INIT                        │
@@ -1834,8 +1834,8 @@ BioSignalSimulator Pro/
 | `FS_TIMER_HZ` | 4000 | Frecuencia del timer DAC (Hz) |
 | `SIGNAL_BUFFER_SIZE` | 2048 | Tamaño del buffer circular |
 | `DAC_SIGNAL_PIN` | 25 | GPIO para salida DAC |
-| `MUX_SELECT_S0` | 26 | GPIO selector S0 del CD4051 |
-| `MUX_SELECT_S1` | 27 | GPIO selector S1 del CD4051 |
+| `MUX_SELECT_S0` | 32 | GPIO selector S0 del CD4051 |
+| `MUX_SELECT_S1` | 33 | GPIO selector S1 del CD4051 |
 | `NEXTION_RX_PIN` | 16 | GPIO RX para Nextion |
 | `NEXTION_TX_PIN` | 17 | GPIO TX para Nextion |
 | `NEXTION_BAUD` | 115200 | Baudios comunicación Nextion |
