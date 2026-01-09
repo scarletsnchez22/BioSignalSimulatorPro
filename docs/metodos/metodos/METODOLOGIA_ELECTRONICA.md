@@ -282,7 +282,7 @@ Basándose en el análisis espectral FFT de las señales generadas por los model
 │  │(DAC1)│       │ ×1   │          │          │             │   ───┬── │    │
 │  └──────┘       └──────┘          │ CH0 ◄────│──[6.8kΩ]────│►     │   │    │
 │                                   │          │             │      C   │──►BNC
-│  ┌──────┐                         │ CH1 ◄────│──[Directo]──│►   1µF   │    │
+│  ┌──────┐                         │ CH1 ◄────│──[1.0kΩ]────│►   1µF   │    │
 │  │GPIO26│─────────────────────────│► S0      │             │      │   │    │
 │  │GPIO27│─────────────────────────│► S1      │             │   ───┴── │    │
 │  └──────┘                         │ S2=GND   │             │    GND   │    │
@@ -296,7 +296,7 @@ Basándose en el análisis espectral FFT de las señales generadas por los model
 | Señal | F 99% Energía | Fc Diseño | R (C=1µF) | Canal CD4051 | Atenuación @ 4kHz |
 |-------|---------------|-----------|-----------|--------------|-------------------|
 | **ECG** | 21.6 Hz | 23.4 Hz | 6.8 kΩ | CH0 (S1=0, S0=0) | -44 dB |
-| **EMG** | 146.3 Hz | Bypass | Directo | CH1 (S1=0, S0=1) | (filtrado digital) |
+| **EMG** | 146.3 Hz | 159 Hz | 1.0 kΩ | CH1 (S1=0, S0=1) | -28 dB |
 | **PPG** | 4.9 Hz | 4.82 Hz | 33 kΩ | CH2 (S1=1, S0=0) | -58 dB |
 
 **Justificación de la selección de componentes:**
@@ -312,14 +312,17 @@ Basándose en el análisis espectral FFT de las señales generadas por los model
 $$F_c = \frac{1}{2\pi R C}$$
 
 - **ECG:** $F_c = \frac{1}{2\pi \times 6800 \times 10^{-6}} = 23.4 \, Hz$ (ligeramente superior a F99%=21.6 Hz)
+- **EMG:** $F_c = \frac{1}{2\pi \times 1000 \times 10^{-6}} = 159 \, Hz$ (ligeramente superior a F99%=146.3 Hz)
 - **PPG:** $F_c = \frac{1}{2\pi \times 33000 \times 10^{-6}} = 4.82 \, Hz$ (coincide con F99%=4.9 Hz)
-- **EMG:** Bypass directo; el filtrado se realiza digitalmente (Butterworth 20-450 Hz) antes del DAC
+
+**Nota:** El filtro RC para EMG (R=1kΩ) fue necesario para eliminar ruido de alta frecuencia introducido por el multiplexor CD4051 cuando operaba sin filtro. La conexión directa (bypass) generaba interferencias visibles en el osciloscopio.
 
 **Análisis de error por resistencia Ron del CD4051:**
 
 | Canal | R nominal | Ron (típ.) | R total | Fc nominal | Fc real | Error |
 |-------|-----------|------------|---------|------------|---------|-------|
 | CH0 (ECG) | 6.8 kΩ | 80 Ω | 6.88 kΩ | 23.4 Hz | 23.1 Hz | <1.2% |
+| CH1 (EMG) | 1.0 kΩ | 80 Ω | 1.08 kΩ | 159 Hz | 147 Hz | <7.5% |
 | CH2 (PPG) | 33 kΩ | 80 Ω | 33.08 kΩ | 4.82 Hz | 4.81 Hz | <0.3% |
 
 El error introducido por Ron es inferior al 1.2% en todos los casos, despreciable para la aplicación educativa.

@@ -531,7 +531,7 @@ Se implementó un sistema de selección de filtros RC analógicos mediante el mu
 │  │ (PWM/DAC)│                   │          │              │   ───┬── │  │
 │  │          │                   │ CH0 ◄────│──[6.8kΩ]─────│►     │   │  │
 │  │ GPIO26   │──────────────────►│ S0       │              │      C   │──► BNC
-│  │ (Select) │                   │ CH1 ◄────│──[Directo]───│►   1µF   │  │
+│  │ (Select) │                   │ CH1 ◄────│──[1.0kΩ]─────│►   1µF   │  │
 │  │          │                   │          │              │      │   │  │
 │  │ GPIO27   │──────────────────►│ S1       │              │   ───┴── │  │
 │  │ (Select) │                   │ CH2 ◄────│──[33kΩ]──────│►    GND  │  │
@@ -541,9 +541,9 @@ Se implementó un sistema de selección de filtros RC analógicos mediante el mu
 │  ┌─────────┬─────┬─────┬────────────┬────────────────────────────────┐  │
 │  │ Canal   │ S1  │ S0  │ Resistor   │ Fc (con C=1µF)                 │  │
 │  ├─────────┼─────┼─────┼────────────┼────────────────────────────────┤  │
-│  │ CH0     │  0  │  0  │ 6.8 kΩ     │ 23.4 Hz → ECG                  │  │
-│  │ CH1     │  0  │  1  │ Directo    │ Sin filtro → EMG               │  │
-│  │ CH2     │  1  │  0  │ 33 kΩ      │ 4.82 Hz → PPG                  │  │
+│  │ CH0     │  0  │  0  │ 6.8 kΩ     │ 23.4 Hz → ECG (F99%=21.6 Hz)   │  │
+│  │ CH1     │  0  │  1  │ 1.0 kΩ     │ 159 Hz → EMG (F99%=146 Hz)     │  │
+│  │ CH2     │  1  │  0  │ 33 kΩ      │ 4.82 Hz → PPG (F99%=4.9 Hz)    │  │
 │  └─────────┴─────┴─────┴────────────┴────────────────────────────────┘  │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -565,9 +565,11 @@ $$F_c = \frac{1}{2\pi \times 33000 \times 10^{-6}} = 4.82 \, Hz$$
 
 Fc coincide con F99% = 4.9 Hz del PPG, proporcionando máxima atenuación del ruido de muestreo.
 
-**EMG (CH1):** Bypass (sin filtro RC adicional)
+**EMG (CH1):** Fc = 159 Hz
 
-El EMG utiliza conexión directa (bypass) porque su contenido frecuencial se extiende hasta 146.3 Hz (F99%). Un filtro RC con Fc apropiado requeriría una resistencia muy baja que introduciría otros problemas. En su lugar, el EMG se filtra digitalmente (Butterworth 20-450 Hz) antes de la conversión DAC.
+$$F_c = \frac{1}{2\pi \times 1000 \times 10^{-6}} = 159.15 \text{ Hz}$$
+
+El EMG utiliza R=1kΩ para obtener Fc=159 Hz, ligeramente superior al F99%=146.3 Hz del análisis FFT. Este filtro es necesario para eliminar el ruido de alta frecuencia introducido por el multiplexor CD4051 cuando se operaba sin filtro.
 
 ### 8.3 Implementación del Driver
 
@@ -578,13 +580,13 @@ El driver del CD4051 se implementó como clase singleton con interfaz simple:
 void SignalEngine::setSignalType(SignalType type) {
     switch(type) {
         case SIGNAL_ECG:
-            mux.setAttenuation(AttenuationLevel::ATTEN_MEDIUM);  // CH0: 6.8kΩ
+            mux.selectChannel(MUX_CH_ECG);  // CH0: 6.8kΩ, Fc=23.4 Hz
             break;
         case SIGNAL_EMG:
-            mux.setAttenuation(AttenuationLevel::ATTEN_NONE);    // CH1: Directo
+            mux.selectChannel(MUX_CH_EMG);  // CH1: 1.0kΩ, Fc=159 Hz
             break;
         case SIGNAL_PPG:
-            mux.setAttenuation(AttenuationLevel::ATTEN_HIGH);    // CH2: 33kΩ
+            mux.selectChannel(MUX_CH_PPG);  // CH2: 33kΩ, Fc=4.8 Hz
             break;
     }
 }
