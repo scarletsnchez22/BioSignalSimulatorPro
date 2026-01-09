@@ -143,6 +143,11 @@ void ECGModel::reset() {
     gaussHasSpare = false;
     gaussSpare = 0.0f;
     
+    // Inicializar filtrado digital (deshabilitado por defecto)
+    filterChain.configureForECG(ECG_SFECG, 60.0f);  // 500 Hz, notch 60 Hz
+    filterChain.reset();
+    filteringEnabled = false;  // Deshabilitado - usuario activa si necesita
+    
     // Liberar proceso RR anterior
     if (rrProcess != nullptr) {
         free(rrProcess);
@@ -1427,4 +1432,24 @@ void ECGModel::resetMetricsForCondition() {
             // Normal: valores ya seteados arriba son correctos
             break;
     }
+}
+
+// ============================================================================
+// CONTROL DE FILTRADO DIGITAL
+// ============================================================================
+
+void ECGModel::setNotchFrequency(float freq) {
+    filterChain.setNotchFreq(freq, 30.0f);
+}
+
+void ECGModel::enableHighpassFilter(bool en) {
+    filterChain.enableHighpass(en);
+}
+
+void ECGModel::enableLowpassFilter(bool en) {
+    filterChain.enableLowpass(en);
+}
+
+void ECGModel::enableNotchFilter(bool en) {
+    filterChain.enableNotch(en);
 }

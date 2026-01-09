@@ -28,6 +28,7 @@
 
 #include <Arduino.h>
 #include "data/signal_types.h"
+#include "core/digital_filters.h"
 
 // ============================================================================
 // CONSTANTES DEL MODELO MCSHARRY
@@ -276,6 +277,12 @@ private:
     VFibState vfibState;                // Estado del modelo VFIB alternativo
     
     // =========================================================================
+    // FILTRADO DIGITAL (Pan-Tompkins 1985)
+    // =========================================================================
+    SignalFilterChain filterChain;      // Cadena de filtros HP + LP + Notch
+    bool filteringEnabled;              // Control de filtrado
+    
+    // =========================================================================
     // MÉTODOS PRIVADOS - Sistema dinámico
     // =========================================================================
     void computeDerivatives(const ECGDynamicState& s, ECGDynamicState& ds, float omega);
@@ -425,6 +432,33 @@ public:
     void getHRRange(float& minHR, float& maxHR) const;
     void getOutputRange(float* minMV, float* maxMV) const;
     ECGDisplayMetrics getDisplayMetrics() const;
+    
+    // =========================================================================
+    // CONTROL DE FILTRADO DIGITAL
+    // =========================================================================
+    /**
+     * @brief Habilita/deshabilita el filtrado digital
+     * @param enable true para filtrar, false para señal cruda
+     */
+    void setFilteringEnabled(bool enable) { filteringEnabled = enable; }
+    bool isFilteringEnabled() const { return filteringEnabled; }
+    
+    /**
+     * @brief Configura frecuencia del filtro notch (50 Hz Europa, 60 Hz USA)
+     */
+    void setNotchFrequency(float freq);
+    
+    /**
+     * @brief Habilita/deshabilita filtros individuales
+     */
+    void enableHighpassFilter(bool en);
+    void enableLowpassFilter(bool en);
+    void enableNotchFilter(bool en);
+    
+    /**
+     * @brief Acceso a la cadena de filtros para configuración avanzada
+     */
+    SignalFilterChain& getFilterChain() { return filterChain; }
 };
 
 #endif // ECG_MODEL_H

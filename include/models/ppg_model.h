@@ -25,6 +25,7 @@
 
 #include <Arduino.h>
 #include "../data/signal_types.h"
+#include "../core/digital_filters.h"
 
 // ============================================================================
 // CONSTANTES BASE DEL MODELO PPG (Allen 2007)
@@ -146,6 +147,10 @@ private:
     // DC baseline configurable
     float dcBaseline;           // Nivel DC en mV (0 = señal AC pura)
     
+    // Filtrado digital
+    SignalFilterChain filterChain;      // Cadena de filtros HP + LP + Notch
+    bool filteringEnabled;              // Control de filtrado
+    
     // Métodos privados
     void initConditionRanges();                 // Inicializa rangos según condición
     float generateDynamicHR();                  // HR dentro del rango con variabilidad
@@ -240,6 +245,17 @@ public:
     float getMeasuredSystoleTime() const;  // Sístole medida (ms)
     float getMeasuredDiastoleTime() const; // Diástole medida (ms)
     float getMeasuredNotchDepth() const;   // Profundidad muesca medida (mV)
+    
+    // =========================================================================
+    // CONTROL DE FILTRADO DIGITAL
+    // =========================================================================
+    void setFilteringEnabled(bool enable) { filteringEnabled = enable; }
+    bool isFilteringEnabled() const { return filteringEnabled; }
+    void setNotchFrequency(float freq);
+    void enableHighpassFilter(bool en);
+    void enableLowpassFilter(bool en);
+    void enableNotchFilter(bool en);
+    SignalFilterChain& getFilterChain() { return filterChain; }
 };
 
 #endif // PPG_MODEL_H

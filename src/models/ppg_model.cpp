@@ -86,6 +86,11 @@ void PPGModel::reset() {
     measuredRRInterval_ms = currentRR * 1000.0f;
     measuredSystoleTime_ms = systoleTime;
     measuredDiastoleTime_ms = diastoleTime;
+    
+    // Inicializar filtrado digital (deshabilitado por defecto)
+    filterChain.configureForPPG(250.0f, 60.0f);  // 250 Hz, notch 60 Hz
+    filterChain.reset();
+    filteringEnabled = false;  // Deshabilitado - usuario activa si necesita
 }
 
 // ============================================================================
@@ -509,6 +514,7 @@ float PPGModel::generateSample(float deltaTime) {
     }
     
     previousPhase = phaseInCycle;
+    
     lastSampleValue = signal_mv;
     lastACValue = acValue;  // Guardar componente AC pura
     
@@ -693,4 +699,24 @@ float PPGModel::getMeasuredDiastoleTime() const {
 float PPGModel::getMeasuredNotchDepth() const {
     // Profundidad = pico sistólico - punto mínimo de muesca (mV)
     return measuredPeakValue - measuredNotchValue;
+}
+
+// ============================================================================
+// CONTROL DE FILTRADO DIGITAL
+// ============================================================================
+
+void PPGModel::setNotchFrequency(float freq) {
+    filterChain.setNotchFreq(freq, 30.0f);
+}
+
+void PPGModel::enableHighpassFilter(bool en) {
+    filterChain.enableHighpass(en);
+}
+
+void PPGModel::enableLowpassFilter(bool en) {
+    filterChain.enableLowpass(en);
+}
+
+void PPGModel::enableNotchFilter(bool en) {
+    filterChain.enableNotch(en);
 }

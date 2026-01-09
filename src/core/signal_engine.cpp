@@ -1,12 +1,18 @@
 /**
  * @file signal_engine.cpp
  * @brief Implementación del motor de generación de señales
- * @version 1.0.0
- * @date 18 Diciembre 2025
+ * @version 1.1.0
+ * @date 09 Enero 2026
  */
 
 #include "core/signal_engine.h"
 #include "config.h"
+#include "hw/cd4051_mux.h"
+
+// ============================================================================
+// EXTERNA: Objeto MUX global (definido en cd4051_mux.cpp)
+// ============================================================================
+extern CD4051Mux mux;
 
 // ============================================================================
 // SINGLETON
@@ -46,13 +52,6 @@ SignalEngine::SignalEngine() {
     signalMutex = xSemaphoreCreateMutex();
     signalTimer = nullptr;
     generationTaskHandle = nullptr;
-    
-    // Inicializar Moving Average
-    maIndex = 0;
-    maSum = 127.5f * MA_WINDOW_SIZE;
-    for (int i = 0; i < MA_WINDOW_SIZE; i++) {
-        maBuffer[i] = 127.5f;
-    }
     
     // Inicializar salida DAC EMG en RAW por defecto
     emgDacOutput = EMGDACOutput::RAW;
@@ -126,9 +125,41 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
         currentSignal.sampleCount = 0;
         currentSignal.lastUpdateTime = millis();
         
+        // ========================================================================
+        // CONFIGURAR CANAL DE MUX SEGÚN TIPO DE SEÑAL
+        // ========================================================================
+        // CRÍTICO: Cada señal requiere un filtro RC diferente
+        // - ECG: CH0 (R=6.8kΩ, Fc=23.4 Hz)  → Filtro paso-bajo para ECG
+        // - EMG: CH1 (R=1.0kΩ, Fc=159 Hz)   → Filtro paso-bajo para EMG
+        // - PPG: CH2 (R=33kΩ, Fc=4.8 Hz)    → Filtro paso-bajo para PPG
+        // ========================================================================
+        switch (type) {
+            case SignalType::ECG:
+                mux.selectChannel(MuxChannel::CH0_6K8_OHM);
+                Serial.println("[MUX] Canal seleccionado: CH0 (6.8k ohm, Fc=23.4 Hz) para ECG");
+                break;
+            case SignalType::EMG:
+                mux.selectChannel(MuxChannel::CH1_DIRECT);
+                Serial.println("[MUX] Canal seleccionado: CH1 (1.0k ohm, Fc=159 Hz) para EMG");
+                break;
+            case SignalType::PPG:
+                mux.selectChannel(MuxChannel::CH2_33K_OHM);
+                Serial.println("[MUX] Canal seleccionado: CH2 (33k ohm, Fc=4.8 Hz) para PPG");
+                break;
+            default:
+                Serial.println("[MUX] ADVERTENCIA: Señal desconocida, manteniendo canal actual");
+                break;
+        }
+        Serial.printf("[MUX] Canal activo: %d (%s), Factor atenuación: %.2f\n", 
+                     mux.getCurrentChannel(), 
+                     mux.getChannelName(),
+                     mux.getAttenuationFactor());
+        
+        // ========================================================================
         // Configurar modelo según tipo
         // IMPORTANTE: Llamar reset() ANTES de setParameters() para que
         // la morfología de la condición no sea sobrescrita por initializeWaveParams()
+        // ========================================================================
         switch (type) {
             case SignalType::ECG: {
                 ecgModel.reset();  // Primero reset (carga defaults)
@@ -375,11 +406,10 @@ void SignalEngine::generationTask(void* parameter) {
                 if (interpolated < 0) interpolated = 0;
                 if (interpolated > 255) interpolated = 255;
                 
-                // Guardar en buffer (sin Moving Average)
+                // Guardar en buffer para DAC a 4 kHz
                 // El suavizado se logra mediante:
                 // 1. Interpolación lineal (upsampling de modelo a 4kHz)
-                // 2. Decimación en el ISR (4kHz → 200/100 Hz)
-                // 3. Filtro RC analógico (fc=159 Hz)
+                // 2. Filtro RC analógico (fc=159 Hz)
                 signalBuffer[writeIdx] = (uint8_t)interpolated;
                 displayBuffer[writeIdx] = interpolatedMV;
                 writeIdx = (writeIdx + 1) % SIGNAL_BUFFER_SIZE;

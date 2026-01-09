@@ -1,15 +1,15 @@
 /**
  * @file cd4051_mux.h
  * @brief Driver para multiplexor analógico CD4051
- * @version 1.1.0
- * @date 08 Enero 2026
+ * @version 1.2.0
+ * @date 09 Enero 2026
  * 
  * Control del CD4051 para selección de filtro RC por señal.
  * 
  * Configuración de hardware:
  * - ESP32 GPIO25 (DAC) → LM358 (buffer) → CD4051 COM (pin 3)
- * - ESP32 GPIO26 → CD4051 S0/A (pin 11)
- * - ESP32 GPIO27 → CD4051 S1/B (pin 10)
+ * - ESP32 GPIO32 → CD4051 S0/A (pin 11)
+ * - ESP32 GPIO33 → CD4051 S1/B (pin 10)
  * - CD4051 S2/C (pin 9) → GND (fijo en 0)
  * 
  * Canales disponibles (S2=0) con filtro RC (C=1µF):
@@ -44,9 +44,9 @@
 // CANALES DEL MULTIPLEXOR
 // ============================================================================
 enum class MuxChannel : uint8_t {
-    CH0_ECG_6K8     = 0,    // Canal 0: R=6.8kΩ, Fc=23.4 Hz (ECG)
-    CH1_EMG_1K      = 1,    // Canal 1: R=1.0kΩ, Fc=159 Hz (EMG)
-    CH2_PPG_33K     = 2,    // Canal 2: R=33kΩ, Fc=4.8 Hz (PPG)
+    CH0_6K8_OHM     = 0,    // Canal 0: R=6.8kΩ, Fc=23.4 Hz (ECG)
+    CH1_DIRECT      = 1,    // Canal 1: R=1.0kΩ, Fc=159 Hz (EMG)
+    CH2_33K_OHM     = 2,    // Canal 2: R=33kΩ, Fc=4.8 Hz (PPG)
     CH3_UNUSED      = 3,    // Canal 3: No conectado
     CH4_UNUSED      = 4,    // Canal 4: No conectado
     CH5_UNUSED      = 5,    // Canal 5: No conectado
@@ -54,10 +54,10 @@ enum class MuxChannel : uint8_t {
     CH7_UNUSED      = 7     // Canal 7: No conectado (requiere S2=1)
 };
 
-// Alias para facilidad de uso por señal
-#define MUX_CH_ECG    MuxChannel::CH0_ECG_6K8
-#define MUX_CH_EMG    MuxChannel::CH1_EMG_1K
-#define MUX_CH_PPG    MuxChannel::CH2_PPG_33K
+// Alias para facilidad de uso
+#define MUX_ATTEN_MEDIUM    MuxChannel::CH0_6K8_OHM
+#define MUX_ATTEN_NONE      MuxChannel::CH1_DIRECT
+#define MUX_ATTEN_HIGH      MuxChannel::CH2_33K_OHM
 
 // ============================================================================
 // NIVELES DE ATENUACIÓN PREDEFINIDOS

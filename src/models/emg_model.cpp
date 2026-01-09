@@ -149,6 +149,11 @@ void EMGModel::reset() {
     // Actualizar baseExcitation después de aplicar modifiers (CORRECCIÓN 4)
     baseExcitation = currentExcitation;
     
+    // Inicializar filtrado digital (deshabilitado por defecto)
+    filterChain.configureForEMG(SAMPLE_RATE, 60.0f);  // 1000 Hz, notch 60 Hz
+    filterChain.reset();
+    filteringEnabled = false;  // Deshabilitado - usuario activa si necesita
+    
     initializeMotorUnits();
 }
 
@@ -1442,4 +1447,24 @@ void EMGModel::setNoiseLevel(float noise) {
  */
 void EMGModel::setAmplitude(float amp) {
     params.amplitude = constrain(amp, 0.5f, 2.0f);  // ±100% rango seguro
+}
+
+// ============================================================================
+// CONTROL DE FILTRADO DIGITAL
+// ============================================================================
+
+void EMGModel::setNotchFrequency(float freq) {
+    filterChain.setNotchFreq(freq, 30.0f);
+}
+
+void EMGModel::enableHighpassFilter(bool en) {
+    filterChain.enableHighpass(en);
+}
+
+void EMGModel::enableLowpassFilter(bool en) {
+    filterChain.enableLowpass(en);
+}
+
+void EMGModel::enableNotchFilter(bool en) {
+    filterChain.enableNotch(en);
 }

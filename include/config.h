@@ -32,8 +32,8 @@
 #define DAC_SIGNAL_PIN          25      // GPIO25 - DAC1 (Salida a LM358 buffer)
 
 // Multiplexor CD4051 (selección de atenuación)
-#define MUX_SELECT_S0           26      // GPIO26 - CD4051 pin 11 (Selector A)
-#define MUX_SELECT_S1           27      // GPIO27 - CD4051 pin 10 (Selector B)
+#define MUX_SELECT_S0           32      // GPIO32 - CD4051 pin 11 (Selector A)
+#define MUX_SELECT_S1           33      // GPIO33 - CD4051 pin 10 (Selector B)
 // CD4051 S2 (pin 9) conectado a GND
 
 // ============================================================================

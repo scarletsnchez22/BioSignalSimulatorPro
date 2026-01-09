@@ -24,6 +24,7 @@
 
 #include <Arduino.h>
 #include "data/signal_types.h"
+#include "core/digital_filters.h"
 
 // ============================================================================
 // CONSTANTES DEL MODELO - Fuglevand 1993 adaptado para sEMG
@@ -238,6 +239,10 @@ private:
     bool gaussHasSpare;
     float gaussSpare;
     
+    // Filtrado digital unificado (interfaz común con ECG/PPG)
+    SignalFilterChain filterChain;      // Cadena de filtros HP + LP + Notch
+    bool filteringEnabled;              // Control de filtrado adicional
+    
     // Métodos privados
     void initializeMotorUnits();
     void resetMotorUnitsToDefault();
@@ -400,6 +405,17 @@ public:
      * @brief Obtiene nombre del evento actual
      */
     const char* getCurrentEventName() const;
+    
+    // =========================================================================
+    // CONTROL DE FILTRADO DIGITAL
+    // =========================================================================
+    void setFilteringEnabled(bool enable) { filteringEnabled = enable; }
+    bool isFilteringEnabled() const { return filteringEnabled; }
+    void setNotchFrequency(float freq);
+    void enableHighpassFilter(bool en);
+    void enableLowpassFilter(bool en);
+    void enableNotchFilter(bool en);
+    SignalFilterChain& getFilterChain() { return filterChain; }
     
 private:
     // Estado de secuencia
