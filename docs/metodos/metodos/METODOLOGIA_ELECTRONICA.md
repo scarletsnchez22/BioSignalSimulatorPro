@@ -72,7 +72,7 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 | Grado de contaminación | Grado 2 (uso en interiores, ambiente educativo) |
 | Aislamiento básico | Carcasa PETG no conductora, batería aislada de salidas |
 | Puesta a tierra | Nodo GND único, referencia común para todos los circuitos |
-| Protección contra sobrecorriente | DW01 integrado (> 3A), resistencia serie en salida BNC |
+| Protección contra sobrecorriente | Fusible 2A a salida XL6009 + DW01 integrado (límite 3A) |
 | Marcado y etiquetado | Etiquetas de advertencia "Solo uso educativo", voltajes indicados |
 
 #### 2.2.2 IEC 62133: Seguridad de Baterías de Litio
@@ -81,7 +81,8 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 |-----------|----------------|
 | Protección sobrecarga | IP5306 corte a 4.2V ±0.5% |
 | Protección sobredescarga | DW01 corte a 2.5V |
-| Protección cortocircuito | DW01 límite 3A |
+| Protección cortocircuito batería | DW01 límite 3A |
+| Protección cortocircuito carga | Fusible 2A a salida 5V |
 | Ventilación | Orificios en carcasa para disipación térmica |
 
 #### 2.2.3 Otras Normativas Consideradas
@@ -231,30 +232,52 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                    BIOSIGNALSIMULATOR PRO v3.0                  │
+│                    BIOSIGNALSIMULATOR PRO v3.0                   │
 ├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  USB 5V ──► IP5306 ──► BMS 1S 3A ──► BATERÍAS 2×18650 (5200mAh) │
-│            (Tipo C)         (PCM)              │                  │
-│                                               ▼                  │
-│                                         SWITCH ON/OFF             │
-│                                               │                  │
-│                                               ▼                  │
-│                                    XL6009 (3.7V→5V, η≈88-92%)    │
-│                                               │                  │
-│                            ┌───────────────────┼────────────────┐│
-│                            ▼                   ▼                ▼│
-│                         ESP32               NEXTION       MCP6002│
-│                       WROOM-32            7" 800×480       Buffer│
-│                                                          └─► BNC │
-│                                                                  │
+│                                                                   │
+│  USB 5V ──► IP5306 ──► BMS 1S 3A ──► BATERÍAS 2×18650 (5200mAh)  │
+│            (Tipo C)      (PCM)               │                    │
+│                                              ▼                    │
+│                                        SWITCH ON/OFF              │
+│                                              │                    │
+│                                              ▼                    │
+│                                   XL6009 (3.7V→5V, η≈88-92%)     │
+│                                              │                    │
+│                                              ▼                    │
+│                                    ┌─────────────┐                │
+│                                    │ FUSIBLE 2A│                │
+│                                    │ (PCB out) │                │
+│                                    └──────┬──────┘                │
+│                                         │                        │
+│                           ┌─────────────┼───────────────┐         │
+│                           ▼              ▼               ▼         │
+│                        ESP32          NEXTION         LM358      │
+│                      WROOM-32       7" 800×480        Buffer     │
+│                                                      └─► BNC     │
+│                                                                   │
 └──────────────────────────────────────────────────────────────────┘
+```
+
+**Protección por fusible:**
+
+| Parámetro | Valor | Justificación |
+|-----------|-------|---------------|
+| Ubicación | Salida 5V del XL6009 | Protege carga (ESP32, Nextion, LM358) |
+| Valor | 2A fusión lenta | Consumo máx ~1.3A + margen para picos arranque |
+| Tipo | Cartucho 5×20mm o SMD | Reemplazable sin desoldar |
+
+**Justificación de protección en dos niveles:**
+
+- **BMS 1S 3A (DW01):** Protege las **baterías** contra sobrecarga, sobredescarga y cortocircuito.
+- **Fusible 2A:** Protege la **carga** (electrónica downstream) contra cortocircuito.
+
+Esta arquitectura no es redundante: cada protección cubre un dominio diferente del circuito.
 
 #### 2.5.3 Acondicionamiento de la salida analógica
 
-Para asegurar que la forma de onda enviada al BNC mantenga la banda útil (0‑500 Hz) y llegue suavizada (sin escalones del DAC), se añadió un filtro pasabajos RC a la salida del MCP6002:
+Para asegurar que la forma de onda enviada al BNC mantenga la banda útil (0‑500 Hz) y llegue suavizada (sin escalones del DAC), se añadió un filtro pasabajos RC a la salida del LM358:
 
-- **Resistencia serie:** 100 Ω ubicada entre la salida del MCP6002 y la bornera "BNC_OUT". Además de definir fc junto con el capacitor, protege al op-amp ante cortos o cargas capacitivas externas.
+- **Resistencia serie:** 100 Ω ubicada entre la salida del LM358 y la bornera "BNC_OUT". Además de definir fc junto con el capacitor, protege al op-amp ante cortos o cargas capacitivas externas.
 - **Capacitor de filtrado:** 1 µF cerámico X7R conectado entre el nodo filtrado y GND.
 
 El punto de corte del filtro viene dado por:
