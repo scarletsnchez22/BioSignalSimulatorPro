@@ -72,7 +72,7 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 | Grado de contaminación | Grado 2 (uso en interiores, ambiente educativo) |
 | Aislamiento básico | Carcasa PETG no conductora, batería aislada de salidas |
 | Puesta a tierra | Nodo GND único, referencia común para todos los circuitos |
-| Protección contra sobrecorriente | Fusible 2A a salida XL6009 + DW01 integrado (límite 3A) |
+| Protección contra sobrecorriente | Fusible 1.5A a salida XL6009 + DW01 integrado (límite 3A) |
 | Marcado y etiquetado | Etiquetas de advertencia "Solo uso educativo", voltajes indicados |
 
 #### 2.2.2 IEC 62133: Seguridad de Baterías de Litio
@@ -82,7 +82,7 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 | Protección sobrecarga | IP5306 corte a 4.2V ±0.5% |
 | Protección sobredescarga | DW01 corte a 2.5V |
 | Protección cortocircuito batería | DW01 límite 3A |
-| Protección cortocircuito carga | Fusible 2A a salida 5V |
+| Protección cortocircuito carga | Fusible 1.5A a salida 5V |
 | Ventilación | Orificios en carcasa para disipación térmica |
 
 #### 2.2.3 Otras Normativas Consideradas
@@ -168,6 +168,29 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 | Capacidad | 2600 mAh | **5200 mAh** |
 | Energía | 9.62 Wh | **19.24 Wh** |
 
+**⚠️ Precauciones de Seguridad para Baterías en Paralelo (Mini Power Bank)**
+
+La configuración de celdas 18650 en paralelo forma una "mini power bank" y requiere precauciones específicas para evitar corrientes de ecualización peligrosas y daños a las celdas:
+
+| Precaución | Descripción | Riesgo si no se cumple |
+|------------|-------------|------------------------|
+| **Voltajes iguales** | Conectar celdas con ≤0.05V de diferencia | Corriente de ecualización entre celdas (puede ser >10A) |
+| **Celdas nuevas** | Usar celdas del mismo lote y fecha | Desbalance por diferente capacidad/resistencia interna |
+| **Mismo modelo** | Idéntico fabricante, modelo y capacidad | Diferencias de química causan corrientes parásitas |
+| **BMS obligatorio** | Usar BMS 1S para protección del pack | Sobrecarga, sobredescarga, cortocircuito sin protección |
+| **Portapilas estables** | Usar portapilas de calidad con resortes firmes | Conexiones intermitentes causan arcos y calentamiento |
+| **Puentes seguros** | Cables AWG 18 o mayores entre portapilas | Cables delgados se calientan con corrientes de ecualización |
+| **Verificar antes de conectar** | Medir voltaje de cada celda individualmente | Conectar celda descargada a celda cargada = chispazo |
+
+**Procedimiento de conexión seguro:**
+
+1. Medir voltaje de cada celda con multímetro
+2. Si hay diferencia >0.05V, cargar ambas celdas individualmente hasta 4.2V
+3. Verificar nuevamente que tengan voltaje idéntico
+4. Conectar las celdas en paralelo al portapilas
+5. Conectar el BMS al pack
+6. Verificar que el BMS no esté en modo de protección
+
 **Módulo Cargador IP5306 (Tipo C)**
 
 | Característica | Valor |
@@ -198,7 +221,9 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 | Eficiencia @ 0.8A | 92% |
 | Eficiencia @ 1.2A | 88% |
 
-**Cadena energética:** USB 5V (IP5306) → BMS 1S 3A → Pack 2×18650 → Switch → XL6009 → ESP32/Nextion/MCP6002. El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 gestiona el perfil CC/CV y el XL6009 entrega 5V estable al sistema.
+**Cadena energética:** USB 5V (IP5306) → BMS 1S 3A → Pack 2×18650 (paralelo) → Switch → XL6009 → [Fusible 1.5A] → [Filtro LC] → ESP32/Nextion/LM358.
+
+El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 gestiona el perfil CC/CV. El fusible 1.5A protege la carga contra cortocircuito, y el filtro LC (22µH + 1µF + 470nF) suprime el ruido de switching del XL6009.
 
 ### 2.5 Proceso y Arquitectura
 
@@ -245,15 +270,20 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 │                                              │                    │
 │                                              ▼                    │
 │                                    ┌─────────────┐                │
-│                                    │ FUSIBLE 2A│                │
-│                                    │ (PCB out) │                │
-│                                    └──────┬──────┘                │
+│                                    │ FUSIBLE 1.5A│               │
+│                                    └──────┬───────┘               │
 │                                         │                        │
-│                           ┌─────────────┼───────────────┐         │
-│                           ▼              ▼               ▼         │
-│                        ESP32          NEXTION         LM358      │
-│                      WROOM-32       7" 800×480        Buffer     │
-│                                                      └─► BNC     │
+│                                         ▼                        │
+│                               ┌──────────────────┐                │
+│                               │    FILTRO LC     │                │
+│                               │ 22µH + 1µF + 470nF│                │
+│                               └────────┬─────────┘                │
+│                                        │                         │
+│                           ┌────────────┼───────────────┐          │
+│                           ▼            ▼               ▼          │
+│                        ESP32        NEXTION         LM358        │
+│                      WROOM-32     7" 800×480        Buffer       │
+│                                                    └─► BNC       │
 │                                                                   │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -263,13 +293,22 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 | Parámetro | Valor | Justificación |
 |-----------|-------|---------------|
 | Ubicación | Salida 5V del XL6009 | Protege carga (ESP32, Nextion, LM358) |
-| Valor | 2A fusión lenta | Consumo máx ~1.3A + margen para picos arranque |
-| Tipo | Cartucho 5×20mm o SMD | Reemplazable sin desoldar |
+| Valor | 1.5A fusión lenta | Consumo máx ~1.3A + margen para picos arranque |
+| Tipo | Cartucho 5×20mm | Reemplazable sin desoldar |
+
+**Filtro LC de salida:**
+
+| Parámetro | Valor | Justificación |
+|-----------|-------|---------------|
+| Inductor | 22µH | Bloquea ruido de alta frecuencia del switching (~500kHz) |
+| Capacitor C1 | 1µF | Capacitor de desacople principal |
+| Capacitor C2 | 470nF | Capacitor cerámico para filtrado de alta frecuencia |
+| Frecuencia de corte | ~34 kHz | Suficiente para eliminar ripple del XL6009 |
 
 **Justificación de protección en dos niveles:**
 
 - **BMS 1S 3A (DW01):** Protege las **baterías** contra sobrecarga, sobredescarga y cortocircuito.
-- **Fusible 2A:** Protege la **carga** (electrónica downstream) contra cortocircuito.
+- **Fusible 1.5A:** Protege la **carga** (electrónica downstream) contra cortocircuito.
 
 Esta arquitectura no es redundante: cada protección cubre un dominio diferente del circuito.
 

@@ -54,16 +54,18 @@ BioSignalSimulator Pro es un dispositivo portátil que genera señales biomédic
 | CD4051 | Multiplexor analógico para filtros RC selectivos |
 | XL6009 | Regulador Step-Up 5V (η≈92%) |
 | IP5306 + BMS 1S 3A | Carga USB-C y protección batería |
-| Fusible 2A | Protección sobrecorriente a salida 5V |
+| Fusible 1.5A | Protección sobrecorriente a salida 5V |
+| Filtro LC | 22µH + 1µF + 470nF (reduce ruido switching) |
 
 ### Diagrama de Conexiones
 
 ```
-USB-C → IP5306 → BMS 1S 3A → Baterías 2×18650 → Switch → XL6009 → [Fusible 2A] → ESP32 + Nextion
-                                                                        ↓
-                                         ESP32 DAC (GPIO25) → LM358 → CD4051 → RC Filter → BNC
-                                                                        ↑
-                                                             GPIO32/33 (S0/S1)
+USB-C → IP5306 → BMS 1S 3A → Baterías 2×18650 → Switch → XL6009 → [Fusible 1.5A] → [Filtro LC] → ESP32 + Nextion
+                 (paralelo)                                          22µH+1µF+470nF
+                                                                            ↓
+                                         ESP32 DAC (GPIO25) → CD4051 → RC Filter → BNC
+                                                                ↑
+                                                     GPIO32/33 (S0/S1)
 ```
 
 ### Cadena de Acondicionamiento de Señal
