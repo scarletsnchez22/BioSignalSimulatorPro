@@ -533,16 +533,35 @@ Los esquemáticos completos del sistema se realizaron en EasyEDA v1.0:
 
 Ambos esquemáticos se encuentran en la carpeta `/docs/diagramas/` en formato PDF y fuente EasyEDA.
 
-## 4. Lista de Materiales (BOM Electrónico)
-├──────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  USB 5V ──► IP5306 ──► BMS 1S 3A ──► BATERÍAS 2×18650 (5200mAh)  │
-│            (Tipo C)      (PCM)               │                    │
-│                                              ▼                    │
-│                                        SWITCH ON/OFF              │
-│                                              │                    │
-│                                              ▼                    │
-│                                   XL6009 (3.7V→5V, η≈88-92%)     │
+## 4. Manual de Usuario
+
+### 4.1 Encendido y Apagado
+
+1. **Encender:** Deslizar switch a ON, esperar 3 segundos para inicialización
+
+⚠️ **ADVERTENCIA DE SEGURIDAD:** El cargador IP5306 comparte los nodos B+/B− con el elevador. Intentar cargar con el equipo encendido puede causar corrientes inestables, sobrecalentamiento y daños permanentes al sistema.
+
+1. **Colocar switch en posición OFF** (obligatorio)  
+2. Conectar cable USB Tipo C al puerto de carga  
+3. Observar LEDs integrados del IP5306: Rojo = Cargando, Azul = Completa
+4. Tiempo estimado de carga: ~3.3 horas
+5. Desconectar cable USB antes de encender el dispositivo  
+
+### 4.3 Conexión WiFi (App Web)
+
+1. Encender el dispositivo  
+2. Conectar a la red **BioSignalSimulator_Pro** (contraseña **biosignal123**)  
+3. Abrir **http://192.168.4.1** para acceder a la app web  
+
+### 4.4 Salidas Analógicas BNC
+
+| Conector | Rango | Impedancia | Uso |
+|----------|-------|------------|-----|
+| BNC1 (principal) | 0-3.3V | ~100Ω | Osciloscopio estándar |
+
+**Configuración recomendada:** 1 V/div, acoplamiento DC/AC según señal, base de tiempo acorde a frecuencia.
+
+### 4.5 Indicadores LED
 │                                              │                    │
 │                                              ▼                    │
 │                                    ┌─────────────┐                │
@@ -793,7 +812,7 @@ Por estos motivos se mantuvo la restricción operacional: **no se debe usar el s
 
 ---
 
-## 3. Lista de Materiales (BOM Electrónico)
+## 5. Referencias
 
 El sistema se divide en tres etapas funcionales ordenadas cronológicamente según el flujo de energía: **potencia** (baterías → BMS → carga → boost), **filtrado** (protección y acondicionamiento π) y **control** (UI, generación y acondicionamiento de señales). Los componentes se agrupan metodológicamente en activos y pasivos dentro de cada etapa.
 

@@ -1,9 +1,215 @@
 
 ================================================================================
-     REPORTE DE ANÁLISIS ESPECTRAL DE MODELOS - BioSignalSimulator Pro
+     ANÁLISIS ESPECTRAL FFT PARA DISEÑO DE FILTROS RC - BioSignalSimulator Pro
 ================================================================================
-Fecha: 2026-01-06 01:41:48
-Duración de simulación: 7.0 segundos
+
+## ¿POR QUÉ SE HACE ESTE ANÁLISIS?
+
+El DAC del ESP32 opera a 4 kHz, generando una señal escalonada (stepping) que introduce armónicos de alta frecuencia no deseados en el espectro de salida. Para obtener señales biomédicas limpias y similares a las reales, es necesario diseñar filtros pasabajos RC que:
+
+1. **Preserven el contenido espectral útil** de cada señal (donde está el 99% de la energía)
+2. **Atenúen el stepping del DAC** (4 kHz y armónicos superiores)  
+3. **Optimicen la frecuencia de corte (Fc)** para cada tipo de señal
+
+## ¿QUÉ SE HACE?
+
+Se ejecuta un análisis FFT (Transformada Rápida de Fourier) sobre las señales generadas por los modelos matemáticos implementados en el firmware del ESP32:
+
+- **ECG:** Modelo McSharry ECGSYN (genera ondas P-QRS-T realistas)
+- **EMG:** Modelo Fuglevand MUAP (genera potenciales de acción de unidades motoras)
+- **PPG:** Modelo Allen Gaussiano (genera pulsos fotopletismográficos)
+
+**Parámetros analizados:**
+
+| Señal | Fs modelo | Duración | Muestras | Resolución FFT |
+|-------|-----------|----------|----------|----------------|
+| ECG   | 300 Hz    | 7.0 s    | 2100     | 0.143 Hz       |
+| EMG   | 1000 Hz   | 7.0 s    | 7000     | 0.143 Hz       |
+| PPG   | 20 Hz     | 7.0 s    | 140      | 0.143 Hz       |
+
+## ¿QUÉ SE OBTIENE?
+
+El análisis FFT proporciona:
+
+1. **Espectro de magnitud:** Muestra qué frecuencias están presentes en cada señal  
+2. **Frecuencia dominante:** Componente con mayor amplitud (ej: 1.14 Hz en ECG = ritmo cardíaco de 68 bpm)
+3. **Ancho de banda a -20dB:** Frecuencia donde el contenido espectral cae 20 dB respecto al pico
+4. **Frecuencia del 99% de energía (F99%):** Frecuencia que acumula el 99% de la potencia total de la señal
+
+**Resultados obtenidos:**
+
+| Señal | Freq. dominante | BW -20dB | **F 99% energía** | Energía en banda clínica |
+|-------|-----------------|----------|-------------------|--------------------------|
+| ECG   | 1.14 Hz (QRS)   | 24.0 Hz  | **21.6 Hz**       | 100.0% (0.05-150 Hz)     |
+| EMG   | 55.4 Hz (MUAP)  | 158.0 Hz | **146.3 Hz**      | 99.7% (20-500 Hz)        |
+| PPG   | 1.14 Hz (pulso) | 4.9 Hz   | **4.9 Hz**        | 99.9% (0.5-10 Hz)        |
+
+## ¿QUÉ SIGNIFICA?
+
+- **F 99% energía** indica hasta qué frecuencia debemos preservar para capturar prácticamente toda la información de la señal
+- **ECG (21.6 Hz):** El complejo QRS y las ondas P/T concentran su energía por debajo de 22 Hz
+- **EMG (146.3 Hz):** Los MUAPs rápidos generan componentes hasta ~150 Hz
+- **PPG (4.9 Hz):** Señal lenta dominada por el pulso arterial (~1 Hz) y sus armónicos
+
+## ¿PARA QUÉ SIRVE?
+
+Este análisis permite **diseñar filtros RC selectivos** optimizados para cada señal, eligiendo Fc ligeramente superior a F99% pero muy inferior a la frecuencia del DAC (4 kHz).
+
+**Criterio de diseño:**
+
+```
+F_99% < Fc_filtro < Fs_DAC / 2
+
+Donde:
+- F_99% = Frecuencia que contiene 99% de la energía
+- Fc_filtro = Frecuencia de corte del filtro RC
+- Fs_DAC = 4 kHz (frecuencia de actualización del DAC)
+```
+
+## ¿QUÉ SE HACE CON ESTA INFORMACIÓN?
+
+### 1. Diseño de Filtros RC Implementados
+
+A partir del análisis FFT se diseñaron filtros RC pasabajos de primer orden con capacitor común (C = 1µF) y resistencias variables:
+
+$$F_c = \frac{1}{2\pi R C}$$
+
+Despejando R:
+
+$$R = \frac{1}{2\pi F_c C}$$
+
+**Tabla de diseño (Fc ligeramente superior a F99%):**
+
+| Señal | F 99% energía | **Fc diseño** | **R calculada** | **R normalizada** | Implementación |
+|-------|---------------|---------------|-----------------|-------------------|----------------|
+| ECG   | 21.6 Hz       | **23.4 Hz**   | 6800 Ω          | **6.8 kΩ**        | Canal 0 CD4051 |
+| EMG   | 146.3 Hz      | **159 Hz**    | 1000 Ω          | **1.0 kΩ**        | Canal 1 CD4051 |
+| PPG   | 4.9 Hz        | **4.82 Hz**   | 33000 Ω         | **33 kΩ**         | Canal 2 CD4051 |
+
+**Nota:** Se eligieron valores comerciales estándar de resistencias (serie E12).
+
+### 2. Implementación con Multiplexor CD4051
+
+Se implementó un sistema de filtros RC selectivos mediante el multiplexor analógico CD4051:
+
+```
+DAC (GPIO25) → LM358 Buffer → CD4051 MUX → Filtro RC → BNC
+                                   ↑
+                            Control S0/S1 (GPIO32/33)
+```
+
+**Topología:**
+
+```
+       Buffer LM358
+            │
+            ├──► COM (CD4051)
+            │        │
+            │        ├── CH0 ──[6.8kΩ]──┬──► BNC
+            │        │                  │
+            │        ├── CH1 ──[1.0kΩ]──┤
+            │        │                  │
+            │        └── CH2 ──[33kΩ]───┤
+            │                           │
+            │                      [1µF común]
+            │                           │
+            └───────────────────────────┴──► GND
+```
+
+### 3. Atenuación del Stepping del DAC
+
+Con las Fc diseñadas, la atenuación del stepping del DAC (4 kHz) es:
+
+**Fórmula de atenuación (filtro RC de 1er orden):**
+
+$$A(f) = 20 \log_{10}\left(\frac{1}{\sqrt{1 + \left(\frac{f}{F_c}\right)^2}}\right)$$
+
+**Resultados:**
+
+| Señal | Fc | Atenuación @ 4 kHz | Eficacia |
+|-------|----|--------------------|----------|
+| ECG   | 23.4 Hz | **-44 dB** | Excelente (factor ~158×) |
+| EMG   | 159 Hz  | **-28 dB** | Buena (factor ~25×) |
+| PPG   | 4.82 Hz | **-58 dB** | Excepcional (factor ~800×) |
+
+### 4. Validación Clínica
+
+Todas las señales generadas cumplen con los rangos de frecuencia establecidos en normas y literatura clínica:
+
+| Señal | Rango clínico | Contenido en banda | Cumplimiento |
+|-------|---------------|-------------------|--------------|
+| ECG   | 0.05 - 150 Hz | 100.0%            | ✓ CUMPLE     |
+| EMG   | 20 - 500 Hz   | 99.7%             | ✓ CUMPLE     |
+| PPG   | 0.5 - 10 Hz   | 99.9%             | ✓ CUMPLE     |
+
+---
+
+## CONCLUSIONES
+
+1. ✅ **Frecuencias de muestreo del modelo son adecuadas** (300 Hz ECG, 1000 Hz EMG, 20 Hz PPG)
+2. ✅ **Filtros RC optimizados** preservan el 99% de la energía y atenúan >28 dB el stepping
+3. ✅ **Implementación con CD4051** permite selección automática del filtro según señal activa
+4. ✅ **Señales generadas son clínicamente válidas** según bandas de frecuencia estándar
+5. ✅ **Capacitor común (1µF)** simplifica diseño y reduce costos
+
+---
+
+## ANEXO: DETALLES ESPECTRALES POR SEÑAL
+
+### ECG (Electrocardiograma)
+
+**Modelo:** McSharry ECGSYN  
+**Fs:** 300 Hz | **Muestras:** 2100 | **Duración:** 7.0 s
+
+| Parámetro | Valor |
+|-----------|-------|
+| Frecuencia dominante | 1.14 Hz (ritmo cardíaco 68 bpm) |
+| Amplitud máxima | 0.1170 |
+| BW -3dB | 12.00 Hz |
+| BW -20dB | 24.00 Hz |
+| **F 99% energía** | **21.57 Hz** |
+
+**Interpretación:** El complejo QRS (despolarización ventricular) genera las componentes de mayor frecuencia (~10-30 Hz). Las ondas P y T son más lentas (<5 Hz).
+
+### EMG (Electromiograma)
+
+**Modelo:** Fuglevand MUAP (Motor Unit Action Potentials)  
+**Fs:** 1000 Hz | **Muestras:** 7000 | **Duración:** 7.0 s
+
+| Parámetro | Valor |
+|-----------|-------|
+| Frecuencia dominante | 55.43 Hz (componentes MUAP) |
+| Amplitud máxima | 0.0421 |
+| BW -3dB | 96.57 Hz |
+| BW -20dB | 158.00 Hz |
+| **F 99% energía** | **146.29 Hz** |
+
+**Interpretación:** Los MUAPs tienen componentes rápidas debido a la despolarización muscular. El ancho de banda es el mayor de las tres señales.
+
+### PPG (Fotopletismograma)
+
+**Modelo:** Allen Gaussiano  
+**Fs:** 20 Hz | **Muestras:** 140 | **Duración:** 7.0 s
+
+| Parámetro | Valor |
+|-----------|-------|
+| Frecuencia dominante | 1.14 Hz (pulso arterial 68 bpm) |
+| Amplitud máxima | 0.3007 |
+| BW -3dB | 1.29 Hz |
+| BW -20dB | 4.86 Hz |
+| **F 99% energía** | **4.86 Hz** |
+
+**Interpretación:** Señal lenta dominada por el pulso arterial fundamental y pocos armónicos. Es la señal más fácil de filtrar.
+
+---
+
+================================================================================
+                              FIN DEL REPORTE
+================================================================================
+Fecha de análisis: 2026-01-06 01:41:48  
+Generado por: model_fft_analysis.py  
+Sistema: BioSignalSimulator Pro v3.0
+
 
 ================================================================================
 RESUMEN EJECUTIVO
