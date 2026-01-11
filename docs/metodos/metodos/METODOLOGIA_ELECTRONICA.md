@@ -225,39 +225,315 @@ La configuración de celdas 18650 en paralelo forma una "mini power bank" y requ
 
 El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 gestiona el perfil CC/CV. El fusible 1.5A protege la carga contra cortocircuito, y el filtro LC (22µH + 1µF + 470nF) suprime el ruido de switching del XL6009.
 
-### 2.5 Proceso y Arquitectura
+### 2.5 Arquitectura del Sistema Electrónico
 
-#### 2.5.1 Metodología
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│              METODOLOGÍA DE DISEÑO ELECTRÓNICO                  │
-├─────────────────────────────────────────────────────────────────┤
-│  1. ANÁLISIS DE REQUISITOS                                      │
-│     └─► Definir funciones, restricciones y normativas           │
-│                                                                 │
-│  2. SELECCIÓN DE COMPONENTES                                    │
-│     └─► Evaluar alternativas según criterios ponderados         │
-│                                                                 │
-│  3. DISEÑO DE CIRCUITOS                                         │
-│     └─► Calcular valores, dimensionar protecciones              │
-│                                                                 │
-│  4. SIMULACIÓN Y VERIFICACIÓN                                   │
-│     └─► Validar consumos, autonomía, térmico                    │
-│                                                                 │
-│  5. PROTOTIPADO                                                 │
-│     └─► PCB perforada, pruebas funcionales                      │
-│                                                                 │
-│  6. DOCUMENTACIÓN                                               │
-│     └─► Esquemas, BOM, manual de usuario                        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-#### 2.5.2 Arquitectura del Sistema
+#### 2.5.1 Diagrama de Bloques General
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                    BIOSIGNALSIMULATOR PRO v3.0                   │
+┌──────────────────────────────────────────────────────────────────────┐
+│                   BIOSIGNALSIMULATOR PRO v3.0                        │
+│                  ARQUITECTURA DE DOS PLACAS                          │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                       │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │             SUBSISTEMA DE ALIMENTACIÓN                        │  │
+│  │  (Módulos externos + Placa de Filtrado)                       │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                       │
+│  USB-C ──► IP5306 ──► BMS 1S 3A ──► BATERÍAS 2×18650 (5200 mAh)     │
+│           (Carga)     (Protección)        (Paralelo)                 │
+│                                              │                        │
+│                                              ▼                        │
+│                                        SWITCH ON/OFF                 │
+│                                              │                        │
+│                                              ▼                        │
+│                                     XL6009 (3.7V → 5V)               │
+│                                       η ≈ 88-92%                     │
+│                                              │                        │
+│                                              ▼                        │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │           PLACA 1: FILTRADO DE ALIMENTACIÓN                  │   │
+│  │             (PCB 5×7 cm, cara única)                         │   │
+│  │                                                              │   │
+│  │     [F1: Fusible 1.5A] ──► [C14: 470µF] ──► [L1: 22µH]      │   │
+│  │                                │                │            │   │
+│  │                               GND          [C15: 1µF]        │   │
+│  │                                                │             │   │
+│  │                                               GND            │   │
+│  └────────────────────────┬─────────────────────────────────────┘   │
+│                           │ +5V_CTRL (limpio)                       │
+│                           │                                         │
+│                           ▼                                         │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │       PLACA 2: GENERACIÓN Y CONTROL DE SEÑAL                │   │
+│  │             (PCB 10×15 cm)                                   │   │
+│  │                                                              │   │
+│  │  ┌────────────┐   ┌──────────────┐   ┌──────────────┐       │   │
+│  │  │   ESP32    │   │   NEXTION    │   │  LED RGB     │       │   │
+│  │  │  WROOM-32  │   │  NX8048T070  │   │  Indicador   │       │   │
+│  │  │            │   │   7" Touch   │   │              │       │   │
+│  │  └──────┬─────┘   └──────────────┘   └──────────────┘       │   │
+│  │         │                                                    │   │
+│  │         ├──► DAC (GPIO25)                                    │   │
+│  │         │         │                                          │   │
+│  │         │         ▼                                          │   │
+│  │         │    ┌─────────┐                                     │   │
+│  │         │    │  LM358  │ Buffer ×1                           │   │
+│  │         │    │ Buffer  │                                     │   │
+│  │         │    └────┬────┘                                     │   │
+│  │         │         │                                          │   │
+│  │         │         ▼                                          │   │
+│  │         │    ┌─────────┐                                     │   │
+│  │         ├───►│ CD4051  │ MUX Analógico                       │   │
+│  │      GPIO32/│  (S0/S1) │                                     │   │
+│  │       33    └────┬────┘                                      │   │
+│  │                  │                                           │   │
+│  │                  ├─► CH0: R=6.8kΩ  (ECG) ─┐                  │   │
+│  │                  ├─► CH1: R=1.0kΩ  (EMG) ─┤                  │   │
+│  │                  └─► CH2: R=33kΩ   (PPG) ─┤                  │   │
+│  │                                            │                 │   │
+│  │                                            ▼                 │   │
+│  │                                      [C: 1µF común]          │   │
+│  │                                            │                 │   │
+│  │                                            ▼                 │   │
+│  │                                     ┌──────────┐             │   │
+│  │                                     │   BNC    │ ──► Salida  │   │
+│  │                                     │  Conector│             │   │
+│  │                                     └──────────┘             │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Descripción de la arquitectura:**
+
+El sistema se divide en dos placas PCB físicamente separadas:
+
+1. **Placa de Filtrado (5×7 cm):** Ubicada entre el módulo XL6009 y la placa de control. Contiene el fusible de protección (1.5A), el filtro LC (22µH + 1µF + 470nF) y entrega +5V limpio y protegido.
+
+2. **Placa de Control (10×15 cm):** Contiene el ESP32, la interfaz Nextion, el buffer LM358, el multiplexor CD4051 con filtros RC selectivos, y el conector BNC de salida.
+
+#### 2.5.2 Placa 1: Filtrado de Alimentación
+
+**Objetivo:** Proteger y limpiar la tensión de 5V proveniente del regulador XL6009 antes de alimentar los componentes sensibles de la placa de control.
+
+**Topología implementada:**
+
+```
+  VIN (+5V del XL6009)
+          │
+    ┌─────┴─────┐
+    │  F1 1.5A  │ Fusible de protección
+    └─────┬─────┘
+          │
+    ┌─────┴─────┐
+    │  C14 470µF│ Capacitor de entrada (electrolítico)
+    │           │
+    └─────┬─────┘
+          │          GND
+          │
+    ┌─────┴─────┐
+    │  L1 22µH  │ Inductor de filtrado
+    └─────┬─────┘
+          │
+    ┌─────┴─────┐
+    │  C15 1µF  │ Capacitor de salida (cerámico X7R)
+    │           │
+    └─────┬─────┘
+          │          GND
+          │
+     +5V_CTRL (hacia Placa 2)
+```
+
+**Componentes de la Placa 1:**
+
+| Designador | Componente | Valor | Función |
+|------------|------------|-------|---------|
+| F1 | Fusible (5×20mm) | 1.5A | Protección contra sobrecorriente |
+| C14 | Capacitor electrolítico | 470µF/25V | Absorbe picos del XL6009 |
+| L1 | Inductor | 22µH/3A | Filtrado de ruido de switching |
+| C15 | Capacitor cerámico | 1µF X7R | Filtrado de alta frecuencia |
+
+**Frecuencia de corte del filtro LC:**
+
+$$f_c = \frac{1}{2\pi\sqrt{LC}} = \frac{1}{2\pi\sqrt{22\mu H \times 1\mu F}} \approx 34 \text{ kHz}$$
+
+**Atenuación del ripple del XL6009:**
+
+- Frecuencia de switching: ~400 kHz (según datasheet)
+- Relación: 400 kHz / 34 kHz ≈ 11.8× (1.07 décadas)
+- Atenuación: ~43 dB @ 400 kHz
+- Ripple residual: < 1 mV (partiendo de 50-100 mV típico)
+
+**Criterios de diseño de la PCB:**
+
+| Criterio | Implementación |
+|----------|----------------|
+| Cara única (Bottom) | Todo el ruteo y plano GND en cara inferior |
+| Ancho de pistas | ≥1.2 mm para líneas de potencia (VIN_CTRL, +5V_CTRL) |
+| Componentes agrupados | F1, C14, L1, C15 dentro de 15 mm para minimizar lazo |
+| Conectores alineados | PWR_XL6009 y PWR_BNC enfrentados (entrada/salida en línea recta) |
+| Montaje | 4 tornillos M1.6×6 mm al chasis, plano GND conectado a tornillos |
+
+#### 2.5.3 Placa 2: Generación y Control de Señal
+
+**Objetivo:** Generar señales biomédicas (ECG, EMG, PPG) configurables mediante DAC, acondicionar la señal con buffer y filtros selectivos, y proporcionar interfaz de usuario táctil.
+
+**Subsistemas principales:**
+
+**A. Subsistema de Procesamiento y Control**
+
+| Componente | Función | Pines clave |
+|------------|---------|-------------|
+| ESP32-WROOM-32 | Generación de señales vía DAC, control WiFi, comunicación UART | GPIO25 (DAC1), GPIO32/33 (S0/S1 MUX), GPIO16/17 (UART2 Nextion) |
+| Nextion NX8048T070 | Interfaz táctil 7" 800×480 | RX/TX (UART), +5V, GND |
+| LED RGB | Indicador visual de estado | R/G/B + resistencias 220Ω |
+
+**B. Subsistema de Acondicionamiento de Señal**
+
+```
+DAC (GPIO25) → LM358 Buffer → CD4051 MUX → Filtro RC → BNC
+  0-3.3V         Ganancia ×1    Selección    Fc variable  Salida
+                                CH0/CH1/CH2
+```
+
+**Cadena de acondicionamiento detallada:**
+
+| Etapa | Componente | Entrada | Salida | Función |
+|-------|------------|---------|--------|---------|
+| 1. Generación | ESP32 DAC (GPIO25) | Digital | 0-3.3V analógico | Conversión D/A de la señal biomédica |
+| 2. Buffer | LM358 (configuración seguidor) | 0-3.3V | 0-3.3V | Impedancia baja (~100Ω) para alimentar MUX |
+| 3. Multiplexación | CD4051 (canales 0-2) | 0-3.3V | 0-3.3V | Selección de resistencia de filtro RC |
+| 4. Filtrado | RC pasabajos (R variable + C=1µF) | 0-3.3V | 0-3.3V filtrada | Elimina stepping del DAC (4 kHz) |
+| 5. Salida | Conector BNC hembra | Señal filtrada | BNC | Conexión a osciloscopio |
+
+**Tabla de filtros RC selectivos (basada en análisis FFT):**
+
+| Señal | Canal CD4051 | R (kΩ) | Fc (Hz) | F99% energía | Atenuación @ 4 kHz |
+|-------|--------------|--------|---------|--------------|-------------------|
+| ECG | CH0 (S1=0, S0=0) | 6.8 | 23.4 | 21.6 Hz | -44 dB |
+| EMG | CH1 (S1=0, S0=1) | 1.0 | 159 | 146.3 Hz | -28 dB |
+| PPG | CH2 (S1=1, S0=0) | 33 | 4.82 | 4.9 Hz | -58 dB |
+
+**Notas de diseño:**
+
+- El capacitor de 1µF es **común** para los 3 canales (compartido)
+- Las diferentes Fc se logran variando solo la resistencia
+- El pin S2 del CD4051 se conecta a GND (limita canales a 0-3)
+- El LM358 se usa por disponibilidad local; el MCP6002 rail-to-rail sería ideal
+
+**C. Criterios de diseño de la PCB de control:**
+
+| Criterio | Implementación |
+|----------|----------------|
+| Tamaño | 10×15 cm (PCB perforada) |
+| Distribución | ESP32 centro, Nextion borde superior, BNC borde lateral |
+| Pistas de señal | Separadas de pistas de potencia, ancho 0.8-1.0 mm |
+| Plano GND | Común para digital y analógico (nodo único) |
+| Montaje | 4 tornillos M3×10 mm al chasis |
+
+#### 2.5.4 Consumo Energético y Autonomía
+
+**Tabla de consumos medidos/especificados:**
+
+| Componente | I Promedio @ 5V | P Promedio | I Pico @ 5V | P Pico | Fuente |
+|------------|-----------------|------------|-------------|--------|--------|
+| Nextion NX8048T070 | 510 mA | 2.55 W | 650 mA | 3.25 W | Datasheet Nextion |
+| ESP32-WROOM-32 (WiFi AP) | 240 mA | 1.20 W | 350 mA | 1.75 W | ESP32 Datasheet v5.2 |
+| LM358 Buffer | 1 mA | 0.005 W | 1 mA | 0.005 W | LM358 Datasheet |
+| LED RGB + divisor | 32 mA | 0.16 W | 32 mA | 0.16 W | Cálculo (3× LED @ 10 mA) |
+| XL6009 pérdidas | 70 mA equiv. | 0.35 W | 163 mA equiv. | 0.82 W | Eficiencia 92%/88% |
+| **TOTAL SISTEMA** | **853 mA** | **4.27 W** | **1196 mA** | **6.00 W** | |
+
+**Cálculo de autonomía - Modo Promedio:**
+
+```
+Capacidad útil: 5200 mAh × 93% = 4836 mAh
+P_sistema = 5V × 0.853A = 4.27 W
+P_batería = 4.27W / 0.92 (η) = 4.64 W
+I_batería = 4.64W / 3.7V = 1.25 A
+Autonomía = 4836 mAh / 1250 mA = 3.87 horas
+```
+
+**Autonomía práctica: 3.8 horas** (cumple requisito ≥3 horas)
+
+## 3. Topología de Acondicionamiento de Señal
+
+### 3.1 Lista de Materiales (BOM Electrónico)
+
+El sistema se implementa con dos PCB separadas más módulos externos. A continuación se detalla la BOM completa separada por subsistemas.
+
+#### 3.1.1 Módulos de Alimentación (Externos a las PCBs)
+
+| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
+|---|------------|----------|--------------|----------|-----------|
+| 1 | Baterías Samsung 18650 2600 mAh | 2 | $6.50 | $13.00 | Novatronic |
+| 2 | Portapilas 2×18650 (paralelo) | 1 | $2.50 | $2.50 | Novatronic |
+| 3 | Módulo cargador IP5306 5V/2A USB-C | 1 | $3.85 | $3.85 | Novatronic |
+| 4 | BMS 1S 3A (PCM 8205A, 40×4×3 mm) | 1 | $1.20 | $1.20 | Novatronic |
+| 5 | Switch deslizable ON/OFF | 1 | $0.80 | $0.80 | Novatronic |
+| 6 | Módulo elevador XL6009 DC-DC Step-Up | 1 | $4.10 | $4.10 | Novatronic |
+| 7 | Cables AWG 18 (rojo/negro, 2m) | 1 | $0.55 | $0.55 | Novatronic |
+| | **Subtotal alimentación externa** | | | **$26.00** | |
+
+#### 3.1.2 Placa 1: Filtrado de Alimentación (PCB 5×7 cm)
+
+| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
+|---|------------|----------|--------------|----------|-----------|
+| 8 | Portafusible 5×20 mm BLX-A | 1 | $0.70 | $0.70 | Novatronic |
+| 9 | Fusible vidrio 5×20 mm 1.5A | 1 | $0.30 | $0.30 | Novatronic |
+| 10 | Inductor 22µH/3A (9×12 mm, pitch 5 mm) | 1 | $0.60 | $0.60 | Novatronic |
+| 11 | Capacitor electrolítico 470µF/25V (8×14 mm) | 1 | $0.35 | $0.35 | Novatronic |
+| 12 | Capacitor cerámico 1µF/16V X7R | 1 | $0.10 | $0.10 | Novatronic |
+| 13 | Conector 2 pines paso 8.05 mm (PWR_XL6009 / PWR_BNC) | 2 | $0.50 | $1.00 | Novatronic |
+| 14 | PCB perforada 5×7 cm | 1 | $0.80 | $0.80 | Novatronic |
+| 15 | Tornillos M1.6×6 mm (4 uds) | 1 | $0.40 | $0.40 | Ferretería |
+| | **Subtotal Placa 1 (Filtrado)** | | | **$4.25** | |
+
+#### 3.1.3 Placa 2: Control y Generación - Módulos Activos
+
+| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
+|---|------------|----------|--------------|----------|-----------|
+| 16 | Nextion NX8048T070 7" 800×480 | 1 | $95.75 | $95.75 | Amazon |
+| 17 | ESP32-WROOM-32 NodeMCU | 1 | $13.35 | $13.35 | Novatronic |
+| 18 | LM358 DIP-8 (dual op-amp) | 1 | $0.50 | $0.50 | Novatronic |
+| 19 | CD4051 DIP-16 (MUX 8:1) | 1 | $0.80 | $0.80 | Novatronic |
+| 20 | LED RGB 5 mm cátodo común | 1 | $0.50 | $0.50 | Novatronic |
+| | **Subtotal Placa 2 - Activos** | | | **$110.90** | |
+
+#### 3.1.4 Placa 2: Control y Generación - Pasivos y Conectores
+
+| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
+|---|------------|----------|--------------|----------|-----------|
+| 21 | Resistencia 220Ω 1/4W (LED RGB) | 3 | $0.05 | $0.15 | Novatronic |
+| 22 | Resistencia 6.8kΩ 1/4W (filtro ECG) | 1 | $0.05 | $0.05 | Novatronic |
+| 23 | Resistencia 1.0kΩ 1/4W (filtro EMG) | 1 | $0.05 | $0.05 | Novatronic |
+| 24 | Resistencia 33kΩ 1/4W (filtro PPG) | 1 | $0.05 | $0.05 | Novatronic |
+| 25 | Resistencia 2kΩ 1/4W (divisor UART) | 1 | $0.05 | $0.05 | Novatronic |
+| 26 | Resistencia 1kΩ 1/4W (divisor UART) | 1 | $0.05 | $0.05 | Novatronic |
+| 27 | Capacitor cerámico 1µF/16V X7R (filtro BNC compartido) | 1 | $0.10 | $0.10 | Novatronic |
+| 28 | Conector BNC hembra | 1 | $1.20 | $1.20 | Novatronic |
+| 29 | Bornera 2 pines paso 8.05 mm (PWR_IN) | 1 | $0.50 | $0.50 | Novatronic |
+| 30 | Bornera 4 pines paso 8.05 mm (LED RGB / NEXTION) | 2 | $0.80 | $1.60 | Novatronic |
+| 31 | PCB perforada 10×15 cm | 1 | $2.00 | $2.00 | Novatronic |
+| 32 | Tornillos M3×10 mm (4 uds) | 1 | $0.40 | $0.40 | Ferretería |
+| | **Subtotal Placa 2 - Pasivos** | | | **$6.20** | |
+
+---
+
+**TOTAL SISTEMA ELECTRÓNICO:**  
+$26.00 (módulos) + $4.25 (Placa 1) + $110.90 (Placa 2 activos) + $6.20 (Placa 2 pasivos) = **$147.35**
+
+### 3.2 Esquemáticos de Referencia
+
+Los esquemáticos completos del sistema se realizaron en EasyEDA v1.0:
+
+- **Esquemático 1:** Placa de generación y control (ESP32, CD4051, LM358, Nextion, LED RGB, BNC)
+- **Esquemático 2:** Placa de filtrado de alimentación (F1, C14, L1, C15)
+
+Ambos esquemáticos se encuentran en la carpeta `/docs/diagramas/` en formato PDF y fuente EasyEDA.
+
+## 4. Lista de Materiales (BOM Electrónico)
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                   │
 │  USB 5V ──► IP5306 ──► BMS 1S 3A ──► BATERÍAS 2×18650 (5200mAh)  │
