@@ -15,8 +15,8 @@ CD4051Mux mux;
 // ============================================================================
 // CONSTRUCTOR
 // ============================================================================
-CD4051Mux::CD4051Mux() : currentChannel(1), initialized(false) {
-    // Canal 1 (directo) por defecto - sin atenuación
+CD4051Mux::CD4051Mux() : currentChannel(0), initialized(false) {
+    // Canal 0 (ECG 6.8kΩ) por defecto - se cambia según tipo de señal
 }
 
 // ============================================================================
@@ -33,8 +33,8 @@ bool CD4051Mux::begin() {
         digitalWrite(MUX_ENABLE_PIN, LOW);  // Enable activo bajo
     }
     
-    // Seleccionar canal por defecto (CH1 = directo, sin atenuación)
-    selectChannel(MuxChannel::CH1_DIRECT);
+    // Seleccionar canal por defecto (ECG)
+    selectChannel(MuxChannel::CH0_ECG_6K8);
     
     initialized = true;
     Serial.println("[CD4051] Multiplexor inicializado");
@@ -73,13 +73,13 @@ void CD4051Mux::selectChannel(MuxChannel channel) {
 void CD4051Mux::setAttenuation(AttenuationLevel level) {
     switch (level) {
         case AttenuationLevel::ATTEN_NONE:
-            selectChannel(MuxChannel::CH1_DIRECT);
+            selectChannel(MuxChannel::CH1_EMG_1K0);  // EMG: menor R, mayor Fc
             break;
         case AttenuationLevel::ATTEN_MEDIUM:
-            selectChannel(MuxChannel::CH0_6K8_OHM);
+            selectChannel(MuxChannel::CH0_ECG_6K8);  // ECG: R media
             break;
         case AttenuationLevel::ATTEN_HIGH:
-            selectChannel(MuxChannel::CH2_33K_OHM);
+            selectChannel(MuxChannel::CH2_PPG_33K);  // PPG: mayor R, menor Fc
             break;
     }
 }
@@ -98,9 +98,9 @@ AttenuationLevel CD4051Mux::getCurrentAttenuation() const {
 // ============================================================================
 const char* CD4051Mux::getChannelName() const {
     switch (currentChannel) {
-        case 0: return "CH0 (6.8k ohm - Atten Media)";
-        case 1: return "CH1 (Directo - Sin Atten)";
-        case 2: return "CH2 (33k ohm - Atten Alta)";
+        case 0: return "CH0 (ECG: 6.8k, Fc=23Hz)";
+        case 1: return "CH1 (EMG: 1.0k, Fc=159Hz)";
+        case 2: return "CH2 (PPG: 33k, Fc=4.8Hz)";
         case 3: return "CH3 (No conectado)";
         case 4: return "CH4 (No conectado)";
         case 5: return "CH5 (No conectado)";
@@ -110,15 +110,15 @@ const char* CD4051Mux::getChannelName() const {
     }
 }
 
-float CD4051Mux::getAttenuationFactor() const {
-    // Factores aproximados basados en divisor resistivo
-    // Dependen de la impedancia de entrada del BNC/osciloscopio
-    // Asumiendo impedancia alta (1M ohm típico de osciloscopio)
+float CD4051Mux::getCutoffFrequency() const {
+    // Frecuencia de corte del filtro RC: Fc = 1/(2π×R×C)
+    // C = 1µF compartido para todos los canales
+    // Nota: Ron del CD4051 (~80Ω) se suma a R pero es despreciable (<1.2% error)
     switch (currentChannel) {
-        case 0: return 0.6f;   // 6.8k ohm - atenuación ~40%
-        case 1: return 1.0f;   // Directo - sin atenuación
-        case 2: return 0.2f;   // 33k ohm - atenuación ~80%
-        default: return 0.0f;  // Canales no conectados
+        case 0: return 23.4f;   // ECG: 6.8kΩ → Fc = 23.4 Hz
+        case 1: return 159.0f;  // EMG: 1.0kΩ → Fc = 159 Hz
+        case 2: return 4.82f;   // PPG: 33kΩ  → Fc = 4.82 Hz
+        default: return 0.0f;   // Canales no conectados
     }
 }
 

@@ -40,9 +40,9 @@
   <text x="410" y="199" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">$1.50</text>
   
   <rect x="45" y="204" width="410" height="18" fill="white"/>
-  <text x="180" y="217" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">TL072 DIP-8 Op-Amp JFET</text>
+  <text x="180" y="217" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">LM358 DIP-8 Op-Amp Dual</text>
   <text x="340" y="217" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">1</text>
-  <text x="410" y="217" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">$0.50</text>
+  <text x="410" y="217" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">$0.30</text>
   
   <rect x="45" y="222" width="410" height="18" fill="#F5F5DC"/>
   <text x="180" y="235" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">Portapilas 18650 doble + Switch</text>

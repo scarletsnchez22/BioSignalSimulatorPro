@@ -17,10 +17,18 @@
  * - CH1 (S1=0, S0=1): R=1.0kΩ  → Fc=159 Hz   (EMG, F99%=146 Hz)
  * - CH2 (S1=1, S0=0): R=33kΩ   → Fc=4.8 Hz   (PPG, F99%=4.9 Hz)
  * 
- * Red de salida (todos los canales tienen filtro RC):
- * CH0 ──[6.8kΩ]──┬── NODO_A ──[1µF]── GND
- * CH1 ──[1.0kΩ]──┤              │
- * CH2 ──[33kΩ]───┘              └──► BNC (+)
+ * Red de salida (filtro RC por canal, capacitor compartido C=1µF):
+ * 
+ *                    ┌─────────────────────┐
+ *   CD4051 COM ──────┤  FILTRO RC ACTIVO   ├──────► BNC (+)
+ *                    └─────────────────────┘
+ * 
+ *   CH0 ──[6.8kΩ]──┬── NODO ──[1µF]── GND   (Fc=23.4Hz para ECG)
+ *   CH1 ──[1.0kΩ]──┤           │
+ *   CH2 ──[33kΩ]───┘           └──► BNC (+)
+ * 
+ * NOTA: El filtro 1kΩ en CH1 (EMG) se agregó para atenuar ruido
+ * de alta frecuencia introducido por el CD4051 (Ron≈80Ω @5V).
  */
 
 #ifndef CD4051_MUX_H
@@ -41,12 +49,12 @@
 #define MUX_ENABLE_PIN      -1      // No usado (ENABLE conectado a GND)
 
 // ============================================================================
-// CANALES DEL MULTIPLEXOR
+// CANALES DEL MULTIPLEXOR (todos con filtro RC, C=1µF compartido)
 // ============================================================================
 enum class MuxChannel : uint8_t {
-    CH0_6K8_OHM     = 0,    // Canal 0: R=6.8kΩ, Fc=23.4 Hz (ECG)
-    CH1_DIRECT      = 1,    // Canal 1: R=1.0kΩ, Fc=159 Hz (EMG)
-    CH2_33K_OHM     = 2,    // Canal 2: R=33kΩ, Fc=4.8 Hz (PPG)
+    CH0_ECG_6K8     = 0,    // Canal 0: R=6.8kΩ, Fc=23.4 Hz (ECG)
+    CH1_EMG_1K0     = 1,    // Canal 1: R=1.0kΩ, Fc=159 Hz  (EMG)
+    CH2_PPG_33K     = 2,    // Canal 2: R=33kΩ,  Fc=4.8 Hz  (PPG)
     CH3_UNUSED      = 3,    // Canal 3: No conectado
     CH4_UNUSED      = 4,    // Canal 4: No conectado
     CH5_UNUSED      = 5,    // Canal 5: No conectado
@@ -54,10 +62,10 @@ enum class MuxChannel : uint8_t {
     CH7_UNUSED      = 7     // Canal 7: No conectado (requiere S2=1)
 };
 
-// Alias para facilidad de uso
-#define MUX_ATTEN_MEDIUM    MuxChannel::CH0_6K8_OHM
-#define MUX_ATTEN_NONE      MuxChannel::CH1_DIRECT
-#define MUX_ATTEN_HIGH      MuxChannel::CH2_33K_OHM
+// Alias para tipo de señal (más semántico)
+#define MUX_CHANNEL_ECG     MuxChannel::CH0_ECG_6K8   // 6.8kΩ → Fc=23.4Hz
+#define MUX_CHANNEL_EMG     MuxChannel::CH1_EMG_1K0   // 1.0kΩ → Fc=159Hz
+#define MUX_CHANNEL_PPG     MuxChannel::CH2_PPG_33K   // 33kΩ  → Fc=4.8Hz
 
 // ============================================================================
 // NIVELES DE ATENUACIÓN PREDEFINIDOS
@@ -121,11 +129,11 @@ public:
     const char* getChannelName() const;
     
     /**
-     * @brief Obtiene el factor de atenuación teórico del canal actual
-     * @return Factor de atenuación (0.0 - 1.0)
-     * @note Los valores exactos dependen de la impedancia de carga
+     * @brief Obtiene la frecuencia de corte del filtro RC activo
+     * @return Frecuencia de corte en Hz (Fc = 1/(2πRC))
+     * @note C = 1µF compartido, R depende del canal seleccionado
      */
-    float getAttenuationFactor() const;
+    float getCutoffFrequency() const;
 
 private:
     uint8_t currentChannel;

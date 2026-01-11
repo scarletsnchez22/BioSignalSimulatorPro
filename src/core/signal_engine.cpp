@@ -135,25 +135,25 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
         // ========================================================================
         switch (type) {
             case SignalType::ECG:
-                mux.selectChannel(MuxChannel::CH0_6K8_OHM);
-                Serial.println("[MUX] Canal seleccionado: CH0 (6.8k ohm, Fc=23.4 Hz) para ECG");
+                mux.selectChannel(MuxChannel::CH0_ECG_6K8);
+                Serial.println("[MUX] Canal seleccionado: CH0 (6.8kΩ, Fc=23.4Hz) para ECG");
                 break;
             case SignalType::EMG:
-                mux.selectChannel(MuxChannel::CH1_DIRECT);
-                Serial.println("[MUX] Canal seleccionado: CH1 (1.0k ohm, Fc=159 Hz) para EMG");
+                mux.selectChannel(MuxChannel::CH1_EMG_1K0);
+                Serial.println("[MUX] Canal seleccionado: CH1 (1.0kΩ, Fc=159Hz) para EMG");
                 break;
             case SignalType::PPG:
-                mux.selectChannel(MuxChannel::CH2_33K_OHM);
-                Serial.println("[MUX] Canal seleccionado: CH2 (33k ohm, Fc=4.8 Hz) para PPG");
+                mux.selectChannel(MuxChannel::CH2_PPG_33K);
+                Serial.println("[MUX] Canal seleccionado: CH2 (33kΩ, Fc=4.8Hz) para PPG");
                 break;
             default:
                 Serial.println("[MUX] ADVERTENCIA: Señal desconocida, manteniendo canal actual");
                 break;
         }
-        Serial.printf("[MUX] Canal activo: %d (%s), Factor atenuación: %.2f\n", 
+        Serial.printf("[MUX] Canal activo: %d (%s), Fc=%.1f Hz\n", 
                      mux.getCurrentChannel(), 
                      mux.getChannelName(),
-                     mux.getAttenuationFactor());
+                     mux.getCutoffFrequency());
         
         // ========================================================================
         // Configurar modelo según tipo

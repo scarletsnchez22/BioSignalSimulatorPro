@@ -154,7 +154,7 @@ El uso de PETG (no metálico) permite operar con temperaturas superficiales de h
 |------------|-------------------|-----------|
 | MT3608 (pérdidas) | 450-580 mW | Zona trasera |
 | ESP32-WROOM-32 | 600-1200 mW | Centro PCB |
-| TL072 | 25 mW | PCB |
+| LM358 | 3.5 mW | PCB |
 | Nextion backlight | 2000-2550 mW | Frontal |
 | **TOTAL** | **3.1-4.3 W** | |
 

@@ -70,9 +70,11 @@ USB-C → IP5306 → BMS 1S 3A → Baterías 2×18650 → Switch → XL6009 → 
 ```
 DAC 8-bit → LM358 Buffer → CD4051 Multiplexor → Filtro RC Selectivo → BNC
   (4 kHz)    (ganancia ×1)   CH0: 6.8kΩ (ECG, Fc=23.4Hz)    C=1µF
-                             CH1: Directo (EMG, bypass)
-                             CH2: 33kΩ (PPG, Fc=4.82Hz)
+                             CH1: 1.0kΩ (EMG, Fc=159Hz)     compartido
+                             CH2: 33kΩ  (PPG, Fc=4.82Hz)
 ```
+
+> **Nota:** Se usa LM358 por disponibilidad local en Ecuador. El MCP6002 (rail-to-rail) sería ideal para aprovechar el rango completo 0-3.3V del DAC.
 
 ---
 
@@ -218,7 +220,7 @@ La salida analógica permite conectar el dispositivo a equipos externos mediante
 |-----------|-------|
 | Rango de voltaje | 0 - 3.3V |
 | Resolución | 8 bits (256 niveles) |
-| Impedancia de salida | < 100Ω (buffer TL072) |
+| Impedancia de salida | < 100Ω (buffer LM358) |
 | Canales | 1 (señal activa) |
 
 ### Limitaciones

@@ -25,9 +25,9 @@
   <text x="380" y="154" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#c0392b">2550 mW</text>
   
   <rect x="45" y="160" width="410" height="20" fill="#eee"/>
-  <text x="150" y="174" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">TL072 Buffer (dual)</text>
-  <text x="290" y="174" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">5V × 5mA</text>
-  <text x="380" y="174" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">25 mW</text>
+  <text x="150" y="174" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">LM358 Buffer</text>
+  <text x="290" y="174" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">5V × 0.7mA</text>
+  <text x="380" y="174" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">3.5 mW</text>
   
   <rect x="45" y="180" width="410" height="20" fill="white"/>
   <text x="150" y="194" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">LED RGB (máx)</text>
@@ -83,10 +83,10 @@
   <text x="855" y="211" text-anchor="middle" font-family="Arial" font-size="10" fill="#f39c12">63°C ⚠</text>
   
   <rect x="500" y="217" width="405" height="20" fill="#eee"/>
-  <text x="580" y="231" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">TL072</text>
+  <text x="580" y="231" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">LM358</text>
   <text x="680" y="231" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">~100</text>
-  <text x="770" y="231" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">2.5°C</text>
-  <text x="855" y="231" text-anchor="middle" font-family="Arial" font-size="10" fill="#27ae60">28°C ✓</text>
+  <text x="770" y="231" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">0.4°C</text>
+  <text x="855" y="231" text-anchor="middle" font-family="Arial" font-size="10" fill="#27ae60">26°C ✓</text>
   
   <rect x="500" y="237" width="405" height="20" fill="white"/>
   <text x="580" y="251" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">MT3608</text>

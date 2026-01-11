@@ -42,17 +42,17 @@ void SerialHandler::process() {
             // Mostrar estado del multiplexor
             serial.println("\n--- Multiplexor CD4051 ---");
             serial.printf("Canal actual: %d (%s)\n", mux.getCurrentChannel(), mux.getChannelName());
-            serial.printf("Factor atenuacion: %.1f\n", mux.getAttenuationFactor());
-            serial.println("Comandos: 0=CH0(6.8k), 1=CH1(directo), 2=CH2(33k)\n");
+            serial.printf("Frecuencia de corte: %.1f Hz\n", mux.getCutoffFrequency());
+            serial.println("Comandos: 0=ECG(6.8k,Fc=23Hz), 1=EMG(1k,Fc=159Hz), 2=PPG(33k,Fc=5Hz)\n");
         } else if (c == '0') {
-            mux.setAttenuation(AttenuationLevel::ATTEN_MEDIUM);
-            serial.println("[MUX] Canal 0 (6.8k ohm - Atenuacion media)");
+            mux.selectChannel(MuxChannel::CH0_ECG_6K8);
+            serial.println("[MUX] Canal 0 (ECG: 6.8k, Fc=23.4 Hz)");
         } else if (c == '1') {
-            mux.setAttenuation(AttenuationLevel::ATTEN_NONE);
-            serial.println("[MUX] Canal 1 (Directo - Sin atenuacion)");
+            mux.selectChannel(MuxChannel::CH1_EMG_1K0);
+            serial.println("[MUX] Canal 1 (EMG: 1.0k, Fc=159 Hz)");
         } else if (c == '2') {
-            mux.setAttenuation(AttenuationLevel::ATTEN_HIGH);
-            serial.println("[MUX] Canal 2 (33k ohm - Atenuacion alta)");
+            mux.selectChannel(MuxChannel::CH2_PPG_33K);
+            serial.println("[MUX] Canal 2 (PPG: 33k, Fc=4.8 Hz)");
         }
     }
 }

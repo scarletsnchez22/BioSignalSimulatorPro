@@ -70,7 +70,7 @@ Se seleccionó el **ESP32-WROOM-32** como unidad de procesamiento central por la
 │           │ 0-3.3V, 8-bit         │ 115200 baud             │ WebSocket    │
 │           ▼                       ▼                         ▼              │
 │  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────┐   │
-│  │  TL072 Buffer   │     │  Waveform       │     │   App Web           │   │
+│  │  LM358 Buffer   │     │  Waveform       │     │   App Web           │   │
 │  │  + Conector BNC │     │  700×380 px     │     │   (React/HTML5)     │   │
 │  │  Salida 0-3.3V  │     │  Táctil         │     │   Tiempo Real       │   │
 │  └─────────────────┘     └─────────────────┘     └─────────────────────┘   │

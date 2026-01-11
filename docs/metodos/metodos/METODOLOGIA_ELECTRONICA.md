@@ -135,18 +135,26 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 
 **Justificación:** Nextion incluye procesador propio, liberando recursos del ESP32 y permitiendo interfaz táctil rica.
 
-#### 2.4.3 Buffer de Salida: MCP6002-E/SN
+#### 2.4.3 Buffer de Salida: LM358 (Implementado) vs MCP6002 (Ideal)
 
-| Característica | MCP6002 | TL072 | Comentario |
-|----------------|---------|-------|------------|
-| Slew Rate | 0.6 V/µs | 13 V/µs | MCP6002 es suficiente para 5 kHz (slew requerido <0.1 V/µs) |
-| GBW | 1 MHz | 3 MHz | 1 MHz cubre el ancho de banda educativo (0‑5 kHz) |
-| Ruido | 29 nV/√Hz | 18 nV/√Hz | Incremento marginal, imperceptible en el BNC |
-| Consumo | **1 mA típico** | 2.5 mA | MCP6002 reduce el consumo total |
-| Alimentación | **1.8‑6V, rail-to-rail** | ±2.5‑18V | MCP6002 opera directo a 5 V |
-| Encapsulado local | **SOIC-8 disponible** | DIP-8 importado | MCP6002 se consigue en Novatronic |
+**Análisis comparativo de opciones:**
 
-**Justificación:** El simulador entrega señales de hasta 5 kHz y 3.3 Vpp, por lo que el MCP6002 (rail-to-rail, bajo consumo y disponible localmente) cubre todo el rango sin necesidad de un TL072. Además, al usar el MCP6002 se elimina la conversión de encapsulado y se reduce el consumo de la etapa analógica, mejorando la autonomía.
+| Característica | LM358 (Usado) | MCP6002 (Ideal) | TL072 | Comentario |
+|----------------|---------------|-----------------|-------|------------|
+| Slew Rate | 0.3 V/µs | 0.6 V/µs | 13 V/µs | LM358/MCP6002 suficientes para 5 kHz |
+| GBW | 0.7 MHz | 1 MHz | 3 MHz | Ambos cubren BW educativo (0-5 kHz) |
+| Ruido | 40 nV/√Hz | 29 nV/√Hz | 18 nV/√Hz | Aceptable para aplicación educativa |
+| Consumo | 0.7 mA | **1 mA** | 2.5 mA | LM358 es eficiente |
+| Alimentación | 3-32V single | **1.8-6V rail-to-rail** | ±5-18V | LM358 opera a 5V single |
+| Vout máx. | VCC-1.5V | **Rail-to-rail** | VCC-3V | LM358 limita a ~3.5V con 5V |
+| Disponibilidad Ecuador | **DIP-8 común** | Difícil importar | Importar | LM358 disponible localmente |
+
+**Decisión de implementación:**
+
+- **Buffer ideal:** MCP6002 (rail-to-rail, mejor para 3.3V del ESP32)
+- **Buffer implementado:** LM358 (disponible localmente en Ecuador)
+
+**Justificación:** Aunque el MCP6002 sería ideal por su característica rail-to-rail que permite aprovechar el rango completo 0-3.3V del DAC del ESP32, se implementó el LM358 debido a su disponibilidad inmediata en el mercado local ecuatoriano. El LM358 opera correctamente a 5V single-supply y, aunque su salida máxima es ~VCC-1.5V (≈3.5V), esto es suficiente para la señal del DAC (0-3.3V). Para futuras versiones se recomienda importar el MCP6002 para obtener mejor fidelidad en los extremos del rango.
 
 #### 2.4.4 Sistema de Alimentación
 

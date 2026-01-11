@@ -25,9 +25,9 @@
   <text x="380" y="148" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">2550 mW</text>
   
   <rect x="45" y="153" width="400" height="18" fill="#eee"/>
-  <text x="130" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">TL072 Buffer</text>
-  <text x="280" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">5 mA</text>
-  <text x="380" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">25 mW</text>
+  <text x="130" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">LM358 Buffer</text>
+  <text x="280" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">0.7 mA</text>
+  <text x="380" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">3.5 mW</text>
   
   <rect x="45" y="171" width="400" height="18" fill="white"/>
   <text x="130" y="184" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">LED RGB + Divisor</text>
@@ -70,9 +70,9 @@
   <text x="835" y="148" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">2550 mW</text>
   
   <rect x="500" y="153" width="400" height="18" fill="#eee"/>
-  <text x="585" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">TL072 Buffer</text>
-  <text x="735" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">5 mA</text>
-  <text x="835" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">25 mW</text>
+  <text x="585" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">LM358 Buffer</text>
+  <text x="735" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">0.7 mA</text>
+  <text x="835" y="166" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">3.5 mW</text>
   
   <rect x="500" y="171" width="400" height="18" fill="white"/>
   <text x="585" y="184" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">LED RGB + Divisor</text>
