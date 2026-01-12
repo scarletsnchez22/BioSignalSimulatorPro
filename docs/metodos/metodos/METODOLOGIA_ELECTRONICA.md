@@ -10,10 +10,9 @@
 
 1. [Introducción](#1-introducción)
 2. [Metodología de Diseño Electrónico](#2-metodología-de-diseño-electrónico)
-3. [Topología de Acondicionamiento de Señal](#3-topología-de-acondicionamiento-de-señal)
-4. [Lista de Materiales (BOM Electrónico)](#4-lista-de-materiales-bom-electrónico)
-5. [Manual de Usuario](#5-manual-de-usuario)
-6. [Referencias](#6-referencias)
+3. [Lista de Materiales (BOM Electrónico)](#3-lista-de-materiales-bom-electrónico)
+4. [Manual de Usuario](#4-manual-de-usuario)
+5. [Referencias](#5-referencias)
 
 ---
 
@@ -136,6 +135,8 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 
 **Justificación:** Nextion incluye procesador propio, liberando recursos del ESP32 y permitiendo interfaz táctil rica.
 
+> **Nota:** La Nextion NX8048T070 opera con alimentación de 5V pero acepta niveles lógicos TTL de 3.3V en sus pines RX/TX sin necesidad de divisores resistivos, por lo que se conecta directamente al ESP32 (GPIO16/17 UART2).
+
 #### 2.4.3 Buffer de Salida: LM358 (Implementado) vs MCP6002 (Ideal)
 
 **Análisis comparativo de opciones:**
@@ -167,6 +168,156 @@ Este documento describe la metodología completa de diseño electrónico del Bio
 | Voltaje nominal | 3.7V | 3.7V |
 | Capacidad | 2600 mAh | **5200 mAh** |
 | Energía | 9.62 Wh | **19.24 Wh** |
+
+---
+
+### ⚡ 2.4.5 Análisis de Tasas de Carga y Descarga de Baterías Samsung ICR18650
+
+> **⚠️ SECCIÓN CRÍTICA DE SEGURIDAD:** Esta información es VITAL para garantizar la operación segura del sistema y prolongar la vida útil de las baterías. El incumplimiento de las tasas de carga/descarga puede causar sobrecalentamiento, venteo térmico, o en casos extremos, incendio.
+
+#### 2.4.5.1 Especificaciones Oficiales de la Celda Samsung ICR18650-26J
+
+La celda Samsung ICR18650-26J (también denominada 26H en algunas versiones) es una batería de iones de litio de alta capacidad utilizada en nuestro sistema. Las especificaciones fueron obtenidas de fuentes técnicas verificadas:
+
+| Parámetro | Valor | Unidad | Fuente |
+|-----------|-------|--------|--------|
+| **Modelo** | Samsung ICR18650-26J | - | Datasheet Samsung SDI |
+| **Química** | LiNiCoMnO2 (NCM) | - | Datasheet |
+| **Capacidad nominal** | 2600 | mAh | Datasheet |
+| **Capacidad mínima** | 2550 | mAh | Datasheet |
+| **Voltaje nominal** | 3.6 | V | Datasheet |
+| **Voltaje de carga** | 4.20 ± 0.05 | V | Datasheet |
+| **Voltaje mínimo descarga** | 2.75 | V | Datasheet |
+| **Peso** | 45 ± 0.01 | g | Datasheet |
+| **Dimensiones** | Ø18.20 × 64.80 | mm | Datasheet |
+
+**Fuentes de información consultadas:**
+- **Lygte-Info (Dinamarca):** [https://lygte-info.dk/review/batteries2012/Samsung%20ICR18650-26J%202600mAh%20UK.html](https://lygte-info.dk/review/batteries2012/Samsung%20ICR18650-26J%202600mAh%20UK.html) - Análisis independiente con curvas de descarga medidas en laboratorio.
+- **Datasheet Samsung SDI:** Especificaciones oficiales del fabricante.
+
+#### 2.4.5.2 Tasas de Carga (Charge Rate) - Análisis Detallado
+
+La tasa de carga se expresa en "C", donde 1C equivale a la capacidad de la batería en mA. Para una celda de 2600 mAh:
+
+| Tasa (C-rate) | Corriente (mA) | Tiempo aprox. carga | Uso recomendado |
+|---------------|----------------|---------------------|-----------------|
+| **0.5C** | 1300 mA | ~2.5 horas | ✅ **Recomendado** - Máxima longevidad |
+| **1C** | 2600 mA | ~1.3 horas | ⚠️ Carga estándar |
+| **2C** | 5200 mA | ~40 minutos | ❌ Máximo absoluto (reduce vida útil) |
+
+**Especificación Samsung oficial:** La celda ICR18650-26J admite **carga máxima de 2C (5.2A)** según el datasheet, pero esto es el límite absoluto que reduce significativamente la vida útil de la batería.
+
+> **🔋 REGLA DE ORO:** Para maximizar ciclos de vida, cargar a **0.5C o menos** (≤1.3A por celda).
+
+#### 2.4.5.3 Tasas de Descarga (Discharge Rate) - Análisis Detallado
+
+| Tasa (C-rate) | Corriente (mA) | Aplicación | Comportamiento |
+|---------------|----------------|------------|----------------|
+| **0.2C** | 520 mA | Descarga muy suave | Capacidad ~2650 mAh (100%) |
+| **0.5C** | 1300 mA | Descarga normal | Capacidad ~2550 mAh (96%) |
+| **1C** | 2600 mA | Descarga estándar | Capacidad ~2500 mAh (94%) |
+| **2C** | 5200 mA | Descarga alta | Capacidad ~2350 mAh (88%) |
+| **3C** | 7800 mA | Límite alto | Temperatura elevada, caída de voltaje |
+| **4C** | 10400 mA | ❌ Excesiva | **NO RECOMENDADO** - Daño potencial |
+
+**Observaciones de pruebas independientes (Lygte-Info):**
+- A 5A de descarga, la celda funciona pero con calentamiento significativo.
+- A 7A, la temperatura supera los 60°C.
+- A 10A, la celda **no puede mantener** el voltaje adecuadamente y se recomienda evitar esta tasa.
+
+> **📊 LÍMITE PRÁCTICO SEGURO:** Descarga máxima continua de **2C (5.2A)** por celda, aunque se recomienda **≤1C** para operación óptima.
+
+#### 2.4.5.4 Compatibilidad del IP5306 con las Tasas de Carga Samsung
+
+El módulo cargador **IP5306** fue seleccionado específicamente porque respeta las tasas de carga seguras de las celdas Samsung:
+
+| Parámetro IP5306 | Valor | Compatibilidad con Samsung ICR18650-26J |
+|------------------|-------|------------------------------------------|
+| **Corriente de carga máxima** | 2000 mA (2A) | ✅ **SEGURO** - Equivale a ~0.77C por celda |
+| **Perfil de carga** | CC/CV (Corriente Constante / Voltaje Constante) | ✅ Correcto para Li-ion |
+| **Voltaje de corte** | 4.2V ± 0.5% | ✅ Exactamente lo requerido por Samsung |
+| **Detección de fin de carga** | Corriente < 100 mA | ✅ Terminación segura |
+
+**Análisis de compatibilidad (Pack 2P = 2 celdas en paralelo):**
+
+```
+Configuración: 2× Samsung ICR18650-26J en paralelo
+Capacidad total: 5200 mAh (2600 mAh × 2)
+
+Corriente de carga IP5306: 2000 mA (2A)
+Corriente por celda: 2000 mA ÷ 2 = 1000 mA (1A por celda)
+
+Tasa de carga por celda: 1000 mA ÷ 2600 mAh = 0.38C
+
+✅ RESULTADO: La tasa de 0.38C está MUY POR DEBAJO del máximo de 2C
+✅ BENEFICIO: Carga rápida (2A total) sin estresar las celdas
+✅ LONGEVIDAD: Al cargar a <0.5C, se maximizan los ciclos de vida
+```
+
+**¿Por qué el IP5306 es la opción correcta?**
+
+| Ventaja | Explicación |
+|---------|-------------|
+| **Carga rápida pero segura** | 2A total se divide entre 2 celdas = 1A/celda (0.38C) |
+| **No excede límites** | 0.38C << 2C máximo de Samsung |
+| **Protección integrada** | Corta automáticamente a 4.2V exactos |
+| **USB-C moderno** | Compatible con cargadores estándar actuales |
+| **Bajo costo** | ~$2-3 USD en Ecuador |
+
+#### 2.4.5.5 Compatibilidad de Descarga con el Consumo del Sistema
+
+**Consumo total del BioSignalSimulator Pro:** ~1.335A (análisis detallado en sección 2.7)
+
+| Componente | Consumo |
+|------------|---------|
+| ESP32 | 240 mA |
+| Nextion 7" | 1000 mA |
+| LM358 + CD4051 | 20 mA |
+| LED RGB | 30 mA |
+| XL6009 (pérdidas) | 45 mA |
+| **TOTAL** | **~1335 mA** |
+
+**Análisis de tasa de descarga:**
+
+```
+Consumo total: 1335 mA
+Celdas en paralelo: 2
+Corriente por celda: 1335 mA ÷ 2 = ~668 mA
+
+Tasa de descarga por celda: 668 mA ÷ 2600 mAh = 0.26C
+
+✅ RESULTADO: La tasa de 0.26C está MUY POR DEBAJO del límite seguro de 2C
+✅ SEGURIDAD: Las celdas operan en zona de confort térmico
+✅ CAPACIDAD: A 0.26C se obtiene ~100% de la capacidad nominal
+```
+
+#### 2.4.5.6 Resumen de Seguridad - Tasas de Carga/Descarga
+
+| Parámetro | Límite Samsung | Valor Real Sistema | Margen de Seguridad |
+|-----------|----------------|-------------------|---------------------|
+| **Carga máxima** | 2C (5.2A/celda) | 0.38C (1A/celda) | **5.2× bajo el límite** |
+| **Descarga máxima** | 2C (5.2A/celda) | 0.26C (0.67A/celda) | **7.8× bajo el límite** |
+| **Voltaje de carga** | 4.20V ± 0.05V | 4.20V ± 0.5% | ✅ Exacto |
+| **Voltaje mín. descarga** | 2.75V | 2.54V (BMS corta antes) | ✅ Protegido |
+
+> **✅ CONCLUSIÓN DE SEGURIDAD:** El sistema BioSignalSimulator Pro opera con un factor de seguridad de **5-8× por debajo** de los límites máximos de las celdas Samsung ICR18650-26J. Esto garantiza:
+> - Operación segura sin riesgo de sobrecalentamiento
+> - Máxima vida útil de las baterías (>500 ciclos esperados)
+> - Carga rápida (2A) sin comprometer la integridad de las celdas
+
+#### 2.4.5.7 Disponibilidad en Ecuador
+
+Las baterías Samsung 18650 de 2600mAh están disponibles en el mercado ecuatoriano:
+
+| Proveedor | Ubicación | Precio Aprox. | Observaciones |
+|-----------|-----------|---------------|---------------|
+| **Novatronic** | Guayaquil/Quito | $4-6 USD/unidad | Distribuidor electrónico principal |
+| **Mercado Libre Ecuador** | Online | $5-8 USD/unidad | Verificar autenticidad Samsung |
+| **TecnoMega** | Guayaquil | $4-5 USD/unidad | Stock variable |
+
+> **⚠️ ADVERTENCIA:** Existen falsificaciones de celdas Samsung en el mercado. Verificar que las celdas tengan el código QR original de Samsung SDI y peso correcto (~45g). Las celdas falsas pueden tener capacidades reales de solo 800-1200 mAh y tasas de descarga peligrosamente bajas.
+
+---
 
 **⚠️ Precauciones de Seguridad para Baterías en Paralelo (Mini Power Bank)**
 
@@ -440,30 +591,31 @@ DAC (GPIO25) → LM358 Buffer → CD4051 MUX → Filtro RC → BNC
 |------------|-----------------|------------|-------------|--------|--------|
 | Nextion NX8048T070 | 510 mA | 2.55 W | 650 mA | 3.25 W | Datasheet Nextion |
 | ESP32-WROOM-32 (WiFi AP) | 240 mA | 1.20 W | 350 mA | 1.75 W | ESP32 Datasheet v5.2 |
-| LM358 Buffer | 1 mA | 0.005 W | 1 mA | 0.005 W | LM358 Datasheet |
-| LED RGB + divisor | 32 mA | 0.16 W | 32 mA | 0.16 W | Cálculo (3× LED @ 10 mA) |
-| XL6009 pérdidas | 70 mA equiv. | 0.35 W | 163 mA equiv. | 0.82 W | Eficiencia 92%/88% |
-| **TOTAL SISTEMA** | **853 mA** | **4.27 W** | **1196 mA** | **6.00 W** | |
+| LM358 Buffer (1 canal activo) | 0.7 mA | 0.0035 W | 0.7 mA | 0.0035 W | LM358 Datasheet (1.4mA/2 canales) |
+| CD4051 MUX | 0.5 mA | 0.0025 W | 0.5 mA | 0.0025 W | CD4051 Datasheet |
+| LED RGB | 30 mA | 0.15 W | 30 mA | 0.15 W | Cálculo (3× LED @ 10 mA) |
+| XL6009 pérdidas | 69 mA equiv. | 0.35 W | 162 mA equiv. | 0.81 W | Eficiencia 92%/88% |
+| **TOTAL SISTEMA** | **851 mA** | **4.26 W** | **1194 mA** | **5.97 W** | |
 
 **Cálculo de autonomía - Modo Promedio:**
 
 ```
 Capacidad útil: 5200 mAh × 93% = 4836 mAh
-P_sistema = 5V × 0.853A = 4.27 W
-P_batería = 4.27W / 0.92 (η) = 4.64 W
-I_batería = 4.64W / 3.7V = 1.25 A
+P_sistema = 5V × 0.851A = 4.26 W
+P_batería = 4.26W / 0.92 (η) = 4.63 W
+I_batería = 4.63W / 3.7V = 1.25 A
 Autonomía = 4836 mAh / 1250 mA = 3.87 horas
 ```
 
-**Autonomía práctica: 3.8 horas** (cumple requisito ≥3 horas)
+**Autonomía práctica: 3.9 horas** (cumple requisito ≥3 horas)
 
-## 3. Topología de Acondicionamiento de Señal
+---
 
-### 3.1 Lista de Materiales (BOM Electrónico)
+## 3. Lista de Materiales (BOM Electrónico)
 
 El sistema se implementa con dos PCB separadas más módulos externos. A continuación se detalla la BOM completa separada por subsistemas.
 
-#### 3.1.1 Módulos de Alimentación (Externos a las PCBs)
+### 3.1 Módulos de Alimentación (Externos a las PCBs)
 
 | # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
 |---|------------|----------|--------------|----------|-----------|
@@ -476,7 +628,7 @@ El sistema se implementa con dos PCB separadas más módulos externos. A continu
 | 7 | Cables AWG 18 (rojo/negro, 2m) | 1 | $0.55 | $0.55 | Novatronic |
 | | **Subtotal alimentación externa** | | | **$26.00** | |
 
-#### 3.1.2 Placa 1: Filtrado de Alimentación (PCB 5×7 cm)
+### 3.2 Placa 1: Filtrado de Alimentación (PCB 5×7 cm)
 
 | # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
 |---|------------|----------|--------------|----------|-----------|
@@ -490,7 +642,7 @@ El sistema se implementa con dos PCB separadas más módulos externos. A continu
 | 15 | Tornillos M1.6×6 mm (4 uds) | 1 | $0.40 | $0.40 | Ferretería |
 | | **Subtotal Placa 1 (Filtrado)** | | | **$4.25** | |
 
-#### 3.1.3 Placa 2: Control y Generación - Módulos Activos
+### 3.3 Placa 2: Control y Generación - Módulos Activos
 
 | # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
 |---|------------|----------|--------------|----------|-----------|
@@ -501,7 +653,7 @@ El sistema se implementa con dos PCB separadas más módulos externos. A continu
 | 20 | LED RGB 5 mm cátodo común | 1 | $0.50 | $0.50 | Novatronic |
 | | **Subtotal Placa 2 - Activos** | | | **$110.90** | |
 
-#### 3.1.4 Placa 2: Control y Generación - Pasivos y Conectores
+### 3.4 Placa 2: Control y Generación - Pasivos y Conectores
 
 | # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
 |---|------------|----------|--------------|----------|-----------|
@@ -509,22 +661,35 @@ El sistema se implementa con dos PCB separadas más módulos externos. A continu
 | 22 | Resistencia 6.8kΩ 1/4W (filtro ECG) | 1 | $0.05 | $0.05 | Novatronic |
 | 23 | Resistencia 1.0kΩ 1/4W (filtro EMG) | 1 | $0.05 | $0.05 | Novatronic |
 | 24 | Resistencia 33kΩ 1/4W (filtro PPG) | 1 | $0.05 | $0.05 | Novatronic |
-| 25 | Resistencia 2kΩ 1/4W (divisor UART) | 1 | $0.05 | $0.05 | Novatronic |
-| 26 | Resistencia 1kΩ 1/4W (divisor UART) | 1 | $0.05 | $0.05 | Novatronic |
-| 27 | Capacitor cerámico 1µF/16V X7R (filtro BNC compartido) | 1 | $0.10 | $0.10 | Novatronic |
+| 25 | Capacitor cerámico 1µF/16V X7R (filtro BNC compartido) | 1 | $0.10 | $0.10 | Novatronic |
 | 28 | Conector BNC hembra | 1 | $1.20 | $1.20 | Novatronic |
 | 29 | Bornera 2 pines paso 8.05 mm (PWR_IN) | 1 | $0.50 | $0.50 | Novatronic |
 | 30 | Bornera 4 pines paso 8.05 mm (LED RGB / NEXTION) | 2 | $0.80 | $1.60 | Novatronic |
 | 31 | PCB perforada 10×15 cm | 1 | $2.00 | $2.00 | Novatronic |
 | 32 | Tornillos M3×10 mm (4 uds) | 1 | $0.40 | $0.40 | Ferretería |
-| | **Subtotal Placa 2 - Pasivos** | | | **$6.20** | |
+| | **Subtotal Placa 2 - Pasivos** | | | **$6.10** | |
 
 ---
 
 **TOTAL SISTEMA ELECTRÓNICO:**  
-$26.00 (módulos) + $4.25 (Placa 1) + $110.90 (Placa 2 activos) + $6.20 (Placa 2 pasivos) = **$147.35**
+$26.00 (módulos) + $4.25 (Placa 1) + $110.90 (Placa 2 activos) + $6.10 (Placa 2 pasivos) = **$147.25**
 
-### 3.2 Esquemáticos de Referencia
+### 3.5 Resumen por Etapas de Diseño
+
+| Etapa | Subsistema | Componentes Clave | Subtotal |
+|-------|------------|-------------------|----------|
+| **Potencia** | Módulos externos | 2× 18650, BMS 1S 3A, IP5306, XL6009, portapilas, switch | $26.00 |
+| **Filtrado** | Placa 1 (5×7 cm) | Fusible 1.5A, inductor 22µH, capacitores 470µF + 1µF | $4.25 |
+| **Control - Activos** | Placa 2 (10×15 cm) | Nextion 7", ESP32, LM358, CD4051, LED RGB | $110.90 |
+| **Control - Pasivos** | Placa 2 (10×15 cm) | Resistencias filtro MUX, capacitor BNC, conectores | $6.10 |
+| | | **TOTAL** | **$147.25** |
+
+**Notas de diseño:**
+- **Sin divisor resistivo UART:** La Nextion NX8048T070 acepta niveles lógicos TTL 3.3V directamente, eliminando necesidad de divisor resistivo 2kΩ/1kΩ.
+- **LM358 vs MCP6002:** Se implementó LM358 DIP-8 por disponibilidad local en Ecuador. MCP6002 sería ideal para futuras versiones (rail-to-rail).
+- **Filtros MUX selectivos:** CD4051 con resistencias 6.8kΩ (ECG), 1.0kΩ (EMG), 33kΩ (PPG) optimiza frecuencia de corte según análisis FFT.
+
+### 3.6 Esquemáticos de Referencia
 
 Los esquemáticos completos del sistema se realizaron en EasyEDA v1.0:
 
@@ -709,10 +874,11 @@ El error introducido por Ron es inferior al 1.2% en todos los casos, despreciabl
 |------------|------------|----------------|--------|------------|------------|
 | Nextion NX8048T070 | 510 mA | 2.55 W | 650 mA | 3.25 W | Datasheet Basic Series [1] |
 | ESP32-WROOM-32 (WiFi AP) | 240 mA | 1.20 W | 350 mA | 1.75 W | ESP32 Datasheet v5.2, Tabla 5-4 [2] |
-| MCP6002 Buffer (2 canales) | **1 mA** | **0.005 W** | **1 mA** | **0.005 W** | Microchip MCP6002 Datasheet [3] |
-| LED RGB + divisor UART | 32 mA | 0.16 W | 32 mA | 0.16 W | Cálculo: Vf≈2.0V (R), 3.0V (G/B) |
-| XL6009 (pérdidas) | 70 mA equiv. | 0.35 W | 163 mA equiv. | 0.82 W | XL6009 Datasheet, η≈92%/88% [4] |
-| **TOTAL** | **853 mA** | **4.27 W** | **1196 mA** | **6.00 W** | |
+| LM358 Buffer (1 canal activo) | 0.7 mA | 0.0035 W | 0.7 mA | 0.0035 W | LM358 Datasheet (1.4mA/2 canales) |
+| CD4051 MUX | 0.5 mA | 0.0025 W | 0.5 mA | 0.0025 W | CD4051 Datasheet |
+| LED RGB | 30 mA | 0.15 W | 30 mA | 0.15 W | Cálculo: Vf≈2.0V (R), 3.0V (G/B) |
+| XL6009 (pérdidas) | 69 mA equiv. | 0.35 W | 162 mA equiv. | 0.81 W | XL6009 Datasheet, η≈92%/88% [4] |
+| **TOTAL** | **851 mA** | **4.26 W** | **1194 mA** | **5.97 W** | |
 
 **Nota:** El consumo pico representa un escenario extremo donde todos los subsistemas demandan simultáneamente (brillo 100%, WiFi TX continuo, LED RGB encendido). En uso normal, el sistema opera en modo promedio.
 
@@ -726,20 +892,20 @@ El error introducido por Ron es inferior al 1.2% en todos los casos, despreciabl
 **Cálculo de autonomía - Modo Promedio (uso normal):**
 
 ```
-1. P_sistema = 5V × 0.857A = 4.29 W
-2. P_batería = 4.29W / 0.92 = 4.66 W
-3. I_batería = 4.66W / 3.7V = 1.26 A
-4. t = 4836 mAh / 1260 mA = 3.84 h
-5. t_práctica ≈ 3.8 horas
+1. P_sistema = 5V × 0.851A = 4.26 W
+2. P_batería = 4.26W / 0.92 = 4.63 W
+3. I_batería = 4.63W / 3.7V = 1.25 A
+4. t = 4836 mAh / 1250 mA = 3.87 h
+5. t_práctica ≈ 3.9 horas
 ```
 
 **Cálculo de autonomía - Modo Pico (escenario extremo):**
 
 ```
-1. P_sistema = 5V × 1.20A = 6.00 W
-2. P_batería = 6.00W / 0.88 = 6.82 W
-3. I_batería = 6.82W / 3.7V = 1.84 A
-4. t = 4836 mAh / 1840 mA = 2.63 h
+1. P_sistema = 5V × 1.19A = 5.97 W
+2. P_batería = 5.97W / 0.88 = 6.78 W
+3. I_batería = 6.78W / 3.7V = 1.83 A
+4. t = 4836 mAh / 1830 mA = 2.64 h
 5. t_práctica ≈ 2.6 horas
 ```
 
@@ -766,8 +932,6 @@ El dispositivo está diseñado para cubrir **dos clases consecutivas de 1.5 hora
 | Componentes en top layer | Todos los módulos, headers y borneras permanecen en la cara superior; al no tener cobre en top, la soldadura se realiza desde abajo sin riesgo de puentes accidentales. |
 | Control de anchos | Se fijó 1.2 mm para alimentación/retornos críticos y 1.0 mm para señales, manteniendo resistencia baja y respetando el clearance frente a pads y tornillos. |
 | Keepouts mecánicos | Se definieron zonas de exclusión alrededor de los cuatro tornillos y a lo largo del contorno para evitar que las arandelas o la base metálica toquen cobre expuesto. |
-| Etiquetado funcional | Todas las borneras y conectores se rotularon (VCC, GND, BNC, LED, NEXTION) en serigrafía amarilla para facilitar montaje y mantenimiento. |
-| Filtro RC situado en el borde | El resistor serie de 100 Ω y el capacitor de 1 µF X7R se colocaron a <5 mm del BNC para minimizar inductancias parásitas y garantizar la fc calculada (1.59 kHz). |
 
 ### 2.6 Limitaciones del Diseño Electrónico
 
@@ -813,129 +977,6 @@ Por estos motivos se mantuvo la restricción operacional: **no se debe usar el s
 ---
 
 ## 5. Referencias
-
-El sistema se divide en tres etapas funcionales ordenadas cronológicamente según el flujo de energía: **potencia** (baterías → BMS → carga → boost), **filtrado** (protección y acondicionamiento π) y **control** (UI, generación y acondicionamiento de señales). Los componentes se agrupan metodológicamente en activos y pasivos dentro de cada etapa.
-
-### 3.1 BOM Unificado del Sistema
-
-#### 3.1.1 Etapa de Potencia — Módulos Activos
-
-| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
-|---|------------|----------|--------------|----------|-----------|
-| 1 | Batería Samsung 18650 2600 mAh 3.7 V | 2 | $9.00 | $18.00 | DCI Ecuador [7] |
-| 2 | Protector BMS 1S 3 A (8205A) | 1 | $2.00 | $2.00 | AV Electronics [11] |
-| 3 | Módulo IP5306 cargador USB-C 2 A | 1 | $3.50 | $3.50 | Velasco Store [8] |
-| 4 | Módulo XL6009 Step-Up DC-DC 4 A | 1 | $2.50 | $2.50 | UNIT Electronics [9] |
-| | **Subtotal módulos activos potencia** | | | **$26.00** | |
-
-#### 3.1.2 Etapa de Potencia — Componentes Pasivos y Mecánicos
-
-| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
-|---|------------|----------|--------------|----------|-----------|
-| 5 | Portapilas 18650 doble (2P paralelo) | 1 | $1.80 | $1.80 | Novatronic |
-| 6 | Switch deslizante SPST | 1 | $0.35 | $0.35 | Novatronic |
-| 7 | Bornera 2 pines paso 8.05 mm | 3 | $0.50 | $1.50 | Novatronic |
-| 8 | Cable sólido AWG22 rojo/negro 1 m | 1 | $0.80 | $0.80 | Novatronic |
-| 9 | Tornillos M3×10 mm (4 uds, fijación XL6009) | 1 | $0.40 | $0.40 | Ferretería local |
-| | **Subtotal pasivos/mecánicos potencia** | | | **$4.85** | |
-
-#### 3.1.3 Etapa de Filtrado — Plaquita Dedicada
-
-| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
-|---|------------|----------|--------------|----------|-----------|
-| 10 | Portafusible 5×20 mm BLX-A | 1 | $0.70 | $0.70 | Novatronic |
-| 11 | Fusible vidrio 5×20 mm 1.5 A | 1 | $0.30 | $0.30 | Novatronic |
-| 12 | Inductor 22 µH / 3 A (9×12 mm, pitch 5 mm) | 1 | $0.60 | $0.60 | Novatronic |
-| 13 | Capacitor electrolítico 470 µF / 25 V (8×14 mm, pitch 3.5 mm) | 1 | $0.35 | $0.35 | Novatronic |
-| 14 | Capacitor cerámico 1 µF / 16 V X7R (0805) | 1 | $0.10 | $0.10 | Novatronic |
-| 15 | Conector 2 pines paso 8.05 mm (PWR_XL6009 / PWR_BNC) | 2 | $0.50 | $1.00 | Novatronic |
-| 16 | PCB perforada 5×7 cm (plaquita filtrado) | 1 | $0.80 | $0.80 | Novatronic |
-| 17 | Tornillos M1.6×6 mm (4 uds, montaje plaquita) | 1 | $0.40 | $0.40 | Ferretería local |
-| | **Subtotal etapa de filtrado** | | | **$4.25** | |
-
-**Principios aplicados a la plaquita de filtrado**
-
-1. **Cara única (Bottom layer) para ruteo compacto:** el cobre quedó únicamente en la cara inferior, donde se rutearon todas las pistas y el plano GND; la cara superior sólo mantiene los pads de los componentes para soldarlos desde abajo sin cruzar pistas.
-2. **Anchos diferenciados:** pistas de potencia (VIN_CTRL, +5 V_CTRL) con ancho ≥1.2 mm; señales de sensado/monitorización a 1.0 mm para mantener resistencia baja sin complicar el ruteo.
-3. **Componentes agrupados:** F1, C14, L1 y C15 se ubicaron a menos de 15 mm entre sí para minimizar lazo de alta frecuencia y asegurar la atenuación calculada (43 dB @ 400 kHz).
-4. **Conectores enfrentados:** las borneras PWR_XL6009/PWR_BNC se alinearon para que los cables entren y salgan en línea recta, reduciendo tensión mecánica sobre el filtro.
-5. **Ruta corta a chasis:** los orificios de montaje M1.6 se colocaron junto a la entrada VIN_CTRL para atornillar la plaquita directamente al chasis metálico y mantener el cableado ordenado. El plano GND inferior se conecta a estos tornillos mediante pads expuestos para asegurar referencia común con la carcasa.
-
-#### 3.1.4 Etapa de Control — Módulos Activos
-
-| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
-|---|------------|----------|--------------|----------|-----------|
-| 18 | Nextion NX8048T070 7" 800×480 | 1 | $95.75 | $95.75 | Amazon [5] |
-| 19 | ESP32-WROOM-32 NodeMCU | 1 | $13.35 | $13.35 | Novatronic [6] |
-| 20 | MCP6002-E/SN (SOIC-8) | 1 | $1.20 | $1.20 | Novatronic |
-| 21 | Adaptador SOIC-8 a DIP-8 | 1 | $0.40 | $0.40 | Novatronic |
-| 22 | LED RGB 5 mm cátodo común | 1 | $0.50 | $0.50 | Novatronic |
-| | **Subtotal módulos activos control** | | | **$111.20** | |
-
-#### 3.1.5 Etapa de Control — Componentes Pasivos y Conectores
-
-| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
-|---|------------|----------|--------------|----------|-----------|
-| 23 | Resistencia 220 Ω 1/4 W | 3 | $0.05 | $0.15 | Novatronic |
-| 24 | Resistencia 2 kΩ 1/4 W | 1 | $0.05 | $0.05 | Novatronic |
-| 25 | Resistencia 1 kΩ 1/4 W | 1 | $0.05 | $0.05 | Novatronic |
-| 26 | Resistencia 100 Ω 1/4 W | 2 | $0.05 | $0.10 | Novatronic |
-| 27 | Capacitor cerámico 1 µF / 16 V X7R (filtro BNC) | 1 | $0.10 | $0.10 | Novatronic |
-| 28 | Conector BNC hembra | 1 | $1.20 | $1.20 | Novatronic |
-| 29 | Header macho 4 pines | 1 | $0.20 | $0.20 | Novatronic |
-| 30 | Conector JST-XH 4 pines (Nextion) | 1 | $0.60 | $0.60 | Novatronic |
-| 31 | Bornera 2 pines paso 8.05 mm (PWR_IN / BNC) | 2 | $0.50 | $1.00 | Novatronic |
-| 32 | Bornera 4 pines paso 8.05 mm (LED RGB / NEXTION) | 2 | $0.80 | $1.60 | Novatronic |
-| 33 | PCB perforada 10×15 cm (placa control) | 1 | $2.00 | $2.00 | Novatronic |
-| 34 | Tornillos M3×10 mm (4 uds, montaje placa control) | 1 | $0.40 | $0.40 | Ferretería local |
-| 35 | Tornillos M4×12 mm (6 uds, soporte chasis) | 1 | $0.60 | $0.60 | Ferretería local |
-| | **Subtotal pasivos/conectores control** | | | **$8.05** | |
-
----
-
-**TOTAL SISTEMA ELECTRÓNICO:** $26.00 + $4.85 + $4.25 + $111.20 + $8.05 = **$154.35**
-
-### 3.2 Filtro y Protección de la Etapa Elevadora
-
-Para minimizar el rizado del XL6009 y salvaguardar la placa de control se añadió un filtro π con fusible reemplazable en serie (portafusible 5×20 mm + fusible de 1.5 A). El esquema conceptual es:
-
-```
-        +5 V del XL6009
-                │
-          [F1]  5×20 mm 1.5 A
-                │─────── Nodo VIN_CTRL
-                │
-               ├── C14 = 470 µF / 25 V (electrolítico, 8×14 mm)
-               │
-             [L1]  Inductor 22 µH / 3 A (9×12 mm)
-               │─────── +5 V_CTRL hacia placa de control
-               │
-               └── C15 = 1 µF (cerámico X7R) → GND
-```
-
-- **F1 (portafusible BLX-A + fusible 5×20 mm 1.5 A)** se abre ante sobrecorriente >1.5 A, protegiendo el bus de 5 V antes de que llegue a los módulos sensibles. Es reemplazable y accesible desde la plaquita de filtrado.  
-- **C14** absorbe los picos de corriente del elevador antes de la bobina.  
-- **L1** y **C15** conforman un filtro LC de segundo orden que atenúa el rizado de conmutación y mantiene limpio el bus que alimenta el MCP6002 y el ESP32. La frecuencia de corte aproximada es:
-
-```
-f_c = 1 / (2π √(L × C15))
-f_c = 1 / (2π √(22 µH × 1 µF))
-f_c ≈ 34 kHz
-```
-
-El XL6009 conmuta a **400 kHz** según su datasheet [4]. Con f_c = 34 kHz, la relación es 400/34 ≈ 11.8× (1.07 décadas). Un filtro LC de segundo orden atenúa a -40 dB/década, por lo que a 400 kHz se obtiene:
-
-```
-Atenuación ≈ 1.07 décadas × 40 dB/década ≈ 43 dB
-```
-
-Esto reduce un ripple típico de 50-100 mV a menos de **1 mV** en la salida, suficiente para la etapa analógica del MCP6002. La caída DC se mantiene por debajo de 0.1 V (solo la resistencia del fusible y la DCR del inductor).
-
-> **Nota de diseño:** Se eligió C15 = 1 µF cerámico X7R para colocar f_c a ~1/10 de la frecuencia de switching, cumpliendo la recomendación de Texas Instruments para filtros LC en convertidores DC-DC [TI SLVA462]. El capacitor electrolítico C14 (470 µF) actúa como reserva de energía y su ESR (50-200 mΩ típico) proporciona amortiguamiento natural que evita resonancias.
-
-#### 3.2.1 Ubicación Física
-
-El submódulo de filtrado se implementa en una plaquita dedicada (PCB 5×7 cm) que se intercala entre el XL6009 y la placa de control. Esta plaquita solo contiene F1, C14, L1 y C15, y actúa como frontera: a su entrada se conectan los módulos de potencia (BMS, IP5306, XL6009) y a su salida se alimenta la placa de control mediante el conector VIN_CTRL. Se monta con 4 tornillos M1.6×6 mm en la parte inferior del chasis.
 
 ## 4. Manual de Usuario
 

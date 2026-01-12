@@ -1,26 +1,45 @@
-﻿/**
+/**
  * @file main_debug.cpp
- * @brief Auto-Start para Serial Plotter
- * @version 3.0.0
- * @date Diciembre 2025
+ * @brief Modo Debug - Réplica exacta de visualización Nextion en Serial Plotter
+ * @version 4.0.0
+ * @date Enero 2026
  * 
  * Firmware ESP32 - BioSignalSimulator Pro
  * 
- * Configuracion via #defines:
- * - Tipo de senal (ECG, EMG, PPG)
- * - Condicion/patologia
- * - Modo continuo o duracion fija
+ * PROPÓSITO:
+ * Este archivo genera una salida idéntica a la visualización Nextion,
+ * permitiendo validar la forma de onda digital sin necesidad del dispositivo físico.
+ * Los gráficos del Serial Plotter de VS Code replican exactamente lo que se vería
+ * en la pantalla Nextion 7" del dispositivo.
  * 
- * Frecuencias de muestreo (Nyquist 5x):
- * - ECG: 750 Hz (fmax=150Hz)
- * - PPG: 100 Hz (fmax=20Hz)
- * - EMG: 2000 Hz (fmax=400Hz)
+ * ARQUITECTURA DE VALIDACIÓN:
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │                    EQUIVALENCIA NEXTION ↔ SERIAL PLOTTER                 │
+ * ├──────────────────────────────────────────────────────────────────────────┤
+ * │  Pantalla Nextion 7"              Serial Plotter VS Code                 │
+ * │  ┌─────────────────┐              ┌─────────────────┐                    │
+ * │  │ Waveform 700×380│  ═════════   │ Gráfico tiempo  │                    │
+ * │  │ 0-255 (8-bit)   │    MISMO     │ real 0-255      │                    │
+ * │  │ ECG: 200 Hz     │   MAPEO      │ Misma Fs        │                    │
+ * │  │ EMG/PPG: 100 Hz │              │ Mismas métricas │                    │
+ * │  └─────────────────┘              └─────────────────┘                    │
+ * │                                                                           │
+ * │  VALIDACIÓN: Si el Serial Plotter muestra la señal correcta,             │
+ * │  entonces Nextion mostrará exactamente lo mismo.                         │
+ * └──────────────────────────────────────────────────────────────────────────┘
  * 
- * Hardware: ESP32-WROOM-32
- * Salida DAC: GPIO25 (0-3.3V)
- * Nextion: UART2 @ 115200 baud (waveform 700x380)
+ * MAPEO DE VALORES (idéntico a main.cpp updateDisplay()):
+ * - ECG: mV → normalizado (mV + 0.5) / 2.0 → Nextion 20 + (norm × 215)
+ * - EMG RAW: Ch0 valor 0-380 → Nextion 20-235
+ * - EMG ENV: Ch1 valor 0-380 → Nextion 20-235
+ * - PPG: AC mV / 150 → Nextion 20 + (norm × 215)
  * 
- * # Compilar y subir
+ * FRECUENCIAS DE ENVÍO (idénticas a Nextion):
+ * - ECG: 200 Hz (downsampling 4000/200 = 20:1)
+ * - EMG: 100 Hz (downsampling 4000/100 = 40:1) × 2 canales
+ * - PPG: 100 Hz (downsampling 4000/100 = 40:1)
+ * 
+ * Compilar y subir:
  * pio run -e esp32_debug --target upload
  */
 
@@ -38,7 +57,7 @@
 // --------------------------------------------------------------------------
 // TIPO DE SENAL: 0=ECG, 1=EMG, 2=PPG
 // --------------------------------------------------------------------------
-#define AUTO_SIGNAL_TYPE        2
+#define AUTO_SIGNAL_TYPE        0
 
 // --------------------------------------------------------------------------
 // CONDICIONES ECG (solo si AUTO_SIGNAL_TYPE==0):
@@ -52,7 +71,7 @@
 // 0=REST, 1=LOW_CONTRACTION, 2=MODERATE_CONTRACTION, 
 // 3=HIGH_CONTRACTION, 4=TREMOR, 5=FATIGUE
 // --------------------------------------------------------------------------
-#define AUTO_EMG_CONDITION      0
+#define AUTO_EMG_CONDITION      3
 
 // --------------------------------------------------------------------------
 // CONDICIONES PPG (solo si AUTO_SIGNAL_TYPE==2):
@@ -86,28 +105,27 @@ bool isRunning = false;
 float minVal = 999.0f;
 float maxVal = -999.0f;
 
-// Contadores de muestras para downsampling
+// Contadores de muestras (igual que signal_engine y main.cpp)
 uint32_t sampleCounter = 0;
-uint32_t timerTickCounter = 0;  // Contador de ticks del timer (para downsampling)
+uint32_t timerTickCounter = 0;
 
 // ============================================================================
 // ARQUITECTURA: Fs_timer = 4 kHz (igual que signal_engine.cpp)
 // ============================================================================
-// Timer tick interval en microsegundos
 const uint32_t TIMER_TICK_US = 1000000 / FS_TIMER_HZ;  // 250 us = 4 kHz
 
-// Variables para timing real e interpolación (igual que signal_engine)
+// Variables para timing real e interpolación
 static uint32_t lastModelTick_us = 0;
 static uint8_t currentModelSample = 128;
 static uint8_t previousModelSample = 128;
 static uint16_t interpolationCounter = 0;
 static uint32_t lastTimerTick_us = 0;
 
-// Downsampling para Serial Plotter (respecto a Fs_timer, NO respecto al modelo)
-// Ratio = Fs_timer / Fds
-#define PLOT_DOWNSAMPLE_ECG  (FS_TIMER_HZ / FDS_ECG)   // 4000/200 = 20
-#define PLOT_DOWNSAMPLE_EMG  (FS_TIMER_HZ / FDS_EMG)   // 4000/100 = 40
-#define PLOT_DOWNSAMPLE_PPG  (FS_TIMER_HZ / FDS_PPG)   // 4000/100 = 40
+// Downsampling para Serial Plotter (IDÉNTICO a Nextion)
+// Ratio = Fs_timer / Fds - Mismo que NEXTION_DOWNSAMPLE_* en config.h
+#define PLOT_DOWNSAMPLE_ECG  NEXTION_DOWNSAMPLE_ECG   // 20 (200 Hz)
+#define PLOT_DOWNSAMPLE_EMG  NEXTION_DOWNSAMPLE_EMG   // 40 (100 Hz)
+#define PLOT_DOWNSAMPLE_PPG  NEXTION_DOWNSAMPLE_PPG   // 40 (100 Hz)
 
 // ============================================================================
 // NOMBRES DE CONDICIONES
@@ -149,51 +167,6 @@ const char* getPPGConditionName(PPGCondition cond) {
         default:                              return "Desconocido";
     }
 }
-
-// ============================================================================
-// RANGOS CLINICOS ESPERADOS
-// ============================================================================
-struct ExpectedRange {
-    float valMin, valMax;
-    float val2Min, val2Max;
-    const char* description;
-};
-
-// Rangos clinicos ECG (indices alineados con ECGCondition enum)
-// 0=NORMAL, 1=TACHYCARDIA, 2=BRADYCARDIA, 3=AFIB, 4=VFIB, 5=AVB1, 6=STE, 7=STD
-static const ExpectedRange ECG_RANGES[] = {
-    { 60.0f, 100.0f, 0.0f, 0.0f, "Normal: HR 60-100 BPM" },
-    { 100.0f, 180.0f, 0.0f, 0.0f, "Taquicardia: HR 100-180 BPM" },
-    { 30.0f, 59.0f, 0.0f, 0.0f, "Bradicardia: HR 30-59 BPM" },
-    { 60.0f, 180.0f, 0.0f, 0.0f, "AFib: HR 60-180, RR irregular" },
-    { 150.0f, 500.0f, 0.0f, 0.0f, "VFib: 4-10 Hz caotico" },
-    { 60.0f, 100.0f, 0.0f, 0.0f, "BAV1: HR 60-100, PR>200ms" },
-    { 50.0f, 110.0f, 0.0f, 0.0f, "STEMI: HR 50-110, ST>=0.2mV" },
-    { 50.0f, 150.0f, 0.0f, 0.0f, "NSTEMI: HR 50-150, ST<=-0.05mV" }
-};
-
-// Rangos clinicos EMG (indices alineados con EMGCondition enum)
-// 0=REST, 1=LOW, 2=MODERATE, 3=HIGH, 4=TREMOR, 5=FATIGUE
-static const ExpectedRange EMG_RANGES[] = {
-    { 0.001f, 0.01f, 0.0f, 0.0f, "Reposo: RMS <10uV" },
-    { 0.05f, 0.60f, 0.0f, 0.0f, "Baja: RMS 50-600uV (5-20% MVC)" },
-    { 0.50f, 2.00f, 0.0f, 0.0f, "Moderada: RMS 0.5-2mV (20-50% MVC)" },
-    { 1.50f, 3.50f, 0.0f, 0.0f, "Alta: RMS 1.5-3.5mV (50-100% MVC)" },
-    { 0.10f, 0.50f, 0.0f, 0.0f, "Temblor: RMS 0.1-0.5mV, 4-6Hz" },
-    { 0.40f, 1.50f, 0.0f, 0.0f, "Fatiga: RMS decae 1.5->0.4mV" }
-};
-
-// Rangos clinicos PPG (indices alineados con PPGCondition enum)
-// 0=NORMAL, 1=ARRHYTHMIA, 2=WEAK_PERFUSION, 3=VASODILATION, 4=STRONG_PERFUSION, 5=VASOCONSTRICTION
-// Valores segun RANGOS_CLINICOS.md y ppg_model.cpp initConditionRanges()
-static const ExpectedRange PPG_RANGES[] = {
-    { 60.0f, 100.0f, 2.9f, 6.1f, "Normal: HR 60-100, PI 2.9-6.1%" },
-    { 60.0f, 180.0f, 1.0f, 5.0f, "Arritmia: HR 60-180, PI 1-5%" },
-    { 70.0f, 120.0f, 0.5f, 2.1f, "Perf.Debil: HR 70-120, PI 0.5-2.1%" },
-    { 60.0f, 90.0f, 5.0f, 10.0f, "Vasodilatacion: HR 60-90, PI 5-10%" },
-    { 60.0f, 90.0f, 7.0f, 20.0f, "Perf.Fuerte: HR 60-90, PI 7-20%" },
-    { 65.0f, 110.0f, 0.7f, 0.8f, "Vasoconstric: HR 65-110, PI 0.7-0.8%" }
-};
 
 // ============================================================================
 // CONFIGURAR MODELOS
@@ -247,49 +220,58 @@ void setup() {
     
     // Banner de inicio
     Serial.println();
-    Serial.println("------------------------------------------------------------");
-    Serial.println("  BIOSIGNALSIMULATOR PRO - DEBUG MODE v3.0");
-    Serial.println("------------------------------------------------------------");
+    Serial.println("════════════════════════════════════════════════════════════");
+    Serial.println("  BIOSIGNALSIMULATOR PRO - MODO VALIDACIÓN NEXTION v4.0");
+    Serial.println("════════════════════════════════════════════════════════════");
+    Serial.println();
+    Serial.println("  PROPÓSITO: Réplica exacta de visualización Nextion");
+    Serial.println("  Los gráficos del Serial Plotter son idénticos a Nextion.");
+    Serial.println();
     
     // Configurar senal segun tipo seleccionado
     #if AUTO_SIGNAL_TYPE == 0
         setupECG((ECGCondition)AUTO_ECG_CONDITION);
-        Serial.printf("  Senal: ECG - %s\n", getECGConditionName(currentECGCondition));
-        Serial.printf("  Frecuencia modelo: %d Hz (dt=%.3f ms)\n", 
-                     MODEL_SAMPLE_RATE_ECG, MODEL_DT_ECG * 1000.0f);
+        Serial.printf("  Señal: ECG - %s\n", getECGConditionName(currentECGCondition));
+        Serial.printf("  Modelo @ %d Hz | Nextion @ %d Hz (1:%d)\n", 
+                     MODEL_SAMPLE_RATE_ECG, 
+                     FS_TIMER_HZ / PLOT_DOWNSAMPLE_ECG,
+                     PLOT_DOWNSAMPLE_ECG);
     #elif AUTO_SIGNAL_TYPE == 1
         setupEMG((EMGCondition)AUTO_EMG_CONDITION);
-        Serial.printf("  Senal: EMG - %s\n", getEMGConditionName(currentEMGCondition));
-        Serial.printf("  Frecuencia modelo: %d Hz (dt=%.3f ms)\n", 
-                     MODEL_SAMPLE_RATE_EMG, MODEL_DT_EMG * 1000.0f);
+        Serial.printf("  Señal: EMG - %s\n", getEMGConditionName(currentEMGCondition));
+        Serial.printf("  Modelo @ %d Hz | Nextion @ %d Hz (1:%d)\n", 
+                     MODEL_SAMPLE_RATE_EMG, 
+                     FS_TIMER_HZ / PLOT_DOWNSAMPLE_EMG,
+                     PLOT_DOWNSAMPLE_EMG);
     #else
         setupPPG((PPGCondition)AUTO_PPG_CONDITION);
-        Serial.printf("  Senal: PPG - %s\n", getPPGConditionName(currentPPGCondition));
-        Serial.printf("  Frecuencia modelo: %d Hz (dt=%.3f ms)\n", 
-                     MODEL_SAMPLE_RATE_PPG, MODEL_DT_PPG * 1000.0f);
+        Serial.printf("  Señal: PPG - %s\n", getPPGConditionName(currentPPGCondition));
+        Serial.printf("  Modelo @ %d Hz | Nextion @ %d Hz (1:%d)\n", 
+                     MODEL_SAMPLE_RATE_PPG, 
+                     FS_TIMER_HZ / PLOT_DOWNSAMPLE_PPG,
+                     PLOT_DOWNSAMPLE_PPG);
     #endif
     
-    Serial.printf("  Nextion: %d Hz (downsampling 1:%d)\n", 
-                 NEXTION_SEND_RATE, 
-                 #if AUTO_SIGNAL_TYPE == 0
-                     NEXTION_DOWNSAMPLE_ECG
-                 #elif AUTO_SIGNAL_TYPE == 1
-                     NEXTION_DOWNSAMPLE_EMG
-                 #else
-                     NEXTION_DOWNSAMPLE_PPG
-                 #endif
-                 );
-    Serial.printf("  Waveform Nextion: %dx%d px, ~%.1f seg visibles\n",
-                 NEXTION_WAVEFORM_WIDTH, NEXTION_WAVEFORM_HEIGHT,
-                 (float)NEXTION_WAVEFORM_WIDTH / NEXTION_SEND_RATE);
+    Serial.println();
+    Serial.println("  MAPEO IDÉNTICO A NEXTION:");
+    #if AUTO_SIGNAL_TYPE == 0
+        Serial.println("    ECG: (mV + 0.5) / 2.0 → 20 + (norm × 215) = [20, 235]");
+        Serial.println("    Rango visible: -0.5 a +1.5 mV (2.0 mV total)");
+    #elif AUTO_SIGNAL_TYPE == 1
+        Serial.println("    EMG RAW: valor 0-380 → [20, 235]");
+        Serial.println("    EMG ENV: valor 0-380 → [20, 235]");
+    #else
+        Serial.println("    PPG: AC / 150 mV → 20 + (norm × 215) = [20, 235]");
+    #endif
     
+    Serial.println();
     #if AUTO_CONTINUOUS
         Serial.println("  Modo: CONTINUO (presiona 'r' para reiniciar)");
     #else
         Serial.printf("  Modo: DURACION FIJA - %.1f segundos\n", PLOT_DURATION_MS / 1000.0f);
     #endif
     
-    Serial.println("------------------------------------------------------------");
+    Serial.println("════════════════════════════════════════════════════════════");
     Serial.println();
     delay(1500);
     
@@ -314,7 +296,6 @@ void loop() {
     if (Serial.available()) {
         char c = Serial.read();
         if (c == 'r' || c == 'R') {
-            // Reiniciar
             setup();
             return;
         }
@@ -330,38 +311,30 @@ void loop() {
     #endif
     
     // ========== ARQUITECTURA IGUAL A signal_engine.cpp ==========
-    // 1. Modelo genera a su propia Fs (con timing real)
-    // 2. Interpolación lineal llena muestras a Fs_timer
-    // 3. DAC escribe a Fs_timer (4 kHz)
-    // 4. Downsampling = Fs_timer / Fds
-    
-    // Obtener parámetros según tipo de señal
     uint32_t modelTickInterval_us;
     uint8_t upsampleRatio;
     float modelDeltaTime;
     
     #if AUTO_SIGNAL_TYPE == 0  // ECG
-        modelTickInterval_us = MODEL_TICK_US_ECG;  // 1333 us
-        upsampleRatio = UPSAMPLE_RATIO_ECG;        // 5
-        modelDeltaTime = MODEL_DT_ECG;             // 1.333 ms
+        modelTickInterval_us = MODEL_TICK_US_ECG;
+        upsampleRatio = UPSAMPLE_RATIO_ECG;
+        modelDeltaTime = MODEL_DT_ECG;
     #elif AUTO_SIGNAL_TYPE == 1  // EMG
-        modelTickInterval_us = MODEL_TICK_US_EMG;  // 500 us
-        upsampleRatio = UPSAMPLE_RATIO_EMG;        // 2
-        modelDeltaTime = MODEL_DT_EMG;             // 0.5 ms
+        modelTickInterval_us = MODEL_TICK_US_EMG;
+        upsampleRatio = UPSAMPLE_RATIO_EMG;
+        modelDeltaTime = MODEL_DT_EMG;
     #else  // PPG
-        modelTickInterval_us = MODEL_TICK_US_PPG;  // 10000 us
-        upsampleRatio = UPSAMPLE_RATIO_PPG;        // 40
-        modelDeltaTime = MODEL_DT_PPG;             // 10 ms
+        modelTickInterval_us = MODEL_TICK_US_PPG;
+        upsampleRatio = UPSAMPLE_RATIO_PPG;
+        modelDeltaTime = MODEL_DT_PPG;
     #endif
     
-    // ¿Es hora de generar nueva muestra del modelo? (timing real)
+    // ¿Es hora de generar nueva muestra del modelo?
     if (now_us - lastModelTick_us >= modelTickInterval_us) {
         lastModelTick_us = now_us;
         
-        // Guardar muestra anterior para interpolación
         previousModelSample = currentModelSample;
         
-        // Generar nueva muestra del modelo con su deltaTime correcto
         #if AUTO_SIGNAL_TYPE == 0  // ECG
             currentModelSample = ecgModel.getDACValue(modelDeltaTime);
         #elif AUTO_SIGNAL_TYPE == 1  // EMG
@@ -371,14 +344,12 @@ void loop() {
             currentModelSample = ppgModel.getDACValue(modelDeltaTime);
         #endif
         
-        // Resetear contador de interpolación
         interpolationCounter = 0;
-        sampleCounter++;  // Contador de muestras del modelo
+        sampleCounter++;
     }
     
-    // ========== TIMER TICK @ 4 kHz (escribir DAC con interpolación) ==========
+    // ========== TIMER TICK @ 4 kHz ==========
     bool timerTick = false;
-    float value = 0.0f;
     uint8_t dacValue = 128;
     
     if (now_us - lastTimerTick_us >= TIMER_TICK_US) {
@@ -386,50 +357,58 @@ void loop() {
         timerTick = true;
         timerTickCounter++;
         
-        // Interpolación lineal: sample = prev + (curr - prev) * t
+        // Interpolación lineal
         float t = (float)interpolationCounter / (float)upsampleRatio;
         int16_t interpolated = previousModelSample + 
                                (int16_t)((currentModelSample - previousModelSample) * t);
         
-        // Clamp a rango DAC
         if (interpolated < 0) interpolated = 0;
         if (interpolated > 255) interpolated = 255;
         
         dacValue = (uint8_t)interpolated;
         dacWrite(DAC_SIGNAL_PIN, dacValue);
         
-        // Avanzar contador de interpolación
         interpolationCounter++;
         if (interpolationCounter >= upsampleRatio) {
             interpolationCounter = 0;
         }
-        
-        // Obtener valor para tracking
-        #if AUTO_SIGNAL_TYPE == 0
-            value = ecgModel.getCurrentValueMV();
-        #elif AUTO_SIGNAL_TYPE == 1
-            value = emgModel.getRawSample();
-        #else
-            value = ppgModel.getLastACValue();
-        #endif
-        
-        // Track min/max
-        if (value < minVal) minVal = value;
-        if (value > maxVal) maxVal = value;
     }
     
-    // ========== ENVIO A SERIAL PLOTTER (con downsampling respecto a Fs_timer) ==========
-    // Formato VS Code Serial Plotter: >var1:val,var2:val\r\n
-    // Ratio = Fs_timer / Fds: ECG=20, EMG=40, PPG=40
+    // ========================================================================
+    // ENVIO A SERIAL PLOTTER - MAPEO IDÉNTICO A NEXTION (main.cpp updateDisplay)
+    // ========================================================================
+    // Formato VS Code Serial Plotter: >var:val,var2:val2\r\n
+    // El valor "wave" representa exactamente lo que Nextion muestra (0-255)
+    // Rango útil: 20-235 (igual que Nextion waveform)
+    // ========================================================================
+    
     if (timerTick) {
         
-        #if AUTO_SIGNAL_TYPE == 0  // ECG @ 200 Hz efectivo
+        #if AUTO_SIGNAL_TYPE == 0  // ECG @ 200 Hz (igual que Nextion)
         if (timerTickCounter % PLOT_DOWNSAMPLE_ECG == 0) {
+            // === MAPEO IDÉNTICO A main.cpp línea 967-970 ===
+            float mV_value = ecgModel.getCurrentValueMV();
+            
+            // Normalización: (mV + 0.5) / 2.0 para rango -0.5 a +1.5 mV
+            float normalized = (mV_value + 0.5f) / 2.0f;
+            if (normalized < 0.0f) normalized = 0.0f;
+            if (normalized > 1.0f) normalized = 1.0f;
+            
+            // Mapeo a rango Nextion: 20 + (normalized × 215)
+            int waveValue = (int)(20 + (normalized * 215));
+            
+            // Track min/max en mV
+            if (mV_value < minVal) minVal = mV_value;
+            if (mV_value > maxVal) maxVal = mV_value;
+            
+            // Métricas ECG
             ECGDisplayMetrics m = ecgModel.getDisplayMetrics();
-            // Señal instantánea
-            Serial.print(">ecg:");
-            Serial.print(ecgModel.getCurrentValueMV(), 2);
-            // Frecuencia y intervalos
+            
+            // Formato Serial Plotter con valor Nextion (wave) como canal principal
+            Serial.print(">wave:");
+            Serial.print(waveValue);
+            Serial.print(",mV:");
+            Serial.print(mV_value, 2);
             Serial.print(",hr:");
             Serial.print(m.bpm, 0);
             Serial.print(",rr:");
@@ -438,57 +417,75 @@ void loop() {
             Serial.print(m.prInterval_ms, 0);
             Serial.print(",qrs:");
             Serial.print(m.qrsDuration_ms, 0);
-            Serial.print(",qt:");
-            Serial.print(m.qtInterval_ms, 0);
             Serial.print(",qtc:");
             Serial.print(m.qtcInterval_ms, 0);
-            // Amplitudes de ondas PQRST
-            Serial.print(",p:");
-            Serial.print(m.pAmplitude_mV, 2);
-            Serial.print(",q:");
-            Serial.print(m.qAmplitude_mV, 2);
             Serial.print(",r:");
             Serial.print(m.rAmplitude_mV, 2);
-            Serial.print(",s:");
-            Serial.print(m.sAmplitude_mV, 2);
-            Serial.print(",t:");
-            Serial.print(m.tAmplitude_mV, 2);
             Serial.print(",st:");
             Serial.print(m.stDeviation_mV, 2);
-            Serial.print(",beats:");
-            Serial.print(m.beatCount);
             Serial.println();
         }
             
-        #elif AUTO_SIGNAL_TYPE == 1  // EMG @ 100 Hz efectivo
+        #elif AUTO_SIGNAL_TYPE == 1  // EMG @ 100 Hz (igual que Nextion)
         if (timerTickCounter % PLOT_DOWNSAMPLE_EMG == 0) {
-            // EMG: raw bipolar ±5mV, env 0-4mV, rms 0-3.5mV
-            Serial.print(">raw:");
-            Serial.print(emgModel.getRawSample(), 2);  // mV bipolar
-            Serial.print(",env:");
-            Serial.print(emgModel.getProcessedSample(), 2);  // mV envolvente
+            // === MAPEO IDÉNTICO A main.cpp líneas 975-984 ===
+            
+            // Canal 0: Señal RAW bipolar (-5 a +5 mV)
+            uint16_t ch0_value = emgModel.getWaveformValue_Ch0();
+            uint8_t ch0_mapped = map(ch0_value, 0, 380, 20, 235);
+            
+            // Canal 1: Envolvente RMS unipolar (0 a +2 mV)
+            uint16_t ch1_value = emgModel.getWaveformValue_Ch1();
+            uint8_t ch1_mapped = map(ch1_value, 0, 380, 20, 235);
+            
+            // Valores originales para tracking
+            float rawMV = emgModel.getRawSample();
+            float envMV = emgModel.getProcessedSample();
+            
+            if (rawMV < minVal) minVal = rawMV;
+            if (rawMV > maxVal) maxVal = rawMV;
+            
+            // Formato Serial Plotter con valores Nextion (raw_wave, env_wave)
+            Serial.print(">raw_wave:");
+            Serial.print(ch0_mapped);
+            Serial.print(",env_wave:");
+            Serial.print(ch1_mapped);
+            Serial.print(",raw_mV:");
+            Serial.print(rawMV, 2);
+            Serial.print(",env_mV:");
+            Serial.print(envMV, 2);
             Serial.print(",rms:");
-            Serial.print(emgModel.getRMSAmplitude(), 3);  // mV RMS
+            Serial.print(emgModel.getRMSAmplitude(), 3);
             Serial.print(",mus:");
             Serial.print(emgModel.getActiveMotorUnits());
             Serial.print(",fr:");
             Serial.print(emgModel.getMeanFiringRate(), 1);
             Serial.print(",mvc:");
             Serial.print(emgModel.getContractionLevel(), 0);
-            // Métricas de fatiga (solo relevantes en FATIGUE)
-            Serial.print(",mdf:");
-            Serial.print(emgModel.getFatigueMDF(), 0);
-            Serial.print(",mfl:");
-            Serial.print(emgModel.getFatigueMFL(), 2);
             Serial.println();
         }
             
-        #else  // PPG @ 100 Hz efectivo (40:1 downsampling)
+        #else  // PPG @ 100 Hz (igual que Nextion)
         if (timerTickCounter % PLOT_DOWNSAMPLE_PPG == 0) {
-            Serial.print(">ppg:");
-            Serial.print(ppgModel.getDCBaseline() + ppgModel.getLastACValue(), 0);
-            Serial.print(",ac:");
-            Serial.print(ppgModel.getLastACValue(), 1);
+            // === MAPEO IDÉNTICO A main.cpp líneas 992-1001 ===
+            float acValue_mV = ppgModel.getLastACValue();
+            
+            // Mapeo unipolar: 0 → 20, 150 mV → 235
+            const float AC_DISPLAY_MAX = 150.0f;
+            float normalized = acValue_mV / AC_DISPLAY_MAX;
+            if (normalized < 0.0f) normalized = 0.0f;
+            if (normalized > 1.0f) normalized = 1.0f;
+            
+            int waveValue = (int)(20 + (normalized * 215));
+            
+            if (acValue_mV < minVal) minVal = acValue_mV;
+            if (acValue_mV > maxVal) maxVal = acValue_mV;
+            
+            // Formato Serial Plotter con valor Nextion (wave)
+            Serial.print(">wave:");
+            Serial.print(waveValue);
+            Serial.print(",ac_mV:");
+            Serial.print(acValue_mV, 1);
             Serial.print(",hr:");
             Serial.print(ppgModel.getMeasuredHR(), 0);
             Serial.print(",rr:");
@@ -499,72 +496,53 @@ void loop() {
             Serial.print(ppgModel.getMeasuredSystoleTime(), 0);
             Serial.print(",dia:");
             Serial.print(ppgModel.getMeasuredDiastoleTime(), 0);
-            Serial.print(",beats:");
-            Serial.print(ppgModel.getBeatCount());
             Serial.println();
         }
         #endif
     }
     
-    // ========== ESTADISTICAS PERIODICAS (cada 3 segundos) ==========
-    if (now_ms - lastStats >= 3000) {
+    // ========== ESTADISTICAS PERIODICAS (cada 4 segundos) ==========
+    if (now_ms - lastStats >= 4000) {
         lastStats = now_ms;
         
         Serial.println();
-        Serial.println("============================================================");
-        Serial.printf("  [%lu s] METRICAS - %lu muestras generadas\n", 
+        Serial.println("════════════════════════════════════════════════════════════");
+        Serial.printf("  [%lu s] MÉTRICAS NEXTION - %lu muestras modelo\n", 
                      (now_ms - plotStartTime) / 1000, sampleCounter);
-        Serial.println("------------------------------------------------------------");
+        Serial.println("────────────────────────────────────────────────────────────");
         
         #if AUTO_SIGNAL_TYPE == 0  // ECG
             ECGDisplayMetrics m = ecgModel.getDisplayMetrics();
-            uint8_t idx = AUTO_ECG_CONDITION;
-            bool hrOK = (m.bpm >= ECG_RANGES[idx].valMin && m.bpm <= ECG_RANGES[idx].valMax);
-            
-            Serial.printf("  HR: %.1f BPM %s (esperado: %s)\n", 
-                         m.bpm, hrOK ? "[OK]" : "[!]", ECG_RANGES[idx].description);
-            Serial.printf("  RR: %.0f ms | PR: %.0f ms | QRS: %.0f ms\n",
-                         m.rrInterval_ms, m.prInterval_ms, m.qrsDuration_ms);
-            Serial.printf("  QT: %.0f ms | QTc: %.0f ms\n", m.qtInterval_ms, m.qtcInterval_ms);
-            Serial.printf("  R: %.2f mV | ST: %.2f mV | T: %.2f mV\n",
-                         m.rAmplitude_mV, m.stDeviation_mV, m.tAmplitude_mV);
-            Serial.printf("  Latidos: %lu | Rango: [%.2f, %.2f] mV\n", 
-                         m.beatCount, minVal, maxVal);
+            Serial.printf("  HR: %.0f BPM | RR: %.0f ms\n", m.bpm, m.rrInterval_ms);
+            Serial.printf("  PR: %.0f ms | QRS: %.0f ms | QTc: %.0f ms\n",
+                         m.prInterval_ms, m.qrsDuration_ms, m.qtcInterval_ms);
+            Serial.printf("  Amplitudes: P=%.2f | Q=%.2f | R=%.2f | S=%.2f | T=%.2f mV\n",
+                         m.pAmplitude_mV, m.qAmplitude_mV, m.rAmplitude_mV, 
+                         m.sAmplitude_mV, m.tAmplitude_mV);
+            Serial.printf("  ST: %.2f mV | Latidos: %lu\n", m.stDeviation_mV, m.beatCount);
+            Serial.printf("  Rango señal: [%.2f, %.2f] mV\n", minVal, maxVal);
                          
         #elif AUTO_SIGNAL_TYPE == 1  // EMG
-            float rms = emgModel.getRMSAmplitude();
-            uint8_t idx = AUTO_EMG_CONDITION;
-            bool rmsOK = (rms >= EMG_RANGES[idx].valMin && rms <= EMG_RANGES[idx].valMax);
-            
-            Serial.printf("  RMS: %.3f mV %s (esperado: %s)\n", 
-                         rms, rmsOK ? "[OK]" : "[!]", EMG_RANGES[idx].description);
-            Serial.printf("  MUs activas: %d/100 (Henneman)\n", emgModel.getActiveMotorUnits());
-            Serial.printf("  FR media: %.1f Hz (fisiol: 6-50 Hz)\n", emgModel.getMeanFiringRate());
-            Serial.printf("  Contraccion: %.0f%% MVC\n", emgModel.getContractionLevel());
-            Serial.printf("  Rango senal: [%.3f, %.3f] mV\n", minVal, maxVal);
+            Serial.printf("  RMS: %.3f mV | Contracción: %.0f%% MVC\n", 
+                         emgModel.getRMSAmplitude(), emgModel.getContractionLevel());
+            Serial.printf("  MUs activas: %d/100 | FR media: %.1f Hz\n", 
+                         emgModel.getActiveMotorUnits(), emgModel.getMeanFiringRate());
+            Serial.printf("  Fatiga MDF: %.0f Hz | MFL: %.2f\n",
+                         emgModel.getFatigueMDF(), emgModel.getFatigueMFL());
+            Serial.printf("  Rango RAW: [%.3f, %.3f] mV\n", minVal, maxVal);
             
         #else  // PPG
-            float hr = ppgModel.getMeasuredHR();
-            float pi = ppgModel.getMeasuredPI();
-            uint8_t idx = AUTO_PPG_CONDITION;
-            bool hrOK = (hr >= PPG_RANGES[idx].valMin && hr <= PPG_RANGES[idx].valMax);
-            bool piOK = (pi >= PPG_RANGES[idx].val2Min && pi <= PPG_RANGES[idx].val2Max);
-            
-            Serial.println("  --- METRICAS MEDIDAS (tiempo real) ---");
-            Serial.printf("  HR: %.1f BPM %s\n", hr, hrOK ? "[OK]" : "[!]");
-            Serial.printf("  RR: %.0f ms\n", ppgModel.getMeasuredRRInterval());
-            Serial.printf("  AC: %.1f mV | PI: %.2f%% %s\n", 
-                         ppgModel.getMeasuredACAmplitude(), pi, piOK ? "[OK]" : "[!]");
-            Serial.printf("  Sistole: %.0f ms | Diastole: %.0f ms\n",
+            Serial.printf("  HR: %.0f BPM | RR: %.0f ms\n", 
+                         ppgModel.getMeasuredHR(), ppgModel.getMeasuredRRInterval());
+            Serial.printf("  PI: %.2f%% | AC: %.1f mV\n", 
+                         ppgModel.getMeasuredPI(), ppgModel.getMeasuredACAmplitude());
+            Serial.printf("  Sístole: %.0f ms | Diástole: %.0f ms\n",
                          ppgModel.getMeasuredSystoleTime(), ppgModel.getMeasuredDiastoleTime());
-            Serial.println("  --- MODELO ---");
-            Serial.printf("  DC: %.0f mV | AC modelo: %.1f mV\n",
-                         ppgModel.getDCBaseline(), ppgModel.getACAmplitude());
-            Serial.printf("  Latidos: %lu | Esperado: %s\n", 
-                         ppgModel.getBeatCount(), PPG_RANGES[idx].description);
+            Serial.printf("  Latidos: %lu | Rango AC: [%.1f, %.1f] mV\n", 
+                         ppgModel.getBeatCount(), minVal, maxVal);
         #endif
         
-        Serial.println("============================================================");
+        Serial.println("════════════════════════════════════════════════════════════");
         Serial.println();
     }
 }

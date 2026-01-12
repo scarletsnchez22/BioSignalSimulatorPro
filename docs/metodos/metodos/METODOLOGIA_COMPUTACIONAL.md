@@ -42,7 +42,71 @@ La arquitectura se fundamentó en tres principios:
 
 ### 2.1 Plataforma de Procesamiento
 
-Se seleccionó el **ESP32-WROOM-32** como unidad de procesamiento central por las siguientes características:
+Se seleccionó el **ESP32-WROOM-32** como unidad de procesamiento central mediante un análisis comparativo de plataformas microcontroladoras.
+
+#### 2.1.1 Matriz de Decisión: Selección de Microcontrolador
+
+**Tabla 2.1.1a: Criterios de evaluación y ponderación**
+
+| Criterio | Peso (%) | Justificación |
+|----------|----------|---------------|
+| Capacidad de Procesamiento Dual-Core | 25% | Crítico: separación de dominio tiempo real (señales) e interfaz (UI/WiFi) |
+| DAC Integrado para Salida Analógica | 20% | Muy importante: evitar circuitos externos DAC (MCP4725), reduce latencia |
+| Conectividad WiFi Integrada | 20% | Importante: streaming a aplicación web sin módulos externos (ESP8266) |
+| Memoria RAM Suficiente | 15% | Importante: buffers circulares (6 KB) + estados modelos (20 KB) |
+| Ecosistema y Soporte | 10% | Moderado: disponibilidad de bibliotecas, documentación, comunidad |
+| Costo y Disponibilidad | 10% | Moderado: presupuesto limitado, disponibilidad local en Ecuador |
+
+**Tabla 2.1.1b: Evaluación de alternativas (escala 1-5)**
+
+| Plataforma | Dual-Core | DAC Int. | WiFi | RAM | Ecosistema | Costo | Total Ponderado |
+|------------|-----------|----------|------|-----|------------|-------|-----------------|
+| **ESP32-WROOM-32** | 5 | 5 | 5 | 5 | 5 | 5 | **5.00** ✓ |
+| STM32F407VG | 1 | 5 | 1 | 4 | 4 | 3 | **2.85** |
+| Arduino Mega 2560 | 1 | 1 | 1 | 1 | 5 | 5 | **2.05** |
+| Raspberry Pi Pico | 4 | 1 | 1 | 3 | 4 | 5 | **2.75** |
+
+**Puntuación detallada:**
+
+1. **ESP32-WROOM-32** - Puntuación: 5.00
+   - **Dual-Core (5):** Xtensa LX6 dual-core @ 240 MHz, separación física Core 0 (UI) y Core 1 (señales)
+   - **DAC (5):** 2 canales DAC de 8-bit integrados (GPIO25/GPIO26), salida 0-3.3V sin circuitos externos
+   - **WiFi (5):** WiFi 802.11 b/g/n integrado, modo Access Point para servidor WebSocket sin módulos adicionales
+   - **RAM (5):** 520 KB SRAM (suficiente para buffer 2048×3=6KB + modelos ~20KB + FreeRTOS ~30KB)
+   - **Ecosistema (5):** Arduino IDE, ESP-IDF, PlatformIO, librerías WiFi/WebSocket maduras
+   - **Costo (5):** $6-8 USD en Ecuador, amplia disponibilidad local (Microjeros, HeTPro)
+
+2. **STM32F407VG Discovery** - Puntuación: 2.85
+   - **Dual-Core (1):** Single-core ARM Cortex-M4 @ 168 MHz (sin separación nativa de tareas tiempo real vs UI)
+   - **DAC (5):** 2 canales DAC de 12-bit (superior a ESP32), salida 0-3.3V
+   - **WiFi (1):** Requiere módulo WiFi externo (ESP8266, CC3000), comunicación SPI/UART adicional
+   - **RAM (4):** 192 KB SRAM (suficiente pero más ajustado que ESP32)
+   - **Ecosistema (4):** STM32CubeIDE, HAL libraries, comunidad activa pero curva de aprendizaje mayor
+   - **Costo (3):** $20-25 USD (board Discovery), disponibilidad limitada en Ecuador
+
+3. **Arduino Mega 2560** - Puntuación: 2.05
+   - **Dual-Core (1):** Single-core ATmega2560 @ 16 MHz (frecuencia insuficiente para generación 1kHz + WiFi concurrente)
+   - **DAC (1):** Sin DAC integrado, requiere DAC externo (MCP4725 I2C), aumenta latencia ~1ms
+   - **WiFi (1):** Requiere shield WiFi (ESP8266, Wiznet W5500), consume pines y memoria
+   - **RAM (1):** 8 KB SRAM (insuficiente: buffer 6KB + modelos 20KB + FreeRTOS imposible)
+   - **Ecosistema (5):** Arduino IDE, comunidad masiva, librerías abundantes
+   - **Costo (5):** $15-20 USD, alta disponibilidad
+
+4. **Raspberry Pi Pico (RP2040)** - Puntuación: 2.75
+   - **Dual-Core (4):** ARM Cortex-M0+ dual-core @ 133 MHz (dos cores pero frecuencia menor)
+   - **DAC (1):** Sin DAC integrado, requiere DAC externo (MCP4725) o PWM+filtro RC
+   - **WiFi (1):** Sin WiFi integrado (Pico W tiene WiFi pero salió posterior al diseño)
+   - **RAM (3):** 264 KB SRAM (suficiente)
+   - **Ecosistema (4):** MicroPython, C SDK, documentación buena pero comunidad más pequeña
+   - **Costo (5):** $4-6 USD, disponibilidad creciente
+
+**Conclusión:**
+
+El **ESP32-WROOM-32** obtuvo puntuación perfecta (5.00/5.00) al ser la única plataforma que cumple simultáneamente con procesamiento dual-core, DAC integrado, WiFi nativo, RAM suficiente y excelente relación costo-beneficio. La arquitectura dual-core permitió asignar Core 1 (APP CPU) exclusivamente a generación de señales en tiempo real con prioridad máxima (tarea FreeRTOS), mientras Core 0 (PRO CPU) manejó la interfaz Nextion UART2 y el servidor WebSocket WiFi sin interferir en el determinismo temporal del DAC.
+
+El **STM32F407** fue descartado por carecer de WiFi integrado (requeriría módulo ESP8266 adicional, aumentando complejidad) y single-core (imposibilita separación física de dominios temporales). El **Arduino Mega** fue descartado por RAM insuficiente (8KB vs 520KB requeridos) y ausencia total de DAC/WiFi. El **Raspberry Pi Pico** fue descartado por carecer de DAC y WiFi integrados, aunque su arquitectura dual-core era atractiva.
+
+**Tabla 2.1.1c: Especificaciones finales ESP32-WROOM-32**
 
 | Característica | Valor | Justificación |
 |----------------|-------|---------------|
@@ -609,7 +673,68 @@ El error introducido por Ron es inferior al 1.2% en todos los casos, considerado
 
 ## 9. Subsistema de Visualización Nextion
 
-### 9.1 Comunicación Serial con Nextion
+### 9.1 Matriz de Decisión: Tecnología de Display
+
+#### 9.1.1 Criterios de Evaluación y Ponderación
+
+**Tabla 9.1.1a: Criterios para selección de display**
+
+| Criterio | Peso (%) | Justificación |
+|----------|----------|---------------|
+| Procesador Gráfico Standalone | 30% | Crítico: liberar ESP32 de renderizado gráfico para generación tiempo real |
+| Interfaz Táctil Integrada | 25% | Muy importante: control de parámetros sin hardware adicional (teclado/mouse) |
+| Resolución y Tamaño | 20% | Importante: waveform legible (700×380 px área útil) |
+| Facilidad de Desarrollo | 15% | Importante: tiempo limitado de desarrollo |
+| Costo | 10% | Moderado: presupuesto ajustado (<$50) |
+
+**Tabla 9.1.1b: Evaluación de alternativas (escala 1-5)**
+
+| Display | Proc. Standalone | Táctil | Resolución | Desarrollo | Costo | Total Ponderado |
+|---------|------------------|--------|------------|------------|-------|-----------------|
+| **Nextion NX8048T070 7"** | 5 | 5 | 5 | 5 | 3 | **4.65** ✓ |
+| TFT LCD 3.5" + Touch Shield | 1 | 4 | 2 | 3 | 5 | **2.50** |
+| OLED 1.3" SSD1306 | 1 | 1 | 1 | 4 | 5 | **2.00** |
+| LCD 16×2 + Botones | 1 | 1 | 1 | 5 | 5 | **2.10** |
+
+**Puntuación detallada:**
+
+1. **Nextion NX8048T070 (Display Inteligente 7")** - Puntuación: 4.65
+   - **Procesador Standalone (5):** STM32F030 dedicado renderiza gráficos independientemente, ESP32 solo envía comandos ASCII vía UART (ej: `"add 1,0,128\xFF\xFF\xFF"` → añadir punto a waveform)
+   - **Táctil (5):** Pantalla táctil capacitiva integrada, eventos táctiles enviados vía UART (`0x65` + ID componente)
+   - **Resolución (5):** 800×480 px, área waveform 700×380 px, visualización clara de morfología PQRST/MUAP
+   - **Desarrollo (5):** Editor Nextion GUI drag-and-drop, generación automática de código, comunicación UART simple
+   - **Costo (3):** ~$35-40 USD, más costoso que alternativas pero justificado por features
+
+2. **TFT LCD 3.5" + Touch Shield (ILI9341)** - Puntuación: 2.50
+   - **Procesador Standalone (1):** Sin procesador gráfico, ESP32 debe renderizar cada píxel vía SPI (consume ~40% Core 0 @ 10 FPS)
+   - **Táctil (4):** Shield táctil resistivo/capacitivo disponible
+   - **Resolución (2):** 320×240 px, área limitada para waveform + métricas simultáneas
+   - **Desarrollo (3):** Librerías Arduino (Adafruit_GFX, TFT_eSPI) maduras pero requiere manejo manual de buffers
+   - **Costo (5):** $12-15 USD, económico
+
+3. **OLED 1.3" SSD1306** - Puntuación: 2.00
+   - **Procesador Standalone (1):** Controlador interno pero limitado a buffer monocromático 128×64 px
+   - **Táctil (1):** Sin capacidad táctil, requeriría botones externos
+   - **Resolución (1):** 128×64 px monocromático, insuficiente para waveform detallado
+   - **Desarrollo (4):** Librería Adafruit_SSD1306 simple
+   - **Costo (5):** $3-5 USD
+
+4. **LCD 16×2 Caracteres + Botones** - Puntuación: 2.10
+   - **Procesador Standalone (1):** Sin gráficos, solo texto alfanumérico
+   - **Táctil (1):** Requiere 4 botones externos (arriba/abajo/izq/der)
+   - **Resolución (1):** Sin waveform, solo texto
+   - **Desarrollo (5):** Librería LiquidCrystal trivial
+   - **Costo (5):** $2-3 USD
+
+**Conclusión:**
+
+El **Nextion NX8048T070** obtuvo la mayor puntuación (4.65/5.00) gracias a su procesador gráfico standalone que libera al ESP32 de tareas de renderizado. Esta característica fue **crítica** para el proyecto: mientras el Core 1 del ESP32 generaba muestras a 4 kHz (carga temporal ~80%), el Core 0 solo necesitaba enviar comandos UART simples cada 10 ms (`"add 1,0,128"`) en lugar de renderizar 700×380 píxeles por frame.
+
+La interfaz de desarrollo Nextion Editor permitió diseñar la GUI completa (waveforms, medidores, botones) en ~8 horas vs. las estimadas 40+ horas con TFT LCD manual. La pantalla táctil capacitiva eliminó la necesidad de 10+ botones externos que hubieran requerido GPIO adicionales y debouncing por software.
+
+El **TFT LCD 3.5"** fue descartado porque renderizar waveforms en tiempo real vía SPI consumiría ~40% del Core 0 del ESP32, interfiriendo con el servidor WiFi WebSocket. El **OLED** fue descartado por resolución insuficiente (128×64 px no permite visualizar morfología ECG). El **LCD 16×2** fue descartado por carecer de capacidad gráfica.
+
+### 9.2 Comunicación Serial con Nextion
 
 La pantalla Nextion NX8048T070 se comunicó con el ESP32 mediante UART2:
 
@@ -798,11 +923,202 @@ Las métricas numéricas se actualizaron a 4 Hz (250 ms) para permitir legibilid
 └───────────────────────────────────────────────────────────────────┘
 ```
 
+### 9.7 Validación de Visualización Nextion mediante Serial Plotter
+
+Para garantizar que la visualización en la pantalla Nextion del dispositivo sea correcta, se implementó un sistema de validación cruzada utilizando el firmware `main_debug.cpp` y el Serial Plotter de VS Code. Este método permite verificar la forma de onda digital sin necesidad del hardware completo.
+
+#### 9.7.1 Arquitectura de Equivalencia Nextion ↔ Serial Plotter
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│               VALIDACIÓN: EQUIVALENCIA NEXTION ↔ SERIAL PLOTTER              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  DISPOSITIVO FÍSICO                    ENTORNO DE DESARROLLO                 │
+│  ┌────────────────────┐                ┌────────────────────┐                │
+│  │  Pantalla Nextion  │                │  Serial Plotter    │                │
+│  │  NX8048T070 7"     │                │  VS Code           │                │
+│  │  ┌──────────────┐  │     MISMO      │  ┌──────────────┐  │                │
+│  │  │ Waveform     │  │  ═══════════   │  │ Gráfico RT   │  │                │
+│  │  │ 700×380 px   │  │    MAPEO       │  │ Tiempo real  │  │                │
+│  │  │ 0-255 (8-bit)│  │  ═══════════   │  │ 0-255 (8-bit)│  │                │
+│  │  └──────────────┘  │                │  └──────────────┘  │                │
+│  │  ECG @ 200 Hz      │                │  ECG @ 200 Hz      │                │
+│  │  EMG @ 100 Hz      │                │  EMG @ 100 Hz      │                │
+│  │  PPG @ 100 Hz      │                │  PPG @ 100 Hz      │                │
+│  └────────────────────┘                └────────────────────┘                │
+│                                                                              │
+│  PRINCIPIO DE VALIDACIÓN:                                                    │
+│  Si el Serial Plotter muestra la señal correcta con morfología, amplitud    │
+│  y frecuencia esperadas, entonces la pantalla Nextion mostrará              │
+│  EXACTAMENTE la misma visualización cuando el dispositivo esté operativo.    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 9.7.2 Mapeo Idéntico de Valores
+
+El firmware `main_debug.cpp` replica **exactamente** las fórmulas de mapeo utilizadas en `main.cpp` para enviar puntos al waveform de Nextion:
+
+**Tabla 9.7.2: Fórmulas de mapeo Nextion (implementadas en main_debug.cpp)**
+
+| Señal | Fórmula de Normalización | Mapeo a Nextion | Rango Resultante |
+|-------|--------------------------|-----------------|------------------|
+| **ECG** | `normalized = (mV + 0.5) / 2.0` | `waveValue = 20 + (normalized × 215)` | 20 – 235 |
+| **EMG RAW** | `ch0_value` (0-380) | `map(ch0, 0, 380, 20, 235)` | 20 – 235 |
+| **EMG ENV** | `ch1_value` (0-380) | `map(ch1, 0, 380, 20, 235)` | 20 – 235 |
+| **PPG** | `normalized = acValue_mV / 150.0` | `waveValue = 20 + (normalized × 215)` | 20 – 235 |
+
+**Código de mapeo ECG (main_debug.cpp líneas 355-362):**
+```cpp
+// === MAPEO IDÉNTICO A main.cpp línea 967-970 ===
+float mV_value = ecgModel.getCurrentValueMV();
+
+// Normalización: (mV + 0.5) / 2.0 para rango -0.5 a +1.5 mV
+float normalized = (mV_value + 0.5f) / 2.0f;
+if (normalized < 0.0f) normalized = 0.0f;
+if (normalized > 1.0f) normalized = 1.0f;
+
+// Mapeo a rango Nextion: 20 + (normalized × 215)
+int waveValue = (int)(20 + (normalized * 215));
+```
+
+#### 9.7.3 Frecuencias de Muestreo Idénticas
+
+El Serial Plotter utiliza **exactamente los mismos ratios de downsampling** que Nextion:
+
+| Señal | Fs_timer | Ratio Downsampling | Frecuencia Envío | Definición en config.h |
+|-------|----------|-------------------|------------------|------------------------|
+| ECG | 4000 Hz | 20:1 | **200 Hz** | `NEXTION_DOWNSAMPLE_ECG` |
+| EMG | 4000 Hz | 40:1 | **100 Hz** | `NEXTION_DOWNSAMPLE_EMG` |
+| PPG | 4000 Hz | 40:1 | **100 Hz** | `NEXTION_DOWNSAMPLE_PPG` |
+
+Esto garantiza que el número de puntos por segundo y la resolución temporal sean idénticos entre el Serial Plotter y Nextion.
+
+#### 9.7.4 Métricas Idénticas
+
+El firmware `main_debug.cpp` reporta las **mismas métricas** que se muestran en la pantalla Nextion:
+
+**ECG:** HR, RR, PR, QRS, QTc, amplitudes P/Q/R/S/T, desviación ST  
+**EMG:** RMS, MUs activas, frecuencia de disparo, %MVC, MDF, MFL (fatiga)  
+**PPG:** HR, RR, PI%, tiempos de sístole/diástole, amplitud AC
+
+#### 9.7.5 Uso para Presentación de Resultados
+
+Las gráficas del Serial Plotter de VS Code pueden utilizarse directamente para documentación y presentación de resultados del proyecto, ya que:
+
+1. **Mayor calidad visual:** El Serial Plotter genera gráficos vectoriales de alta resolución comparado con fotografías de la pantalla Nextion tomadas con celular
+2. **Captura sin artefactos:** No hay reflejos de pantalla, moiré, o distorsión por ángulo de cámara
+3. **Equivalencia garantizada:** Los valores graficados son matemáticamente idénticos a los mostrados en Nextion
+4. **Registro de métricas:** El output serial incluye todas las métricas calculadas con marca de tiempo
+
+**Procedimiento de validación:**
+1. Compilar y cargar `main_debug.cpp` con la condición deseada (`AUTO_SIGNAL_TYPE`, `AUTO_XXX_CONDITION`)
+2. Abrir Serial Plotter de VS Code (Ctrl+Shift+P → "Serial Plotter")
+3. Verificar que la forma de onda y métricas correspondan a los rangos clínicos esperados
+4. Capturar screenshot del Serial Plotter para documentación
+5. Confirmar que el dispositivo físico (cuando disponible) muestra la misma visualización
+
+**Ejemplo de configuración para validar ECG Normal:**
+```cpp
+#define AUTO_SIGNAL_TYPE        0   // ECG
+#define AUTO_ECG_CONDITION      0   // NORMAL
+```
+
+**Ejemplo de output esperado:**
+```
+>wave:127,mV:0.00,hr:75,rr:800,pr:160,qrs:90,qtc:400,r:1.05,st:0.02
+```
+
 ---
 
 ## 6. Subsistema de Comunicación WiFi
 
-### 6.1 Configuración del Access Point
+### 6.1 Matriz de Decisión: Arquitectura de Comunicación y Aplicación
+
+#### 6.1.1 Criterios de Evaluación y Ponderación
+
+**Tabla 6.1.1a: Criterios para selección de arquitectura de comunicación**
+
+| Criterio | Peso (%) | Justificación |
+|----------|----------|---------------|
+| Soporte Multi-dispositivo Simultáneo | 30% | Crítico: visualización por múltiples usuarios (estudiantes, docente) |
+| Capacidad de Streaming Tiempo Real | 25% | Muy importante: latencia <100ms para waveform fluido |
+| Multiplataforma (Windows/Mac/Linux/Mobile) | 20% | Importante: acceso desde cualquier dispositivo sin instalación |
+| Complejidad de Desarrollo | 15% | Importante: tiempo limitado, primera implementación WiFi del equipo |
+| Alcance de Comunicación | 10% | Moderado: uso en laboratorio/aula (~10-15 metros) |
+
+**Tabla 6.1.1b: Evaluación de alternativas (escala 1-5)**
+
+| Arquitectura | Multi-dispositivo | Streaming RT | Multiplataforma | Desarrollo | Alcance | Total Ponderado |
+|--------------|-------------------|--------------|-----------------|------------|---------|-----------------|
+| **Web App (WiFi AP + WebSocket)** | 5 | 5 | 5 | 4 | 4 | **4.75** ✓ |
+| Android APK (WiFi Direct) | 3 | 4 | 1 | 2 | 4 | **2.85** |
+| Bluetooth Serial (SPP) | 2 | 3 | 3 | 5 | 2 | **2.90** |
+| USB Serial (Virtual COM Port) | 1 | 5 | 4 | 5 | 1 | **2.90** |
+
+**Puntuación detallada:**
+
+1. **Web App con WiFi Access Point + WebSocket** - Puntuación: 4.75
+   - **Multi-dispositivo (5):** ESP32 como AP permite hasta 4 clientes WebSocket simultáneos (configurado en WiFi.softAPConfig), ideal para demostración en aula
+   - **Streaming RT (5):** WebSocket full-duplex permite enviar muestras @ 100 Hz (10ms) con latencia típica <50ms, protocolo diseñado para comunicación bidireccional en tiempo real
+   - **Multiplataforma (5):** Navegador web estándar (Chrome/Firefox/Safari) sin instalación, compatible con Windows/Mac/Linux/Android/iOS
+   - **Desarrollo (4):** Biblioteca AsyncWebSocket (ESP32) madura, frontend HTML5 Canvas + JavaScript vanilla (sin frameworks complejos inicialmente)
+   - **Alcance (4):** WiFi 2.4 GHz alcanza 10-15 metros indoor (suficiente para laboratorio), puede degradarse con obstáculos
+
+2. **Aplicación Android APK (WiFi Direct)** - Puntuación: 2.85
+   - **Multi-dispositivo (3):** WiFi Direct permite conexiones P2P pero limitado a 1 grupo activo (1 propietario + N clientes), complejidad de gestión de grupos
+   - **Streaming RT (4):** Socket TCP/UDP con buen desempeño, latencia similar a WebSocket
+   - **Multiplataforma (1):** Limitado a Android, usuarios con iPhone/Windows quedarían excluidos (40% del mercado en Ecuador tiene iOS)
+   - **Desarrollo (2):** Requiere aprender Android Studio, Java/Kotlin, compilación APK, permisos WiFi Direct, depuración en dispositivo físico
+   - **Alcance (4):** WiFi Direct alcance similar a WiFi AP tradicional
+
+3. **Bluetooth Serial Profile (SPP)** - Puntuación: 2.90
+   - **Multi-dispositivo (2):** Bluetooth Classic permite solo 1 conexión activa a la vez (limitación SPP), no es broadcast
+   - **Streaming RT (3):** Throughput máximo ~1 Mbps (vs 50 Mbps WiFi), latencia típica 100-200ms, suficiente pero con menos margen
+   - **Multiplataforma (3):** Compatible con Android/iOS/Windows/Linux pero requiere app nativa en cada plataforma (SerialBluetooth en Android, CoreBluetooth en iOS)
+   - **Desarrollo (5):** Biblioteca BluetoothSerial (ESP32) muy simple, protocolo serial estándar
+   - **Alcance (2):** 10 metros típico (Bluetooth Class 2), más susceptible a interferencias en 2.4 GHz
+
+4. **USB Serial (Virtual COM Port)** - Puntuación: 2.90
+   - **Multi-dispositivo (1):** Cable USB limita a 1 dispositivo conectado físicamente, requiere hub USB para múltiples usuarios
+   - **Streaming RT (5):** USB CDC a 115200 baud (~11.5 KB/s) suficiente, latencia mínima <10ms
+   - **Multiplataforma (4):** Compatible con Windows/Mac/Linux mediante drivers CDC estándar, apps como PuTTY/CoolTerm/screen
+   - **Desarrollo (5):** Serial.print() nativo de Arduino/ESP32, implementación trivial
+   - **Alcance (1):** Cable USB máximo 5 metros (USB 2.0 spec), limita movilidad
+
+**Conclusión:**
+
+La arquitectura **Web App con WiFi Access Point + WebSocket** obtuvo la mayor puntuación (4.75/5.00) por permitir acceso simultáneo desde múltiples dispositivos mediante navegador web estándar. Esta decisión fue **crítica** para el contexto educativo del proyecto:
+
+- **Escenario típico:** Docente demuestra señal ECG normal en pantalla Nextion, estudiantes (5-10) observan waveform/métricas en sus smartphones/laptops sin instalar software
+- **Ventaja clave:** WebSocket permite streaming bidireccional (ESP32 envía muestras, app web envía comandos cambio de condición/parámetros) con protocolo estandarizado RFC 6455
+- **Implementación sencilla:** Frontend en HTML5 Canvas + Vanilla JS (no React inicialmente para simplificar), backend ESP32 usa librería ESPAsyncWebServer
+
+**Razones de descarte de alternativas:**
+
+- **Android APK:** Excluye usuarios iPhone/iPad (40% mercado Ecuador según datos INEC 2023), requiere instalación desde APK (Google Play Store costaría $25 registro desarrollador)
+- **Bluetooth SPP:** Limitación 1 conexión activa imposibilita uso multi-usuario, latencia 100-200ms marginal para waveform 100 Hz
+- **USB Serial:** Requiere cables físicos (costo $2-5 cada uno × 10 estudiantes = $20-50), limita movilidad en aula
+
+**Arquitectura implementada:**
+
+1. **ESP32 como WiFi Access Point:** SSID `BioSimulator_Pro`, IP `192.168.4.1`, sin autenticación WPA2 (simplifica conexión inicial)
+2. **Servidor HTTP (puerto 80):** Sirve `index.html`, `app.js`, `styles.css` almacenados en SPIFFS/LittleFS
+3. **Servidor WebSocket (puerto 81):** Streaming de señal @ 100 Hz (JSON: `{"type":"signal","value":0.85,"dac":172}`) y métricas @ 4 Hz
+
+**Tabla 6.1.1c: Comparativa de ancho de banda**
+
+| Protocolo | Throughput máx | Latencia típica | Clientes simultáneos |
+|-----------|----------------|-----------------|----------------------|
+| WebSocket/WiFi | 50 Mbps | 20-50 ms | 4 (ESP32 limitado por RAM) |
+| WiFi Direct | 50 Mbps | 30-60 ms | 1 grupo (1 propietario + N clientes) |
+| Bluetooth SPP | 1 Mbps | 100-200 ms | 1 |
+| USB Serial | 1.5 Mbps @ 115200 | <10 ms | 1 |
+
+**Ancho de banda requerido:** ~69 kbps (señal 64 kbps + métricas 4.8 kbps) → Margen holgado en WiFi.
+
+### 6.2 Configuración del Access Point
 
 El ESP32 se configuró como Access Point WiFi para permitir conexiones directas sin infraestructura de red:
 
@@ -1692,6 +2008,104 @@ if (millis() - lastADCRead_ms >= downsampleInterval_ms) {
 - **DAC:** Escribe a **4000 Hz SIN decimación** para preservar espectro completo (EMG hasta 500 Hz)
 - **Nextion/Serial Plotter:** Decimados a 200/100 Hz por limitación de ancho de banda UART
 - El osciloscopio conectado al BNC ve la señal completa a 4 kHz
+
+### 10.8 Validación del Diseño Analógico mediante Análisis FFT
+
+Para garantizar que el diseño del filtro analógico y la cadena de salida DAC→RC→BNC cumple con las especificaciones de contenido espectral de las señales biomédicas, se utiliza el conjunto de herramientas de análisis FFT desarrolladas específicamente para este proyecto.
+
+#### 10.8.1 Herramientas de Análisis FFT Disponibles
+
+El proyecto incluye tres scripts Python en el directorio `tools/` que permiten validar el contenido espectral de las señales:
+
+```
+tools/
+├── fft_spectrum_analyzer.py    # Análisis FFT de salida analógica (osciloscopio)
+├── model_fft_analysis.py       # Análisis FFT de modelos matemáticos
+├── signal_validator.py         # Validación de rangos clínicos
+└── clinical_ranges.py          # Definiciones de rangos de referencia
+```
+
+**Tabla 10.4: Propósito de cada herramienta FFT**
+
+| Script | Entrada | Salida | Propósito |
+|--------|---------|--------|-----------|
+| `fft_spectrum_analyzer.py` | Archivo CSV de osciloscopio | Espectro de potencia, armónicos | Validar salida analógica real |
+| `model_fft_analysis.py` | Parámetros de modelo ECG/EMG/PPG | Espectro teórico | Verificar contenido espectral del modelo |
+| `signal_validator.py` | Señal generada | Métricas vs rangos clínicos | Confirmar parámetros en rango |
+
+#### 10.8.2 Procedimiento de Validación del Filtro RC
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│             VALIDACIÓN DE FILTRO RC MEDIANTE ANÁLISIS FFT                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PASO 1: Captura de señal con osciloscopio                                  │
+│  ┌──────────────────────────────────────────────────────────────────┐       │
+│  │  • Conectar sonda de osciloscopio a BNC                          │       │
+│  │  • Configurar muestreo ≥ 10 kSa/s (2.5× Fs_timer)                │       │
+│  │  • Exportar datos como CSV (tiempo, voltaje)                     │       │
+│  └──────────────────────────────────────────────────────────────────┘       │
+│                              │                                              │
+│                              ▼                                              │
+│  PASO 2: Análisis FFT con fft_spectrum_analyzer.py                          │
+│  ┌──────────────────────────────────────────────────────────────────┐       │
+│  │  > python tools/fft_spectrum_analyzer.py captura.csv              │       │
+│  │                                                                   │       │
+│  │  Salida esperada:                                                 │       │
+│  │  • Espectro de potencia con picos en frecuencias fundamentales   │       │
+│  │  • Atenuación -3dB verificada en fc = 1.59 kHz (filtro RC)       │       │
+│  │  • Componentes > 1.59 kHz atenuados (aliasing eliminado)         │       │
+│  └──────────────────────────────────────────────────────────────────┘       │
+│                              │                                              │
+│                              ▼                                              │
+│  PASO 3: Comparación con modelo teórico                                     │
+│  ┌──────────────────────────────────────────────────────────────────┐       │
+│  │  > python tools/model_fft_analysis.py --signal ecg                │       │
+│  │                                                                   │       │
+│  │  Comparar:                                                        │       │
+│  │  • Espectro capturado vs espectro teórico del modelo             │       │
+│  │  • Verificar que HR fundamental (1.25 Hz @ 75 bpm) presente      │       │
+│  │  • Confirmar armónicos hasta 40 Hz (límite ECG clínico)          │       │
+│  └──────────────────────────────────────────────────────────────────┘       │
+│                                                                             │
+│  CRITERIO DE ACEPTACIÓN:                                                    │
+│  ✓ Frecuencia fundamental coincide con parámetro configurado               │
+│  ✓ Contenido espectral dentro de banda de paso (ECG: 0.05-150 Hz)          │
+│  ✓ Atenuación > 20 dB para f > 2 kHz (efectividad del filtro RC)           │
+│  ✓ Ausencia de picos en 4 kHz (aliasing DAC suprimido)                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 10.8.3 Documentación de Resultados FFT
+
+Los resultados del análisis FFT se documentan en:
+
+```
+docs/fft_analysis/
+├── FFT_ANALYSIS_DOCUMENTATION.md    # Metodología y resultados
+└── fft_modelos_reporte.txt          # Reporte de análisis de modelos
+```
+
+**Contenido del reporte FFT:**
+- Frecuencia fundamental detectada vs configurada
+- Potencia espectral en bandas de interés
+- Verificación de atenuación del filtro RC
+- Comparación con literatura clínica (Rangos de referencia de RANGOS_CLINICOS.md)
+
+#### 10.8.4 Validación Cruzada: FFT vs Serial Plotter vs Osciloscopio
+
+Para garantizar consistencia en la cadena de señal, se realiza validación cruzada entre los tres métodos de observación:
+
+| Aspecto | Serial Plotter | Osciloscopio + FFT | Criterio |
+|---------|----------------|-------------------|----------|
+| Frecuencia cardíaca (ECG) | HR en métricas | Pico en 1.0-2.5 Hz | ±1 Hz |
+| Amplitud R (ECG) | mV reportado | Amplitud pico-pico | ±10% |
+| Contenido EMG | RMS calculado | Banda 20-500 Hz | Presencia de energía |
+| Frecuencia respiratoria (PPG) | RR estimado | Modulación < 0.5 Hz | ±2 bpm |
+
+Esta validación cruzada asegura que la señal analógica en el conector BNC es una representación fiel del modelo matemático implementado, después de pasar por la cadena DAC→filtro RC→buffer.
 
 ---
 

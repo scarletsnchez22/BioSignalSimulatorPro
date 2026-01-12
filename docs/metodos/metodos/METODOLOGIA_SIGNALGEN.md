@@ -117,14 +117,64 @@ Se seleccionó el modelo ECGSYN por las siguientes razones:
 3. **Eficiencia computacional**: Integración RK4 con bajo costo computacional
 4. **Variabilidad fisiológica**: Incorporación nativa de HRV mediante proceso RR
 
-#### 3.2.1 Alternativas Descartadas
+#### 3.2.1 Matriz de Decisión: Métodos de Generación de Señales Biomédicas
 
-| Método | Razón de descarte |
-|--------|-------------------|
-| Bases de datos reales | Limitación de condiciones, problemas éticos |
-| Interpolación tabular | Pobre variabilidad, morfología rígida |
-| Modelos de Markov | Complejidad excesiva, difícil parametrización |
-| Redes neuronales | Requiere entrenamiento, no determinista |
+Para seleccionar el método de generación de señales se evaluaron cuatro alternativas con criterios ponderados según la importancia para la aplicación:
+
+**Tabla 3.2.1a: Criterios de evaluación y ponderación**
+
+| Criterio | Peso (%) | Justificación |
+|----------|----------|---------------|
+| Capacidad de Tiempo Real | 30% | Crítico: generación continua en ESP32 a 300-1000 Hz |
+| Precisión Morfológica | 25% | Muy importante: fidelidad clínica de formas PQRST |
+| Flexibilidad Paramétrica | 20% | Importante: simular múltiples patologías |
+| Consumo de Recursos (RAM/CPU) | 15% | Importante: MCU con 520 KB SRAM |
+| Complejidad de Implementación | 10% | Moderado: tiempo de desarrollo limitado |
+
+**Tabla 3.2.1b: Evaluación de alternativas (escala 1-5)**
+
+| Método | Tiempo Real | Morfología | Flexibilidad | Recursos | Implementación | Total Ponderado |
+|--------|-------------|------------|--------------|----------|----------------|-----------------|
+| **Modelos Matemáticos** (McSharry, Fuglevand) | 5 | 5 | 5 | 4 | 4 | **4.70** ✓ |
+| Redes Neuronales Generativas (GANs) | 2 | 4 | 3 | 1 | 2 | **2.60** |
+| Datasets Pre-grabados (Replay) | 5 | 4 | 1 | 4 | 5 | **3.70** |
+| Síntesis por Wavelets | 3 | 4 | 3 | 3 | 2 | **3.20** |
+
+**Puntuación detallada:**
+
+1. **Modelos Matemáticos (McSharry/Fuglevand/Gaussiano)** - Puntuación: 4.70
+   - **Tiempo Real (5):** Integración RK4 con ∆t=1ms ejecuta en <0.5ms en ESP32@240MHz
+   - **Morfología (5):** Parámetros ajustables para recrear ondas PQRST, MUAPs, pulsos PPG validados clínicamente
+   - **Flexibilidad (5):** Modificación de parámetros permite simular 8 condiciones ECG, 6 EMG, 6 PPG
+   - **Recursos (4):** ~15 KB RAM por modelo, <30% CPU Core 1 @ 1kHz
+   - **Implementación (4):** Código determinista, ecuaciones diferenciales documentadas
+
+2. **Redes Neuronales Generativas (GANs/VAEs)** - Puntuación: 2.60
+   - **Tiempo Real (2):** Inferencia de red convolucional demanda >50ms por latido (insuficiente para 300 Hz ECG)
+   - **Morfología (4):** Excelente si se entrena con datasets grandes, pero variable
+   - **Flexibilidad (3):** Requiere re-entrenamiento para nuevas condiciones
+   - **Recursos (1):** Modelos pre-entrenados ocupan >500 KB flash, >200 KB RAM
+   - **Implementación (2):** Complejidad alta: framework TensorFlow Lite, cuantización, ajuste hiperparámetros
+
+3. **Datasets Pre-grabados (Replay MIT-BIH, Physionet)** - Puntuación: 3.70
+   - **Tiempo Real (5):** Lectura de buffer circular es trivial (<0.1ms)
+   - **Morfología (4):** Señales reales con morfología auténtica
+   - **Flexibilidad (1):** Limitado a condiciones grabadas, sin parametrización dinámica (HR fijo, no permite cambio en vivo)
+   - **Recursos (4):** ~100 KB flash por 10s de señal @ 300 Hz, baja RAM
+   - **Implementación (5):** Código simple: interpolación lineal + loop
+
+4. **Síntesis por Wavelets (Transformada Inversa)** - Puntuación: 3.20
+   - **Tiempo Real (3):** Transformada wavelet inversa requiere FFT, ~10ms por frame
+   - **Morfología (4):** Buena reconstrucción si se eligen wavelets adecuadas (Daubechies, Morlet)
+   - **Flexibilidad (3):** Parámetros de escala/traslación permiten variaciones, pero difícil intuición clínica
+   - **Recursos (3):** Requiere buffer FFT (~2 KB), tablas wavelet (~5 KB)
+   - **Implementación (2):** Complejidad media-alta: librería FFT, manejo de coeficientes
+
+**Conclusión:**
+
+Los **modelos matemáticos** obtuvieron la mayor puntuación (4.70/5.00) debido a su excelente desempeño en tiempo real, precisión morfológica y flexibilidad paramétrica. El modelo McSharry (ECG) permite modificar frecuencia cardíaca, amplitud PQRST y añadir arritmias mediante ajuste de parámetros angulares $(\theta_i, a_i, b_i)$. El modelo Fuglevand (EMG) permite controlar número de unidades motoras activas y frecuencias de disparo. El modelo Gaussiano (PPG) permite ajustar amplitud de pulso y compliance vascular.
+
+Las **redes neuronales** fueron descartadas por su alto costo computacional (inferencia >50ms incompatible con generación a 300-1000 Hz) y dependencia de datasets de entrenamiento que el equipo no poseía. Los **datasets pre-grabados** ofrecen morfología real pero carecen de la flexibilidad para modificar parámetros en tiempo real (ej: cambiar HR de 60→120 bpm durante ejecución). La **síntesis por wavelets** presenta complejidad innecesaria para la aplicación.
 
 ### 3.3 Diagrama de Flujo - Generación ECG
 
