@@ -1327,12 +1327,13 @@ void EMGModel::updateSequence(float deltaTime) {
  * Mapeo FIJO: -5mV a +5mV → Y invertido (0-380)
  * - -5.0 mV → Y=380 (fondo)
  * -  0.0 mV → Y=190 (centro, línea isoeléctrica)
- * - +5.0 mV → Y=0   (tope)
+ * - +5.0 mV → Y=255 (tope)
  * 
- * Grid fijo: 1mV/div = 38px, permite comparación visual entre condiciones.
+ * Grid fijo: 1mV/div, permite comparación visual entre condiciones.
  * REST (0.05mV) vs HIGH (3.0mV) se ven en misma escala.
+ * Rango completo 0-255 para compatibilidad con grid Nextion.
  */
-uint16_t EMGModel::getWaveformValue_Ch0() const {
+uint8_t EMGModel::getWaveformValue_Ch0() const {
     // Usar muestra cruda cacheada (ya en mV)
     float voltage = cachedRawSample;
     
@@ -1342,49 +1343,40 @@ uint16_t EMGModel::getWaveformValue_Ch0() const {
     // Normalizar: -5mV → 0.0, 0mV → 0.5, +5mV → 1.0
     float normalized = (voltage - EMG_OUTPUT_MIN_MV) / (EMG_OUTPUT_MAX_MV - EMG_OUTPUT_MIN_MV);
     
-    // Mapear a 0-380 (Nextion waveform: 0=bottom, 380=top)
-    // voltage alto → normalized alto → Y alto → val alto → arriba en display
-    uint16_t y = (uint16_t)(normalized * NEXTION_WAVEFORM_HEIGHT);
+    // Mapear a 0-255 (rango completo)
+    uint8_t y = (uint8_t)(normalized * 255.0f);
     
-    // Clamp por seguridad
-    return constrain(y, 0, NEXTION_WAVEFORM_HEIGHT);
+    return y;
 }
 
 /**
  * @brief Canal 1: Envelope procesada usando MISMA ESCALA que raw
  * 
- * Mapeo en escala del RAW: ±5mV → Y invertido (0-380)
+ * Mapeo en escala del RAW: ±5mV → 0-255 (rango completo)
  * El envelope es unipolar (0 a ~2 mV) pero se muestra en la escala del raw
  * para que visualmente sea proporcional (como en Serial Plotter).
  * 
- * - 0.0 mV → Y=190 (centro, línea isoeléctrica del raw)
- * - 1.0 mV → Y=152 (1mV arriba del centro)
- * - 2.0 mV → Y=114 (2mV arriba del centro)
- * - 5.0 mV → Y=0   (máximo de la escala)
+ * - 0.0 mV → Y=127 (centro, línea isoeléctrica del raw)
+ * - 2.0 mV → Y=178 (2mV arriba del centro)
+ * - 5.0 mV → Y=255 (máximo de la escala)
  * 
- * Ventaja: El estudiante ve el envelope proporcional al raw,
- * igual que en el Serial Plotter. REST muestra envelope cerca del centro.
+ * Ventaja: El estudiante ve el envelope proporcional al raw.
  */
-uint16_t EMGModel::getWaveformValue_Ch1() const {
+uint8_t EMGModel::getWaveformValue_Ch1() const {
     // Usar envelope procesada (RMS con EMA)
     float voltage = lastProcessedValue;
     
     // El envelope es positivo (0 a ~2-4 mV dependiendo de condición)
     // Usar MISMA ESCALA que el raw (-5 a +5 mV) para mapeo proporcional
-    // Esto hace que envelope ocupe el mismo espacio visual que ocuparía
-    // ese voltaje en la escala del raw:
-    // - 0 mV envelope → mismo Y que 0 mV raw (centro)
-    // - 2 mV envelope → mismo Y que 2 mV raw
     voltage = constrain(voltage, 0.0f, EMG_OUTPUT_MAX_MV);  // Clamp a 0-5mV
     
     // Normalizar usando escala del raw: -5mV → 0.0, 0mV → 0.5, +5mV → 1.0
     float normalized = (voltage - EMG_OUTPUT_MIN_MV) / (EMG_OUTPUT_MAX_MV - EMG_OUTPUT_MIN_MV);
     
-    // Mapear a 0-380 (misma escala que raw)
-    uint16_t y = (uint16_t)(normalized * NEXTION_WAVEFORM_HEIGHT);
+    // Mapear a 0-255 (rango completo)
+    uint8_t y = (uint8_t)(normalized * 255.0f);
     
-    // Clamp por seguridad
-    return constrain(y, 0, NEXTION_WAVEFORM_HEIGHT);
+    return y;
 }
 
 // ============================================================================

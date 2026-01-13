@@ -378,6 +378,12 @@ public:
     uint8_t getDACValue(float deltaTime);
     
     /**
+     * @brief Genera valor para Nextion waveform (rango útil 20-235)
+     * @return Valor escalado para visualización en Nextion
+     */
+    uint8_t getWaveformValue() const;
+    
+    /**
      * @brief Indica si la calibración está completa y la señal es válida
      */
     bool isOutputReady() const { return isCalibrated; }

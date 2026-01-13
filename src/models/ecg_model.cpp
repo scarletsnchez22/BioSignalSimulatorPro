@@ -934,6 +934,20 @@ uint8_t ECGModel::getDACValue(float deltaTime) {
 }
 
 // ============================================================================
+// VALOR WAVEFORM NEXTION (0-255)
+// ============================================================================
+uint8_t ECGModel::getWaveformValue() const {
+    // Usar último valor generado (ya en mV)
+    float mV = getCurrentValueMV();
+    
+    // Mapear [-0.5, 1.5] mV → [0, 255] (rango completo)
+    float normalized = (mV - ECG_DISPLAY_MIN_MV) / ECG_DISPLAY_RANGE_MV;
+    normalized = fmaxf(0.0f, fminf(1.0f, normalized));
+    
+    return (uint8_t)(normalized * 255.0f);
+}
+
+// ============================================================================
 // GETTERS
 // ============================================================================
 

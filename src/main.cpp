@@ -956,54 +956,30 @@ void updateDisplay() {
                 
                 float mV_value = 0.0f;
                 bool hasSample = signalEngine->getDisplaySample(sampleIndex, mV_value);
-                int waveValue = 127;  // Centro por defecto
 
                 if (type == SignalType::ECG && hasSample) {
-                    // ECG: Un solo canal
-                    float zoomFactor = ecgSliderValues.zoom / 100.0f;
-                    mV_value *= zoomFactor;
-
-                    float normalized = (mV_value + 0.5f) / 2.0f;
-                    normalized = constrain(normalized, 0.0f, 1.0f);
-                    waveValue = (int)(20 + (normalized * 215));
-                    
-                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, (uint8_t)waveValue);
+                    // ECG: Un solo canal - getter retorna 0-255
+                    ECGModel& ecg = signalEngine->getECGModel();
+                    uint8_t waveValue = ecg.getWaveformValue();
+                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, waveValue);
                     
                 } else if (type == SignalType::EMG) {
-                    // EMG: DOS canales (RAW + envolvente)
+                    // EMG: DOS canales - getters retornan 0-255
                     EMGModel& emg = signalEngine->getEMGModel();
                     
-                    // Canal 0: Señal RAW bipolar (-5 a +5 mV)
-                    uint16_t ch0_value = emg.getWaveformValue_Ch0();
-                    uint8_t ch0_mapped = map(ch0_value, 0, 380, 20, 235);
-                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, ch0_mapped);
+                    // Canal 0: Señal RAW bipolar
+                    uint8_t ch0_value = emg.getWaveformValue_Ch0();
+                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, ch0_value);
                     
-                    // Canal 1: Envolvente RMS unipolar (0 a +2 mV)
-                    uint16_t ch1_value = emg.getWaveformValue_Ch1();
-                    uint8_t ch1_mapped = map(ch1_value, 0, 380, 20, 235);
-                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 1, ch1_mapped);
+                    // Canal 1: Envolvente RMS
+                    uint8_t ch1_value = emg.getWaveformValue_Ch1();
+                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 1, ch1_value);
                     
                 } else if (type == SignalType::PPG) {
-                    // PPG: Un solo canal (AC interpolado a 100 Hz)
-                    // Usar valor interpolado del displayBuffer para evitar escalones
-                    float acValue_mV = 0.0f;
-                    bool hasValue = signalEngine->getDisplaySample(sampleIndex, acValue_mV);
-                    
-                    if (hasValue) {
-                        // Aplicar factor de amplificación (50-200% → 0.5-2.0)
-                        PPGParameters ppgParams = signalEngine->getPPGModel().getParameters();
-                        acValue_mV *= ppgParams.amplification;
-                        
-                        // Mapeo unipolar: 0 → 20, 150 mV → 235
-                        const float AC_DISPLAY_MAX = 150.0f;  // mV
-                        float normalized = acValue_mV / AC_DISPLAY_MAX;
-                        normalized = constrain(normalized, 0.0f, 1.0f);
-                        waveValue = (int)(20 + (normalized * 215));
-                    } else {
-                        waveValue = 20;  // Base si no hay muestra
-                    }
-                    
-                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, (uint8_t)waveValue);
+                    // PPG: Un solo canal - getter retorna 0-255
+                    PPGModel& ppg = signalEngine->getPPGModel();
+                    uint8_t waveValue = ppg.getWaveformValue();
+                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, waveValue);
                     
                 } else {
                     continue; // sin muestra disponible

@@ -79,11 +79,6 @@
 #define EMG_RMS_MAX_MV           2.0f   // mV - límite superior envolvente RMS (envelope realista)
 
 // ============================================================================
-// CONSTANTES WAVEFORM NEXTION - 700×380 px
-// ============================================================================
-#define NEXTION_WAVEFORM_HEIGHT  380    // Altura en píxeles del waveform
-
-// ============================================================================
 // PARÁMETROS DE FATIGA MUSCULAR (PARTE 2.1)
 // ============================================================================
 /**
@@ -364,7 +359,7 @@ public:
      * Centro: Y=190 (línea isoeléctrica 0mV)
      * Escala: 1mV/div → 38px
      */
-    uint16_t getWaveformValue_Ch0() const;
+    uint8_t getWaveformValue_Ch0() const;
     
     /**
      * @brief Obtiene valor Y para canal 1 (envelope procesada unipolar)
@@ -374,7 +369,7 @@ public:
      * Base: Y=380 (baseline 0mV)
      * Escala: 0.5mV/div → 95px
      */
-    uint16_t getWaveformValue_Ch1() const;
+    uint8_t getWaveformValue_Ch1() const;
     
     // ============================================================================
     // SISTEMA DE SECUENCIAS DINÁMICAS

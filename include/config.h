@@ -32,6 +32,7 @@
 #define DAC_SIGNAL_PIN          25      // GPIO25 - DAC1 (Salida a LM358 buffer)
 
 // Multiplexor CD4051 (selección de atenuación)
+// CHA (S0) → GPIO32, CHB (S1) → GPIO33
 #define MUX_SELECT_S0           32      // GPIO32 - CD4051 pin 11 (Selector A)
 #define MUX_SELECT_S1           33      // GPIO33 - CD4051 pin 10 (Selector B)
 // CD4051 S2 (pin 9) conectado a GND
@@ -96,34 +97,41 @@ const uint16_t SAMPLE_RATE_HZ = FS_TIMER_HZ;   // Alias legacy
 // ============================================================================
 // Basadas en Nyquist de estándares clínicos: Fs = 2 × Fmax_clínico
 //
-// | Señal | BW clínico | Fmax  | Fs = 2×Fmax |
-// |-------|------------|-------|-------------|
-// | ECG   | 0.05-150Hz | 150Hz | 300 Hz      |
-// | EMG   | 20-500Hz   | 500Hz | 1000 Hz     |
-// | PPG   | 0.5-10Hz   | 10Hz  | 20 Hz       |
+// | Señal | BW clínico | Fmax  | Fs_Nyquist | Fs_modelo |
+// |-------|------------|-------|------------|-----------|
+// | ECG   | 0.05-150Hz | 150Hz | 300 Hz     | 300 Hz    |
+// | EMG   | 20-500Hz   | 500Hz | 1000 Hz    | 1000 Hz   |
+// | PPG   | 0.5-10Hz   | 10Hz  | 20 Hz      | 100 Hz*   |
+//
+// *NOTA PPG: Aunque Nyquist solo requiere 20 Hz para BW de 10 Hz, se usa
+// 100 Hz para evitar escalones visibles en el display Nextion. Con 20 Hz
+// y upsampling 200:1 a 4 kHz, la interpolación lineal genera "escalones"
+// perceptibles. Al usar 100 Hz (igual a la tasa de refresco del display),
+// cada punto enviado es una muestra real del modelo, no una interpolación.
+// Esto no afecta el contenido frecuencial ya que 100 Hz >> 2×10 Hz de BW.
 //
 // Luego se interpola a FS_TIMER_HZ (4000 Hz) para salida al DAC.
 // ============================================================================
 
 const uint16_t MODEL_SAMPLE_RATE_ECG = 300;    // Hz - 2×150Hz (BW clínico ECG)
 const uint16_t MODEL_SAMPLE_RATE_EMG = 1000;   // Hz - 2×500Hz (BW clínico EMG)
-const uint16_t MODEL_SAMPLE_RATE_PPG = 20;     // Hz - 2×10Hz (BW clínico PPG)
+const uint16_t MODEL_SAMPLE_RATE_PPG = 100;    // Hz - 5×Nyquist (evita escalones display)
 
 // deltaTime para cada modelo (segundos)
 const float MODEL_DT_ECG = 1.0f / MODEL_SAMPLE_RATE_ECG;  // 3.333 ms
 const float MODEL_DT_EMG = 1.0f / MODEL_SAMPLE_RATE_EMG;  // 1.0 ms
-const float MODEL_DT_PPG = 1.0f / MODEL_SAMPLE_RATE_PPG;  // 50 ms
+const float MODEL_DT_PPG = 1.0f / MODEL_SAMPLE_RATE_PPG;  // 10 ms
 
 // Intervalo de tick en microsegundos (para timing real)
 const uint32_t MODEL_TICK_US_ECG = 1000000 / MODEL_SAMPLE_RATE_ECG;  // 3333 us
 const uint32_t MODEL_TICK_US_EMG = 1000000 / MODEL_SAMPLE_RATE_EMG;  // 1000 us
-const uint32_t MODEL_TICK_US_PPG = 1000000 / MODEL_SAMPLE_RATE_PPG;  // 50000 us
+const uint32_t MODEL_TICK_US_PPG = 1000000 / MODEL_SAMPLE_RATE_PPG;  // 10000 us
 
 // Ratios de upsampling: interpolación de Fs_modelo a Fs_timer
 // Ratio = Fs_timer / Fs_modelo
 const uint8_t UPSAMPLE_RATIO_ECG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_ECG;  // 4000/300 ≈ 13
 const uint8_t UPSAMPLE_RATIO_EMG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_EMG;  // 4000/1000 = 4
-const uint8_t UPSAMPLE_RATIO_PPG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_PPG;  // 4000/20 = 200
+const uint8_t UPSAMPLE_RATIO_PPG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_PPG;  // 4000/100 = 40
 
 // Frecuencias de salida a displays
 const uint16_t FDS_ECG = 200;                  // Hz - display ECG

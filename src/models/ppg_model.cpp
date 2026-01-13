@@ -635,26 +635,27 @@ const char* PPGModel::getConditionName() const {
 
 // ============================================================================
 // SEÑAL AC PURA PARA NEXTION WAVEFORM
-// Escala la componente AC UNIPOLAR a rango 0-255
+// Escala la componente AC UNIPOLAR al rango 26-255 (piso al 10%)
 // ============================================================================
 uint8_t PPGModel::getWaveformValue() const {
     // Rango AC clínico fijo para visualización óptima:
     // - AC = PI * 15 mV (PPG_AC_SCALE_PER_PI)
     // - PI típico: 0.5% - 10% → AC: 7.5 - 150 mV
-    // - PI extremo (STRONG_PERFUSION): hasta 20% → AC: 300 mV (se clipea)
     //
     // La señal AC es UNIPOLAR: pulse va de 0 a 1, acValue va de 0 a AC_amplitude
     // Se aplica factor de amplificación configurado por el usuario (0.5-2.0)
     const float AC_DISPLAY_MAX = 150.0f;  // mV - rango clínico base para visualización
+    const uint8_t WAVEFORM_MIN = 26;      // Piso: 26/255 ≈ 10%
+    const uint8_t WAVEFORM_RANGE = 229;   // 255 - 26 = 229 niveles útiles
     
     // Aplicar factor de amplificación (50-200% → 0.5-2.0)
     float amplifiedAC = lastACValue * params.amplification;
     
-    // Mapeo unipolar: 0 → 0, AC_DISPLAY_MAX → 255
+    // Mapeo unipolar: 0 → WAVEFORM_MIN, AC_DISPLAY_MAX → 255
     float normalized = amplifiedAC / AC_DISPLAY_MAX;
     normalized = constrain(normalized, 0.0f, 1.0f);
     
-    return (uint8_t)(normalized * 255.0f);
+    return WAVEFORM_MIN + (uint8_t)(normalized * WAVEFORM_RANGE);
 }
 
 // ============================================================================
