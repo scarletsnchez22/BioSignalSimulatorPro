@@ -40,9 +40,10 @@
 // CONFIGURACIÓN STREAMING
 // ============================================================================
 
-#define WS_SEND_INTERVAL_MS     20      // 50 Hz de streaming (menos agresivo)
+#define WS_SEND_INTERVAL_MS     50      // 20 Hz de envío, con batch de puntos
 #define WS_METRICS_INTERVAL_MS  500     // 2 Hz para métricas
 #define WS_MAX_QUEUE_SIZE       10      // Buffer de mensajes
+#define WS_BATCH_SIZE           10      // Puntos por mensaje (10 pts @ 20Hz = 200 pts/s efectivos)
 
 // ============================================================================
 // ESTRUCTURAS DE DATOS
@@ -109,10 +110,15 @@ public:
     void loop();
     
     /**
-     * @brief Envía datos de señal a todos los clientes
+     * @brief Añade un punto al buffer de batch y envía cuando esté lleno
      * @param data Estructura con datos de la señal
      */
     void sendSignalData(const WSSignalData& data);
+    
+    /**
+     * @brief Fuerza el envío del batch actual (flush)
+     */
+    void flushBatch();
     
     /**
      * @brief Envía métricas a todos los clientes
@@ -155,6 +161,14 @@ private:
     uint32_t _lastSendTime;
     uint32_t _lastMetricsTime;
     
+    // Buffer para batch de puntos
+    float _batchValues[WS_BATCH_SIZE];
+    float _batchEnvelopes[WS_BATCH_SIZE];
+    uint8_t _batchCount;
+    const char* _batchSignal;
+    const char* _batchCondition;
+    const char* _batchState;
+    
     // Handlers
     void setupRoutes();
     void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, 
@@ -162,6 +176,7 @@ private:
     
     // Helpers
     String buildDataJson(const WSSignalData& data);
+    String buildBatchJson();
     String buildMetricsJson(const WSSignalMetrics& metrics);
     String buildStateJson(const char* signalType, const char* condition, const char* state);
 };

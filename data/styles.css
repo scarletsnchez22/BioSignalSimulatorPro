@@ -1,15 +1,18 @@
 /* BioSimulator Pro - Diseño Profesional Responsive */
 :root {
-    --bg-dark: #0d1117;
-    --bg-card: #161b22;
-    --bg-input: #21262d;
-    --border: #30363d;
-    --text: #e6edf3;
-    --text-dim: #8b949e;
-    --accent: #00ff88;
-    --accent-dim: #00cc6a;
-    --warn: #ff6b6b;
+    --bg-dark: #0a1628;
+    --bg-card: #0f2035;
+    --bg-input: #162840;
+    --border: #264060;
+    --text: #e8f0fa;
+    --text-dim: #8ea8c8;
+    --accent: #00d4ff;
+    --accent-dim: #00a8cc;
+    --warn: #ff7b7b;
     --blue: #58a6ff;
+    --ecg: #00ff88;
+    --emg: #ff9f43;
+    --ppg: #ff6b9d;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -148,7 +151,7 @@ html, body {
     flex: 1;
     display: flex;
     position: relative;
-    background: #0a0a12;
+    background: #041020;
     min-height: 0;
 }
 
