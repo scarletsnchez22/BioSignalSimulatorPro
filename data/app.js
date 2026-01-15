@@ -8,19 +8,17 @@
 // ============================================================================
 const CFG = {
     wsUrl: `ws://${window.location.hostname}/ws`,
-    reconnectMs: 5000,      // Reconexión cada 5s (menos agresivo)
-    pingInterval: 30000,    // Ping cada 30s (solo si no hay datos)
+    reconnectMs: 3000,      // Reconexión cada 3s
+    pingInterval: 15000,    // Ping cada 15s (menos agresivo)
     bufSize: 700,
-    gridX: 10,              // 10 divisiones horizontales (tiempo)
-    gridY: 8,               // 8 divisiones verticales (amplitud)
+    gridX: 7,
+    gridY: 8,
     colors: {
-        bg: '#041020',      // Azul muy oscuro
-        grid: '#0a2540',    // Grid azul oscuro
-        gridMaj: '#144070', // Grid mayor azul medio
-        gridMin: '#082030', // Grid menor
-        ch1: '#00ff88',     // ECG verde clínico
-        ch2: '#ff9f43',     // EMG/Envelope naranja
-        ch3: '#ff6b9d'      // PPG rosa/rojo
+        bg: '#0a0a12',
+        grid: '#1e2430',
+        gridMaj: '#2a3545',
+        ch1: '#00ff88',
+        ch2: '#ff6b6b'
     },
     ranges: {
         ECG: { min: -0.5, max: 1.5, div: 0.25, unit: 'mV' },
@@ -157,18 +155,10 @@ function endDrag() {
 // WEBSOCKET - Conexión Estable
 // ============================================================================
 function connect() {
-    // Evitar múltiples conexiones simultáneas
     if (S.ws) {
-        if (S.ws.readyState === WebSocket.OPEN) {
-            console.log('[WS] Ya conectado');
-            return;
-        }
-        if (S.ws.readyState === WebSocket.CONNECTING) {
-            console.log('[WS] Conexión en progreso...');
-            return;
-        }
+        if (S.ws.readyState === WebSocket.OPEN) return;
+        if (S.ws.readyState === WebSocket.CONNECTING) return;
         
-        // Limpiar listeners anteriores
         S.ws.onopen = null;
         S.ws.onclose = null;
         S.ws.onerror = null;
@@ -181,78 +171,53 @@ function connect() {
     
     try {
         S.ws = new WebSocket(CFG.wsUrl);
-        S.ws.binaryType = 'arraybuffer';
     } catch(e) {
-        console.error('[WS] Error creando socket:', e);
         scheduleReconnect();
         return;
     }
     
-    // Timeout de conexión (10 segundos)
-    const connTimeout = setTimeout(() => {
-        if (S.ws && S.ws.readyState === WebSocket.CONNECTING) {
-            console.log('[WS] Timeout de conexión');
-            try { S.ws.close(); } catch(e) {}
-        }
-    }, 10000);
-    
     S.ws.onopen = () => {
-        clearTimeout(connTimeout);
         S.connected = true;
         S.lastMsg = Date.now();
         updConn(true, 'Conectado');
-        console.log('[WS] Conectado exitosamente');
+        console.log('[WS] Conectado');
         startPing();
     };
     
-    S.ws.onclose = (e) => {
-        clearTimeout(connTimeout);
+    S.ws.onclose = () => {
         if (S.connected) {
-            console.log('[WS] Desconectado, código:', e.code, 'razón:', e.reason || 'ninguna');
+            console.log('[WS] Desconectado');
+            S.connected = false;
+            stopPing();
+            updConn(false, 'Desconectado');
+            scheduleReconnect();
         }
-        S.connected = false;
-        stopPing();
-        updConn(false, 'Desconectado');
-        scheduleReconnect();
     };
     
-    S.ws.onerror = (e) => {
-        console.error('[WS] Error de conexión');
-        // onclose se dispara después automáticamente
+    S.ws.onerror = () => {
+        // onclose se dispara después
     };
     
     S.ws.onmessage = e => {
         S.lastMsg = Date.now();
         try {
-            const data = typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data);
-            handleMsg(JSON.parse(data));
-        } catch(err) {
-            console.error('[WS] Error parseando mensaje:', err);
-        }
+            handleMsg(JSON.parse(e.data));
+        } catch(err) {}
     };
 }
 
 function scheduleReconnect() {
     if (reconTimer) clearTimeout(reconTimer);
-    // Aumentar tiempo entre reconexiones para no saturar
     reconTimer = setTimeout(connect, CFG.reconnectMs);
 }
 
 function startPing() {
     stopPing();
-    // Ping menos frecuente y solo si no hay datos recientes
     pingTimer = setInterval(() => {
         if (!S.ws || S.ws.readyState !== WebSocket.OPEN) return;
-        
-        // Solo hacer ping si no hemos recibido datos en los últimos 10 segundos
-        const timeSinceLastMsg = Date.now() - S.lastMsg;
-        if (timeSinceLastMsg > 10000) {
-            try {
-                S.ws.send('ping');
-            } catch(e) {
-                console.error('[WS] Error enviando ping');
-            }
-        }
+        try {
+            S.ws.send('ping');
+        } catch(e) {}
     }, CFG.pingInterval);
 }
 
@@ -268,14 +233,8 @@ function handleMsg(msg) {
         case 'welcome':
             console.log('[WS] Bienvenida del servidor');
             break;
-        case 'pong':
-            // Respuesta al ping, conexión activa
-            break;
         case 'data':
             handleData(msg);
-            break;
-        case 'batch':
-            handleBatch(msg);
             break;
         case 'metrics':
             handleMetrics(msg);
@@ -283,63 +242,6 @@ function handleMsg(msg) {
         case 'state':
             handleState(msg);
             break;
-    }
-}
-
-function handleBatch(msg) {
-    // Actualizar señal
-    if (msg.signal && msg.signal !== S.sig) {
-        S.sig = msg.signal;
-        S.buf1 = [];
-        S.buf2 = [];
-        S.offsetY = 0;
-        updSig();
-    }
-    
-    // Actualizar condición
-    if (msg.condition) {
-        S.cond = msg.condition;
-        $('cond').textContent = S.cond;
-    }
-    
-    // Actualizar estado
-    if (msg.state) {
-        S.state = msg.state;
-        updState();
-    }
-    
-    if (S.paused) return;
-    
-    // Procesar array de valores
-    const vals = msg.v;
-    const envs = msg.e || [];
-    
-    if (vals && Array.isArray(vals)) {
-        for (let i = 0; i < vals.length; i++) {
-            const v = parseFloat(vals[i]);
-            if (!isNaN(v)) {
-                S.buf1.push(v);
-                if (S.buf1.length > CFG.bufSize) S.buf1.shift();
-                
-                S.csvData.push({
-                    t: msg.t || Date.now(),
-                    sig: S.sig,
-                    v: v,
-                    env: envs[i] ? parseFloat(envs[i]) : 0
-                });
-                if (S.csvData.length > 10000) S.csvData.shift();
-            }
-            
-            // Envelope EMG
-            if (envs[i] !== undefined) {
-                const env = parseFloat(envs[i]);
-                if (!isNaN(env) && env !== 0) {
-                    S.buf2.push(env);
-                    if (S.buf2.length > CFG.bufSize) S.buf2.shift();
-                }
-            }
-        }
-        S.pts += vals.length;
     }
 }
 
@@ -456,13 +358,19 @@ function updSig() {
     $('mEMG').style.display = S.sig === 'EMG' ? 'flex' : 'none';
     $('mPPG').style.display = S.sig === 'PPG' ? 'flex' : 'none';
     
-    // Actualizar etiquetas de ejes con zoom actual
-    updateYAxisLabels();
+    // Ejes Y
+    const r = CFG.ranges[S.sig] || CFG.ranges.ECG;
+    $('yMax').textContent = '+' + r.max;
+    $('yMid').textContent = '0';
+    $('yMin').textContent = r.min;
     
     // Eje X
     const t = CFG.timeWin[S.sig] || 3.5;
     $('xMid').textContent = (t/2).toFixed(1) + 's';
     $('xMax').textContent = t.toFixed(1) + 's';
+    
+    // Escala
+    $('scale').textContent = r.div + ' ' + r.unit + '/div';
     
     // Leyenda
     if (S.sig === 'EMG') {
@@ -508,39 +416,12 @@ function render() {
 }
 
 function drawGrid(w, h) {
-    const gx = CFG.gridX;  // 10 divisiones tiempo
-    const gy = CFG.gridY;  // 8 divisiones amplitud
+    const gx = CFG.gridX;
+    const gy = CFG.gridY;
     
-    // Subdivisiones menores (5 por cada división mayor)
-    const subDiv = 5;
-    
-    // Grid menor (subdivisiones)
-    ctx.strokeStyle = CFG.colors.gridMin || '#082030';
-    ctx.lineWidth = 0.5;
-    
-    // Subdivisiones verticales
-    for (let i = 0; i <= gx * subDiv; i++) {
-        const x = (i / (gx * subDiv)) * w;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
-        ctx.stroke();
-    }
-    
-    // Subdivisiones horizontales  
-    for (let i = 0; i <= gy * subDiv; i++) {
-        const y = (i / (gy * subDiv)) * h;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-    }
-    
-    // Grid mayor (divisiones principales)
+    // Líneas verticales
     ctx.strokeStyle = CFG.colors.grid;
     ctx.lineWidth = 1;
-    
-    // Líneas verticales mayores
     for (let i = 0; i <= gx; i++) {
         const x = (i / gx) * w;
         ctx.beginPath();
@@ -549,22 +430,17 @@ function drawGrid(w, h) {
         ctx.stroke();
     }
     
-    // Líneas horizontales mayores
+    // Líneas horizontales
     for (let i = 0; i <= gy; i++) {
         const y = (i / gy) * h;
+        const isMaj = (i === gy/2);
+        ctx.strokeStyle = isMaj ? CFG.colors.gridMaj : CFG.colors.grid;
+        ctx.lineWidth = isMaj ? 2 : 1;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(w, y);
         ctx.stroke();
     }
-    
-    // Línea central (baseline) más destacada
-    ctx.strokeStyle = CFG.colors.gridMaj;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, h/2);
-    ctx.lineTo(w, h/2);
-    ctx.stroke();
 }
 
 function drawLine(buf, w, h, range, color, lw) {
@@ -599,33 +475,11 @@ function drawLine(buf, w, h, range, color, lw) {
 function adjZoom(d) {
     S.zoom = Math.max(25, Math.min(400, S.zoom + d));
     $('zoom').textContent = S.zoom + '%';
-    updateYAxisLabels();
-}
-
-function updateYAxisLabels() {
-    const r = CFG.ranges[S.sig] || CFG.ranges.ECG;
-    const zf = S.zoom / 100;
-    const mid = (r.max + r.min) / 2;
-    const span = (r.max - r.min) / zf;
-    
-    // Aplicar offset vertical a las etiquetas
-    const offsetMid = mid - S.offsetY * (span / 2);
-    const yMax = offsetMid + span / 2;
-    const yMin = offsetMid - span / 2;
-    
-    $('yMax').textContent = yMax >= 0 ? '+' + yMax.toFixed(2) : yMax.toFixed(2);
-    $('yMid').textContent = offsetMid.toFixed(2);
-    $('yMin').textContent = yMin.toFixed(2);
-    
-    // Actualizar escala div
-    const divVal = (r.div / zf).toFixed(2);
-    $('scale').textContent = divVal + ' ' + r.unit + '/div';
 }
 
 function adjOffset(d) {
     S.offsetY += d;
     updateOffset();
-    updateYAxisLabels();
 }
 
 function resetView() {
@@ -633,7 +487,6 @@ function resetView() {
     S.offsetY = 0;
     $('zoom').textContent = '100%';
     updateOffset();
-    updateYAxisLabels();
 }
 
 function togglePause() {

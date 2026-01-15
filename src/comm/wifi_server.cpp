@@ -21,13 +21,7 @@ WiFiServer_BioSim::WiFiServer_BioSim()
     , _streamingEnabled(false)
     , _lastSendTime(0)
     , _lastMetricsTime(0)
-    , _batchCount(0)
-    , _batchSignal("ECG")
-    , _batchCondition("NORMAL")
-    , _batchState("IDLE")
 {
-    memset(_batchValues, 0, sizeof(_batchValues));
-    memset(_batchEnvelopes, 0, sizeof(_batchEnvelopes));
 }
 
 // ============================================================================
@@ -205,16 +199,7 @@ void WiFiServer_BioSim::onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
             break;
             
         case WS_EVT_DATA:
-            // Manejar mensajes del cliente (ping/pong)
-            {
-                AwsFrameInfo* info = (AwsFrameInfo*)arg;
-                if (info->opcode == WS_TEXT && len > 0) {
-                    // Verificar si es un ping
-                    if (len == 4 && strncmp((char*)data, "ping", 4) == 0) {
-                        client->text("{\"type\":\"pong\"}");
-                    }
-                }
-            }
+            // Los clientes solo visualizan, no envían comandos
             break;
             
         default:
@@ -229,33 +214,17 @@ void WiFiServer_BioSim::onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
 void WiFiServer_BioSim::sendSignalData(const WSSignalData& data) {
     if (!_isActive || !_streamingEnabled || !_ws || _ws->count() == 0) return;
     
-    // Actualizar metadata
-    _batchSignal = data.signalType;
-    _batchCondition = data.condition;
-    _batchState = data.state;
-    
-    // Agregar al buffer
-    if (_batchCount < WS_BATCH_SIZE) {
-        _batchValues[_batchCount] = data.value;
-        _batchEnvelopes[_batchCount] = data.envelope;
-        _batchCount++;
-    }
-    
-    // Verificar si es momento de enviar
     uint32_t now = millis();
-    if (now - _lastSendTime >= WS_SEND_INTERVAL_MS || _batchCount >= WS_BATCH_SIZE) {
-        flushBatch();
-    }
-}
-
-void WiFiServer_BioSim::flushBatch() {
-    if (_batchCount == 0 || !_ws || _ws->count() == 0) return;
+    if (now - _lastSendTime < WS_SEND_INTERVAL_MS) return;
+    _lastSendTime = now;
     
-    _lastSendTime = millis();
+    // Limpiar clientes antes de enviar
+    _ws->cleanupClients();
     
-    String json = buildBatchJson();
+    if (_ws->count() == 0) return;
+    
+    String json = buildDataJson(data);
     _ws->textAll(json);
-    _batchCount = 0;
 }
 
 void WiFiServer_BioSim::sendMetrics(const WSSignalMetrics& metrics) {
@@ -290,30 +259,6 @@ String WiFiServer_BioSim::buildDataJson(const WSSignalData& data) {
     doc["v"] = data.value;
     doc["env"] = data.envelope;
     doc["dac"] = data.dacValue;
-    
-    String json;
-    serializeJson(doc, json);
-    return json;
-}
-
-String WiFiServer_BioSim::buildBatchJson() {
-    // Tamaño: ~50 bytes base + 8 bytes por punto
-    StaticJsonDocument<512> doc;
-    doc["type"] = "batch";
-    doc["signal"] = _batchSignal;
-    doc["condition"] = _batchCondition;
-    doc["state"] = _batchState;
-    doc["t"] = millis();
-    
-    JsonArray vals = doc.createNestedArray("v");
-    JsonArray envs = doc.createNestedArray("e");
-    
-    for (uint8_t i = 0; i < _batchCount; i++) {
-        vals.add(serialized(String(_batchValues[i], 3)));
-        if (_batchEnvelopes[i] != 0) {
-            envs.add(serialized(String(_batchEnvelopes[i], 3)));
-        }
-    }
     
     String json;
     serializeJson(doc, json);
@@ -364,16 +309,13 @@ uint8_t WiFiServer_BioSim::getClientCount() {
 }
 
 void WiFiServer_BioSim::loop() {
-    // Cleanup de clientes solo cada 2 segundos para evitar desconexiones
-    static uint32_t lastCleanup = 0;
-    if (_ws && (millis() - lastCleanup > 2000)) {
-        lastCleanup = millis();
+    if (_ws) {
         _ws->cleanupClients();
     }
     
-    // Verificar que el WiFi AP sigue activo cada 10 segundos
+    // Verificar que el WiFi AP sigue activo cada 5 segundos
     static uint32_t lastCheck = 0;
-    if (millis() - lastCheck > 10000) {
+    if (millis() - lastCheck > 5000) {
         lastCheck = millis();
         
         // Si el WiFi no está en modo AP, reiniciar
