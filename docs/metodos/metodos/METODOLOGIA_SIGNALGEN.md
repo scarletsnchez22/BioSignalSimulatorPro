@@ -1,21 +1,24 @@
 # Metodología de Generación de Señales Fisiológicas Sintéticas
 
 **BioSignalSimulator Pro**  
-**Revisado:** 06.01.2026  
-**Documento de Sustentación Técnica**
+**Grupo #22:** Scarlet Sánchez y Rafael Mata  
+**Institución:** Escuela Superior Politécnica del Litoral (ESPOL)  
+**Revisado:** 13.01.2026  
+**Documento de Sustentación Técnica para Trabajo de Titulación**
 
 ---
 
 ## Índice
 
 1. [Introducción](#1-introducción)
-2. [Principios de Modelado](#2-principios-de-modelado)
-3. [Modelo ECG (McSharry ECGSYN)](#3-modelo-ecg-mcsharry-ecgsyn)
-4. [Modelo EMG (Reclutamiento de Unidades Motoras)](#4-modelo-emg-reclutamiento-de-unidades-motoras)
-5. [Modelo PPG (Pulso Gaussiano)](#5-modelo-ppg-pulso-gaussiano)
-6. [Validación de Señales](#6-validación-de-señales)
-7. [Resultados y Métricas](#7-resultados-y-métricas)
-8. [Referencias](#8-referencias)
+2. [Arquitectura General del Sistema de Generación](#2-arquitectura-general-del-sistema-de-generación)
+3. [Principios de Modelado](#3-principios-de-modelado)
+4. [Modelo ECG (McSharry ECGSYN)](#4-modelo-ecg-mcsharry-ecgsyn)
+5. [Modelo EMG (Reclutamiento de Unidades Motoras)](#5-modelo-emg-reclutamiento-de-unidades-motoras)
+6. [Modelo PPG (Suma de Gaussianas)](#6-modelo-ppg-suma-de-gaussianas)
+7. [Validación de Señales](#7-validación-de-señales)
+8. [Resultados y Métricas](#8-resultados-y-métricas)
+9. [Referencias](#9-referencias)
 
 > **Nota:** La arquitectura computacional del sistema (ESP32, FreeRTOS, comunicación Nextion, WiFi/WebSocket) se documenta en el archivo separado `METODOLOGIA_COMPUTACIONAL.md`.
 
@@ -23,29 +26,304 @@
 
 ## 1. Introducción
 
-Este documento presenta la metodología de generación de señales fisiológicas sintéticas implementada en el BioSimulator Pro. El sistema genera tres tipos de señales biomédicas: electrocardiograma (ECG), electromiograma de superficie (sEMG) y fotopletismograma (PPG), cada una basada en modelos matemáticos validados en la literatura científica.
+Este documento presenta la metodología de generación de señales fisiológicas sintéticas implementada en el BioSimulator Pro. El sistema genera tres tipos de señales biomédicas: electrocardiograma (ECG), electromiograma de superficie (sEMG) y fotopletismograma (PPG).
 
-El objetivo fue producir señales con morfología y métricas clínicamente representativas, permitiendo simular tanto condiciones normales como diversas patologías. Cada modelo se diseñó para operar en tiempo real sobre un microcontrolador ESP32, entregando muestras discretas a demanda mediante una interfaz uniforme `getDACValue(deltaTime)`.
+El motor de generación se desarrolló mediante modelado matemático validado: cada señal sintética se construye con modelos formulados en tiempo continuo que, tras su discretización para ejecución en microcontrolador, cumplen tres criterios simultáneos: (1) **fidelidad morfológica**—las formas de onda son anatómicamente reconocibles, (2) **rangos clínicos verificables**—amplitudes y tiempos dentro de estándares médicos, y (3) **coherencia espectral**—contenido frecuencial apropiado para cada tipo de señal.
+
+Cada modelo se diseñó para operar en tiempo real sobre un microcontrolador ESP32, entregando muestras discretas a demanda mediante una interfaz uniforme `getDACValue(deltaTime)`. La señal digital resultante se convierte a formato analógico mediante el DAC integrado y un filtro RC de reconstrucción.
 
 **Señales implementadas:**
 
-| Señal | Condiciones | Modelo Base | Referencia Principal |
-|-------|-------------|-------------|---------------------|
-| ECG | 8 condiciones cardíacas | McSharry ECGSYN | McSharry et al. 2003 [1] |
-| EMG | 6 condiciones musculares | Reclutamiento MU | Fuglevand et al. 1993 [2] |
-| PPG | 6 condiciones vasculares | Pulso gaussiano | Allen 2007 [6] |
+| Señal | Condiciones | Modelo Base | Referencia Principal | Implementación |
+|-------|-------------|-------------|---------------------|----------------|
+| ECG | 8 condiciones cardíacas | McSharry ECGSYN | McSharry et al. 2003 [1] | Basada completamente en modelo publicado |
+| EMG | 6 condiciones musculares | Fuglevand MU | Fuglevand et al. 1993 [2] | Basada completamente en modelo publicado |
+| PPG | 6 condiciones vasculares | Suma de gaussianas | Modelo empírico propio | Inspirada en morfología descrita por Allen [6] |
 
 ---
 
-## 2. Principios de Modelado
+## 2. Arquitectura General del Sistema de Generación
 
-### 2.1 Criterio de Muestreo
+### 2.1 Diagrama de Flujo General - Sistema Completo
+
+El siguiente diagrama muestra el flujo completo desde la interacción del usuario hasta la salida analógica de la señal:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                    BIOSIGNALSIMULATOR PRO - FLUJO DE GENERACIÓN                 │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐   │
+│  │                     1. INTERFAZ DE USUARIO                              │   │
+│  │                                                                         │   │
+│  │   NEXTION 7"                              APP WEB                       │   │
+│  │  ┌──────────────┐                      ┌──────────────┐                 │   │
+│  │  │ Selección de │                      │  Streaming   │                 │   │
+│  │  │ señal y      │◄────── WiFi AP ─────►│  WebSocket   │                 │   │
+│  │  │ parámetros   │                      │  Tiempo Real │                 │   │
+│  │  └──────┬───────┘                      └──────────────┘                 │   │
+│  └─────────┼───────────────────────────────────────────────────────────────┘   │
+│            │ Comandos UART                                                      │
+│            ▼                                                                    │
+│  ┌─────────────────────────────────────────────────────────────────────────┐   │
+│  │                     2. CONTROLADOR DE PARÁMETROS                        │   │
+│  │                                                                         │   │
+│  │  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐  │   │
+│  │  │ param_controller │───►│ state_machine    │───►│ signal_engine    │  │   │
+│  │  │                  │    │                  │    │                  │  │   │
+│  │  │ - Valida rangos  │    │ - IDLE           │    │ - Tasa muestreo  │  │   │
+│  │  │ - Aplica límites │    │ - CONFIG         │    │ - Selección      │  │   │
+│  │  │ - Pendientes     │    │ - RUNNING        │    │   modelo activo  │  │   │
+│  │  └──────────────────┘    │ - ERROR          │    │ - DAC output     │  │   │
+│  │                          └──────────────────┘    └────────┬─────────┘  │   │
+│  └───────────────────────────────────────────────────────────┼─────────────┘   │
+│                                                              │                  │
+│            ┌─────────────────────────────────────────────────┤                  │
+│            │                                                 │                  │
+│            ▼                                                 ▼                  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐   │
+│  │                     3. MODELOS DE GENERACIÓN                            │   │
+│  │                                                                         │   │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐         │   │
+│  │  │    ECG_MODEL    │  │    EMG_MODEL    │  │    PPG_MODEL    │         │   │
+│  │  │                 │  │                 │  │                 │         │   │
+│  │  │ McSharry ECGSYN │  │ Fuglevand MU    │  │ Suma Gaussianas │         │   │
+│  │  │                 │  │                 │  │                 │         │   │
+│  │  │ • 8 condiciones │  │ • 6 condiciones │  │ • 6 condiciones │         │   │
+│  │  │ • fs = 300 Hz   │  │ • fs = 1000 Hz  │  │ • fs = 20 Hz    │         │   │
+│  │  │ • RK4 integr.   │  │ • Multi-MU      │  │ • Gaussianas    │         │   │
+│  │  │ • PQRST morpho  │  │ • Interferencia │  │ • Dicrotic      │         │   │
+│  │  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘         │   │
+│  │           │                    │                    │                   │   │
+│  │           └────────────────────┼────────────────────┘                   │   │
+│  │                                │                                        │   │
+│  │                    generateSample(deltaTime)                            │   │
+│  │                         → float mV                                      │   │
+│  └────────────────────────────────┼────────────────────────────────────────┘   │
+│                                   │                                             │
+│                                   ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────┐   │
+│  │                     4. CONVERSIÓN Y SALIDA                              │   │
+│  │                                                                         │   │
+│  │      Señal (mV)              getDACValue()                              │   │
+│  │   ─0.5 ────┬──── +1.5    ─────────────────►   0 ────┬──── 255          │   │
+│  │            │                                        │                   │   │
+│  │    [-0.5, +1.5] mV     →     Escalado     →    [0, 255] DAC            │   │
+│  │                        →     Clampeo      →                             │   │
+│  │                                                                         │   │
+│  │  DAC = ((mV + 0.5) / 2.0) × 255                                        │   │
+│  │                                                                         │   │
+│  └─────────────────────────────────────────────────────────────────────────┘   │
+│                                   │                                             │
+│                                   ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────┐   │
+│  │                     5. CADENA ANALÓGICA DE SALIDA                       │   │
+│  │                                                                         │   │
+│  │   ESP32          LM358         CD4051           Filtros RC    BNC       │   │
+│  │  ┌──────┐      ┌───────┐     ┌────────┐       ┌────────┐   ┌─────┐     │   │
+│  │  │DAC   │─────►│Buffer │────►│ DEMUX  │──┬───►│6.8k+1µF│──►│ ECG │     │   │
+│  │  │GPIO25│      │ ×1    │     │        │  │    └────────┘   └─────┘     │   │
+│  │  │      │      │       │     │ S0/S1  │  │    ┌────────┐   ┌─────┐     │   │
+│  │  │0-3.3V│      │       │     │ GPIO   │  ├───►│1.0k+1µF│──►│ EMG │     │   │
+│  │  └──────┘      └───────┘     │ 32/33  │  │    └────────┘   └─────┘     │   │
+│  │                              │        │  │    ┌────────┐   ┌─────┐     │   │
+│  │                              │        │  └───►│ 33k+1µF│──►│ PPG │     │   │
+│  │                              └────────┘       └────────┘   └─────┘     │   │
+│  │                                                                         │   │
+│  │  NOTA: Solo 1 canal activo a la vez (seleccionado por tipo de señal)   │   │
+│  └─────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 Diagrama de Flujo - Ciclo Principal de Generación
+
+El siguiente diagrama detalla el ciclo de ejecución del motor de señales:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                     CICLO PRINCIPAL (SIGNAL_ENGINE)                             │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+                          ┌────────────────────────┐
+                          │      INICIO LOOP       │
+                          │  (cada 1/fs segundos)  │
+                          └───────────┬────────────┘
+                                      │
+                                      ▼
+                          ┌────────────────────────┐
+                          │ deltaTime = now() -    │
+                          │              lastTime  │
+                          │ lastTime = now()       │
+                          └───────────┬────────────┘
+                                      │
+                                      ▼
+                          ┌────────────────────────┐
+                          │ ¿Estado = RUNNING?     │
+                          └───────────┬────────────┘
+                                      │
+                        ┌─────────────┴─────────────┐
+                        │ NO                        │ SÍ
+                        ▼                           ▼
+              ┌──────────────────┐      ┌──────────────────────────┐
+              │ DAC = 127 (idle) │      │ Obtener modelo activo:   │
+              │ (1.65V offset)   │      │                          │
+              └────────┬─────────┘      │ switch(signalType) {     │
+                       │                │   ECG → ecgModel         │
+                       │                │   EMG → emgModel         │
+                       │                │   PPG → ppgModel         │
+                       │                │ }                        │
+                       │                └────────────┬─────────────┘
+                       │                             │
+                       │                             ▼
+                       │                ┌──────────────────────────┐
+                       │                │ mV = model.generateSample│
+                       │                │         (deltaTime)      │
+                       │                │                          │
+                       │                │ Rango: [-0.5, +1.5] mV   │
+                       │                └────────────┬─────────────┘
+                       │                             │
+                       │                             ▼
+                       │                ┌──────────────────────────┐
+                       │                │ dacValue = model.        │
+                       │                │           getDACValue()  │
+                       │                │                          │
+                       │                │ Rango: [0, 255]          │
+                       │                └────────────┬─────────────┘
+                       │                             │
+                       └─────────────────────────────┤
+                                                     │
+                                                     ▼
+                          ┌────────────────────────────────────────┐
+                          │           SALIDAS PARALELAS            │
+                          └────────────────────────────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    ▼                 ▼                 ▼
+          ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
+          │  DAC GPIO25  │  │   NEXTION    │  │   WEBSOCKET      │
+          │              │  │   WAVEFORM   │  │   STREAMING      │
+          │ dacWrite(    │  │              │  │                  │
+          │  GPIO25,     │  │ waveformAdd( │  │ broadcastSample( │
+          │  dacValue)   │  │  waveformVal)│  │  mV, timestamp)  │
+          │              │  │              │  │                  │
+          │ → Vout       │  │ → Gráfica    │  │ → JSON a cliente │
+          └──────────────┘  └──────────────┘  └──────────────────┘
+                                      │
+                                      ▼
+                          ┌────────────────────────┐
+                          │  Actualizar métricas:  │
+                          │  - Frecuencia cardíaca │
+                          │  - Amplitudes PQRST    │
+                          │  - Fatiga muscular     │
+                          │  - SpO2 / PI           │
+                          └───────────┬────────────┘
+                                      │
+                                      ▼
+                          ┌────────────────────────┐
+                          │     FIN CICLO          │
+                          │ (esperar siguiente Ts) │
+                          └────────────────────────┘
+```
+
+### 2.3 Justificación de la Metodología de Generación
+
+#### 2.3.1 Criterios de Diseño
+
+| Criterio | Descripción | Implementación |
+|----------|-------------|----------------|
+| **Tiempo Real** | Generación sin latencia perceptible | Modelos matemáticos optimizados para ESP32, <1ms por muestra |
+| **Fidelidad Fisiológica** | Morfología clínicamente representativa | Modelos validados en literatura científica |
+| **Flexibilidad Paramétrica** | Ajuste de parámetros en tiempo real | Interfaz uniforme con parámetros pendientes aplicados entre latidos |
+| **Eficiencia Computacional** | Operación en microcontrolador de bajo costo | Aritmética de punto flotante simple, evitar operaciones costosas |
+| **Modularidad** | Independencia entre modelos | Cada modelo en archivo separado, interfaz común |
+
+#### 2.3.2 Normativas y Estándares Considerados
+
+| Normativa | Aplicación | Implementación |
+|-----------|------------|----------------|
+| **IEC 60601-2-47** | Requisitos para ECG ambulatorio | Rangos de amplitud y frecuencia dentro de especificaciones clínicas |
+| **AAMI EC11** | Rendimiento de electrocardiógrafos | Morfología PQRST con tiempos dentro de rangos normales |
+| **SENIAM** | Posicionamiento electromiografía | Rangos de amplitud y frecuencia de EMG de superficie |
+| **ISO 80601-2-61** | Oxímetros de pulso | Formas de onda PPG con índice de perfusión realista |
+
+#### 2.3.3 Principios Técnicos Aplicados
+
+1. **Teorema de Nyquist**: $f_s \geq 2 \times f_{max}$ con factor de seguridad 2-5×
+2. **Integración Numérica RK4**: Precisión $O(h^4)$ para ecuaciones diferenciales del modelo ECG
+3. **Superposición de Señales**: EMG como suma de potenciales de unidades motoras
+4. **Modelado Paramétrico**: Modificación de comportamiento mediante ajuste de coeficientes
+
+#### 2.3.4 Selección de Modelos (Análisis de Alternativas)
+
+| Alternativa | Ventajas | Desventajas | Decisión |
+|-------------|----------|-------------|----------|
+| **Modelos Matemáticos** | Tiempo real, flexibles, livianos | Requieren calibración | ✅ **Seleccionado** |
+| Redes Neuronales (GAN) | Alta fidelidad | Latencia >50ms, requiere GPU | ❌ Descartado |
+| Datasets Pre-grabados | Morfología real | Sin flexibilidad paramétrica | ❌ Descartado |
+| Síntesis por Wavelets | Multiresolución | Complejidad innecesaria | ❌ Descartado |
+
+#### 2.3.5 Naturaleza de los Modelos: Continuo vs. Discreto
+
+> **Nota importante:** Todos los modelos utilizados están formulados en tiempo continuo; sin embargo, su ejecución en el microcontrolador requiere discretización temporal. La señal generada es **discreta en el dominio digital** y **continua en amplitud** tras la conversión digital-analógica.
+
+**Tabla 2.1: Naturaleza de cada modelo y su implementación**
+
+| Modelo | Formulación Teórica | Implementación Digital | Salida DAC |
+|--------|--------------------|-----------------------|------------|
+| **ECG (McSharry)** | Continuo (ODEs) | Discreta (integración numérica RK4) | Analógica continua |
+| **EMG (Fuglevand)** | Continuo (procesos puntuales) | Discreta (superposición muestreada) | Analógica continua |
+| **PPG (empírico)** | Continuo (funciones gaussianas) | Discreta (evaluación a intervalos $T_s$) | Analógica continua |
+
+**Proceso de discretización:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│         MODELO TEÓRICO           →        IMPLEMENTACIÓN DIGITAL            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ECG: ODEs continuas             →  Integración RK4 con paso h = 1/fs      │
+│       dz/dt = f(x,y,z,t)              z[n+1] = z[n] + (k1+2k2+2k3+k4)/6    │
+│                                                                             │
+│  EMG: Trenes de disparo cont.    →  Muestreo a fs = 1000 Hz                │
+│       s(t) = Σ h(t - tᵢ)              s[n] = Σ h[n - nᵢ]                   │
+│                                                                             │
+│  PPG: Gaussianas continuas       →  Evaluación en φ = n/N (fase discreta)  │
+│       g(t) = exp(-t²/2σ²)             g[n] = exp(-φ[n]²/2σ²)               │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│         SEÑAL DIGITAL            →        SEÑAL ANALÓGICA                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Valor discreto 0-255            →  Tensión continua 0-3.3V                │
+│  (8 bits, cuantizado)                (DAC + filtro RC reconstrucción)      │
+│                                                                             │
+│  Dominio: discreto en tiempo     →  Dominio: continuo en tiempo            │
+│           discreto en amplitud       continuo en amplitud                  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Justificación de la discretización:**
+
+1. **Microcontrolador digital**: El ESP32 solo puede ejecutar operaciones en tiempo discreto
+2. **Teorema de muestreo**: $f_s \geq 2 \times f_{max}$ garantiza reconstrucción sin pérdida
+3. **Reconstrucción analógica**: El filtro RC pasabajos suaviza el escalonado del DAC
+4. **Transparencia para el usuario**: La señal en el BNC es indistinguible de una señal continua real
+
+---
+
+## 3. Principios de Modelado
+
+### 3.1 Criterio de Muestreo
+
 
 Se adoptó el criterio de Nyquist con factor de seguridad 5× para garantizar la preservación de la morfología de las señales:
 
 $$f_s \geq 5 \times f_{max}$$
 
-**Tabla 2.1: Frecuencias de muestreo por señal**
+**Tabla 3.1: Frecuencias de muestreo por señal**
 
 | Señal | $f_{max}$ clínico | $f_s$ implementada | Justificación |
 |-------|-------------------|-------------------|---------------|
@@ -591,13 +869,13 @@ Esto permite comparación visual directa entre amplitud raw y nivel de envelope.
 
 ---
 
-## 5. Modelo PPG (Pulso Gaussiano)
+## 5. Modelo PPG (Suma de Gaussianas)
 
-El modelo PPG simula la señal de fotopletismografía, que refleja las variaciones de volumen sanguíneo arterial durante el ciclo cardíaco. A diferencia del ECG (modelo dinámico) y el EMG (modelo estocástico), el PPG se implementó como una forma de pulso determinista basada en funciones gaussianas, siguiendo la caracterización de Allen (2007).
+El modelo PPG simula la señal de fotopletismografía, que refleja las variaciones de volumen sanguíneo arterial durante el ciclo cardíaco. A diferencia del ECG (modelo dinámico) y el EMG (modelo estocástico), el PPG se implementó como un **modelo empírico paramétrico** basado en la superposición de funciones gaussianas, inspirado en la caracterización morfológica cualitativa de Allen (2007).
 
 ### 5.1 Fundamento Teórico
 
-El modelo PPG se basó en la morfología descrita por Allen [6], implementando la onda de pulso como superposición de componentes gaussianas que representan eventos fisiológicos del ciclo cardíaco.
+El modelo PPG es un modelo empírico que representa la onda de pulso como superposición de funciones gaussianas. La estructura de tres componentes (sistólica, dicrótica, diastólica) se inspiró en la descripción morfológica cualitativa de Allen [6], pero los parámetros numéricos (posiciones, anchos, amplitudes) se ajustaron empíricamente para producir formas de onda clínicamente representativas.
 
 #### 5.1.1 Componentes de la Onda PPG
 
@@ -622,15 +900,15 @@ Donde:
 - $n_d$ = profundidad de muesca dicrótica (≈0.25)
 - $\phi$ = fase normalizada en el ciclo (0-1)
 
-**Tabla 5.1: Parámetros de forma PPG (Allen 2007)**
+**Tabla 5.1: Parámetros de forma PPG (Modelo Empírico)**
 
-| Componente | Posición ($\phi$) | Ancho ($\sigma$) | Amplitud |
-|------------|-------------------|------------------|----------|
-| Sistólico | 0.15 | 0.055 | 1.0 (ref) |
-| Diastólico | 0.40 | 0.10 | 0.4 |
-| Muesca | 0.30 | 0.02 | -0.25 |
+| Componente | Posición ($\phi$) | Ancho ($\sigma$) | Amplitud | Justificación |
+|------------|-------------------|------------------|----------|---------------|
+| Sistólico | 0.15 | 0.055 | 1.0 (ref) | Pico de volumen arterial máximo |
+| Diastólico | 0.40 | 0.10 | 0.4 | Onda reflejada desde periferia |
+| Muesca | 0.30 | 0.02 | -0.25 | Cierre válvula aórtica |
 
-*Fuente: Allen J. Physiol Meas. 2007 [6]*
+*Nota: Parámetros ajustados empíricamente. La estructura de 3 componentes se basa en la descripción morfológica de Allen (2007).*
 
 ### 5.2 Justificación del Método
 
@@ -884,8 +1162,10 @@ $$V_{out} = \frac{159}{255} \times 3.3V = 2.06V$$
 
 | Característica | ECG | EMG | PPG |
 |----------------|-----|-----|-----|
-| **Modelo base** | McSharry ECGSYN | Fuglevand MU | Allen Gaussiano |
-| **Tipo de modelo** | EDOs (RK4) | Estocástico | Determinista |
+| **Modelo base** | McSharry ECGSYN | Fuglevand MU | Suma de Gaussianas (empírico) |
+| **Formulación teórica** | Continuo (ODEs) | Continuo (procesos puntuales) | Continuo (funciones analíticas) |
+| **Implementación** | Discreta (RK4) | Discreta (superposición) | Discreta (evaluación) |
+| **Salida física** | Analógica continua | Analógica continua | Analógica continua |
 | **fs generación** | 300 Hz | 1000 Hz | 20 Hz |
 | **fs display** | 200 Hz | 100 Hz | 100 Hz |
 | **Rango salida DAC** | -0.5 a +1.5 mV | -5.0 a +5.0 mV | ±100 mV (AC) |
@@ -893,6 +1173,8 @@ $$V_{out} = \frac{159}{255} \times 3.3V = 2.06V$$
 | **Canales waveform** | 1 | 2 (raw + env) | 1 |
 | **HRV** | Sí | N/A | Sí |
 | **Calibración** | Automática (3 lat) | N/A | N/A |
+
+> **Nota sobre discretización:** Todos los modelos son teóricamente continuos pero se ejecutan de forma discreta en el microcontrolador. La señal de salida es analógica continua tras la conversión DAC y filtrado RC.
 
 ### 7.2 Métricas Clínicas Obtenidas
 
@@ -933,7 +1215,7 @@ $$V_{out} = \frac{159}{255} \times 3.3V = 2.06V$$
 | 4 | STRONG_PERFUSION | 50-90 | 10.0-20.0 | 150-300 | Muy marcada |
 | 5 | VASODILATION | 60-90 | 5.0-10.0 | 75-150 | Prominente |
 
-*Fuente: Allen 2007, Elgendi 2012, Shelley 2007*
+*Nota: Rangos basados en literatura de oximetría. Allen (2007) provee descripción morfológica; Elgendi (2012), Shelley (2007) proveen rangos de PI.*
 
 ### 7.3 Rendimiento del Sistema
 

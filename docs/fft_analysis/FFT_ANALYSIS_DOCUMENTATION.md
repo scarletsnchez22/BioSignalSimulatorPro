@@ -15,7 +15,7 @@ Este documento explica los resultados del análisis FFT (Fast Fourier Transform)
 |-------|-------------------|------------|
 | ECG | McSharry ECGSYN | Physionet |
 | EMG | Fuglevand MUAP | J. Neurophysiol. 1993 |
-| PPG | Allen Gaussiano | Physiol. Meas. 2007 |
+| PPG | Suma de Gaussianas | Modelo empírico |
 
 ### ¿Por qué hacer análisis FFT?
 
@@ -176,7 +176,7 @@ $$R = \frac{1}{2\pi \times 316 \times 10^{-6}} = \mathbf{504 \, \Omega}$$
 
 #### Parámetros del Modelo
 ```
-Modelo: Allen Gaussiano (pulso arterial)
+Modelo: Suma de Gaussianas (pulso arterial)
 Fs modelo: 20 Hz
 Muestras analizadas: 140 (7 segundos)
 Resolución FFT: 0.1429 Hz

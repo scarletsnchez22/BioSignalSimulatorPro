@@ -1,8 +1,13 @@
 /**
  * @file cd4051_mux.cpp
- * @brief Implementación del driver para multiplexor analógico CD4051
- * @version 1.0.0
- * @date 08 Enero 2026
+ * @brief Implementación del driver para CD4051 DEMULTIPLEXOR con 3 BNC
+ * @version 3.0.0
+ * @date 13 Enero 2026
+ * 
+ * ARQUITECTURA FINAL:
+ * - 1 CD4051 como DEMUX: DAC → Buffer → DEMUX → 3 filtros → 3 BNC
+ * - Cada canal tiene su filtro RC independiente y su propia salida BNC
+ * - Solo el canal seleccionado recibe la señal DAC
  */
 
 #include "hw/cd4051_mux.h"
@@ -16,14 +21,14 @@ CD4051Mux mux;
 // CONSTRUCTOR
 // ============================================================================
 CD4051Mux::CD4051Mux() : currentChannel(0), initialized(false) {
-    // Canal 0 (ECG 6.8kΩ) por defecto - se cambia según tipo de señal
+    // Canal 0 (ECG 6.8kΩ) por defecto
 }
 
 // ============================================================================
 // INICIALIZACIÓN
 // ============================================================================
 bool CD4051Mux::begin() {
-    // Configurar pines como salidas
+    // Configurar pines como salidas para control del DEMUX
     pinMode(MUX_S0_PIN, OUTPUT);
     pinMode(MUX_S1_PIN, OUTPUT);
     
@@ -37,9 +42,10 @@ bool CD4051Mux::begin() {
     selectChannel(MuxChannel::CH0_ECG_6K8);
     
     initialized = true;
-    Serial.println("[CD4051] Multiplexor inicializado");
-    Serial.printf("[CD4051] Pines: S0=GPIO%d, S1=GPIO%d\n", MUX_S0_PIN, MUX_S1_PIN);
-    Serial.printf("[CD4051] Canal inicial: %s\n", getChannelName());
+    Serial.println("[CD4051] DEMUX inicializado - 3 salidas BNC independientes");
+    Serial.printf("[CD4051] Control: S0=GPIO%d, S1=GPIO%d\n", MUX_S0_PIN, MUX_S1_PIN);
+    Serial.printf("[CD4051] Canal activo: %s\n", getChannelName());
+    Serial.println("[CD4051] Salidas: BNC_ECG | BNC_EMG | BNC_PPG");
     
     return true;
 }
@@ -98,51 +104,47 @@ AttenuationLevel CD4051Mux::getCurrentAttenuation() const {
 // ============================================================================
 const char* CD4051Mux::getChannelName() const {
     switch (currentChannel) {
-        case 0: return "CH0 (ECG: 6.8k, Fc=23Hz)";
-        case 1: return "CH1 (EMG: 1.0k, Fc=159Hz)";
-        case 2: return "CH2 (PPG: 33k, Fc=4.8Hz)";
+        case 0: return "ECG → BNC_ECG (6.8k, Fc=23Hz)";
+        case 1: return "EMG → BNC_EMG (1.0k, Fc=159Hz)";
+        case 2: return "PPG → BNC_PPG (33k, Fc=4.8Hz)";
         case 3: return "CH3 (No conectado)";
-        case 4: return "CH4 (No conectado)";
-        case 5: return "CH5 (No conectado)";
-        case 6: return "CH6 (No conectado)";
-        case 7: return "CH7 (No conectado)";
+        case 4: return "CH4 (No accesible)";
+        case 5: return "CH5 (No accesible)";
+        case 6: return "CH6 (No accesible)";
+        case 7: return "CH7 (No accesible)";
         default: return "Desconocido";
     }
 }
 
 float CD4051Mux::getCutoffFrequency() const {
     // Frecuencia de corte del filtro RC: Fc = 1/(2π×R×C)
-    // C = 1µF compartido para todos los canales
-    // Nota: Ron del CD4051 (~80Ω) se suma a R pero es despreciable (<1.2% error)
+    // Cada filtro tiene su propio C=1µF (independientes)
     switch (currentChannel) {
-        case 0: return 23.4f;   // ECG: 6.8kΩ → Fc = 23.4 Hz
-        case 1: return 159.0f;  // EMG: 1.0kΩ → Fc = 159 Hz
-        case 2: return 4.82f;   // PPG: 33kΩ  → Fc = 4.82 Hz
+        case 0: return 23.4f;   // ECG: 6.8kΩ + 1µF → Fc = 23.4 Hz
+        case 1: return 159.0f;  // EMG: 1.0kΩ + 1µF → Fc = 159 Hz
+        case 2: return 4.82f;   // PPG: 33kΩ + 1µF  → Fc = 4.82 Hz
         default: return 0.0f;   // Canales no conectados
     }
 }
 
 // ============================================================================
-// APLICAR BITS DE SELECCIÓN
+// APLICAR BITS DE SELECCIÓN (controla el DEMUX CD4051)
 // ============================================================================
 void CD4051Mux::applyChannelBits(uint8_t channel) {
     // CD4051 usa 3 bits de selección (A, B, C)
-    // S2 (C) está conectado a GND, así que solo usamos S0 (A) y S1 (B)
+    // S2 (C) está conectado a GND permanentemente
+    // Solo usamos S0 y S1 para canales 0, 1, 2
     // 
-    // Canal | S2(C) | S1(B) | S0(A)
-    // ------+-------+-------+------
-    //   0   |   0   |   0   |   0
-    //   1   |   0   |   0   |   1
-    //   2   |   0   |   1   |   0
-    //   3   |   0   |   1   |   1
-    //   4   |   1   |   0   |   0  (no accesible, S2=GND)
-    //   5   |   1   |   0   |   1  (no accesible)
-    //   6   |   1   |   1   |   0  (no accesible)
-    //   7   |   1   |   1   |   1  (no accesible)
+    // Canal | S2(C) | S1(B) | S0(A) | Señal DAC va a  | Salida BNC
+    // ------+-------+-------+-------+-----------------+-----------
+    //   0   |   0   |   0   |   0   | Filtro 6.8kΩ    | BNC_ECG
+    //   1   |   0   |   0   |   1   | Filtro 1.0kΩ    | BNC_EMG
+    //   2   |   0   |   1   |   0   | Filtro 33kΩ     | BNC_PPG
+    //   3   |   0   |   1   |   1   | (no usado)      | ---
     
     uint8_t s0 = (channel >> 0) & 0x01;  // Bit 0 → S0 (GPIO32)
     uint8_t s1 = (channel >> 1) & 0x01;  // Bit 1 → S1 (GPIO33)
-    // S2 = GND (siempre 0)
+    // S2 = GND permanente
     
     digitalWrite(MUX_S0_PIN, s0);
     digitalWrite(MUX_S1_PIN, s1);

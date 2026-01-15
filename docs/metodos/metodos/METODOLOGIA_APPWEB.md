@@ -141,7 +141,7 @@ Permitir que múltiples estudiantes visualicen simultáneamente las señales bio
 │  │                        CAPA DE GENERACIÓN                              │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                 │ │
 │  │  │  ECG Model   │  │  EMG Model   │  │  PPG Model   │                 │ │
-│  │  │  (McSharry)  │  │  (Fuglevand) │  │  (Allen)     │                 │ │
+│  │  │  (McSharry)  │  │  (Fuglevand) │  │  (Gaussiano) │                 │ │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘                 │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │

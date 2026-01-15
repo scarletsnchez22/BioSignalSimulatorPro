@@ -512,7 +512,7 @@ printh 65 [page] [component_id] [event] FF FF FF
 
 ### 🔬 Análisis FFT de Modelos Matemáticos
 
-Analiza el contenido frecuencial intrínseco de cada modelo (ECG McSharry, EMG Fuglevand, PPG Allen).
+Analiza el contenido frecuencial intrínseco de cada modelo (ECG McSharry, EMG Fuglevand, PPG Suma Gaussianas).
 
 ```powershell
 # Ruta al Python correcto (no usar el de Inkscape)

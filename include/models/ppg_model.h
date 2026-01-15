@@ -15,9 +15,10 @@
  *   → pulseShape normalizado [0,1] → AC=PI*scale → signal=DC+pulse*AC
  * 
  * Referencias:
- * - Allen J. Physiol Meas. 2007: Morfología base PPG
+ * - Allen J. Physiol Meas. 2007: Descripción morfológica cualitativa PPG
  * - Sun X et al. 2024: PI variabilidad latido a latido
  * - Fisiología cardiovascular: sístole ~constante, diástole variable
+ * - Parámetros numéricos: ajustados empíricamente
  */
 
 #ifndef PPG_MODEL_H
@@ -28,7 +29,8 @@
 #include "../core/digital_filters.h"
 
 // ============================================================================
-// CONSTANTES BASE DEL MODELO PPG (Allen 2007)
+// CONSTANTES BASE DEL MODELO PPG (Ajustadas empíricamente)
+// Estructura de 3 componentes basada en descripción morfológica de Allen 2007
 // ============================================================================
 
 // --- Posiciones temporales (fracción del ciclo RR) ---
@@ -41,7 +43,7 @@
 #define PPG_DIASTOLIC_WIDTH 0.10f   // σ diastólico (más ancho)
 #define PPG_NOTCH_WIDTH     0.02f   // σ muesca (evento valvular rápido)
 
-// --- Amplitudes BASE normalizadas (Allen 2007) ---
+// --- Amplitudes BASE normalizadas (ajustadas empíricamente) ---
 #define PPG_BASE_SYSTOLIC_AMPL   1.0f    // Amplitud sistólica base (referencia)
 #define PPG_BASE_DIASTOLIC_RATIO 0.4f    // Ratio diastólico/sistólico
 #define PPG_BASE_DICROTIC_DEPTH  0.25f   // Profundidad muesca base
@@ -64,7 +66,7 @@ struct ConditionRanges {
     float hrCV;               // Coeficiente variación HR (<10% normal, >10% arritmia)
     float piMin, piMax;       // Rango PI (%)
     float piCV;               // Coeficiente variación PI
-    // Valores de forma (base Allen 2007, ajustados por patología)
+    // Valores de forma (estructura 3-componentes, ajustados por patología)
     float systolicAmpl;       // Amplitud sistólica (base 1.0)
     float diastolicAmpl;      // Amplitud diastólica (base 0.4, ratio d/s)
     float dicroticDepth;      // Profundidad muesca dicrótica

@@ -120,7 +120,7 @@
   <text x="350" y="615" text-anchor="middle" class="box-bold">🔌 Salida BNC</text>
   <text x="350" y="635" text-anchor="middle" class="box-text">Señal Analógica</text>
   <text x="350" y="655" text-anchor="middle" class="box-code">0-3.3V @ 4kHz</text>
-  <text x="350" y="675" text-anchor="middle" class="small">Buffer MCP6002 + RC 1.6kHz</text>
+  <text x="350" y="675" text-anchor="middle" class="small">Buffer LM358 + CD4051+RC</text>
   <text x="350" y="690" text-anchor="middle" class="small">→ Osciloscopio/Monitor</text>
   
   <!-- Web App -->

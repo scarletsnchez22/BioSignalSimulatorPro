@@ -18,9 +18,13 @@
 8. [Control del Multiplexor CD4051](#8-control-del-multiplexor-cd4051)
 9. [Subsistema de Visualización Nextion](#9-subsistema-de-visualización-nextion)
 10. [Subsistema de Comunicación WiFi](#10-subsistema-de-comunicación-wifi)
-11. [Estructura del Programa](#11-estructura-del-programa)
-12. [Consideraciones de Implementación](#12-consideraciones-de-implementación)
-13. [Referencias](#13-referencias)
+11. [Flujo de Datos Integrado](#11-flujo-de-datos-integrado)
+12. [Cálculos Computacionales Representativos](#12-cálculos-computacionales-representativos)
+13. [Metodología de Diseño de Frecuencias](#13-metodología-de-diseño-de-frecuencias)
+14. [Salida Analógica: Arquitectura DAC y BNC](#14-salida-analógica-arquitectura-dac-y-bnc)
+15. [Estructura del Programa](#15-estructura-del-programa-biosignalsimulator-pro)
+16. [Consideraciones de Implementación](#16-consideraciones-de-implementación)
+17. [Referencias](#17-referencias)
 
 ---
 
@@ -181,7 +185,7 @@ El siguiente diagrama muestra la arquitectura computacional completa del sistema
 │  │              │                      │    │  │   ECGModel   EMGModel   PPGModel    │    │ │
 │  │              ▼                      │    │  │   ┌──────┐   ┌──────┐   ┌──────┐    │    │ │
 │  │  ┌───────────────────────────────┐  │    │  │   │RK4   │   │MU    │   │Gauss │    │    │ │
-│  │  │   WiFiServer_BioSim           │  │    │  │   │McSharry│ │Fugle-│   │Allen │    │    │ │
+│  │  │   WiFiServer_BioSim           │  │    │  │   │McSharry│ │Fugle-│   │Gauss│    │    │ │
 │  │  │   (WiFi AP + WebSocket)       │  │    │  │   │      │   │vand  │   │      │    │    │ │
 │  │  │                               │  │    │  │   └──────┘   └──────┘   └──────┘    │    │ │
 │  │  │   AP: BioSimulator_Pro        │  │    │  └─────────────────────────────────────┘    │ │
@@ -298,6 +302,8 @@ Los recursos compartidos entre tareas se protegieron mediante semáforos FreeRTO
 ---
 
 ## 4. Motor de Generación de Señales
+
+> **Nota sobre la naturaleza de los modelos:** Todos los modelos matemáticos empleados (McSharry para ECG, Fuglevand para EMG, suma de gaussianas para PPG) están formulados en tiempo continuo. Sin embargo, su ejecución en el microcontrolador requiere discretización temporal. La señal generada es **discreta en el dominio digital** (valores muestreados a frecuencias específicas) y **continua en amplitud** tras la conversión digital-analógica (DAC + filtro RC de reconstrucción).
 
 ### 4.1 Arquitectura del SignalEngine
 
@@ -452,7 +458,7 @@ Cada modelo matemático opera a su propia frecuencia de muestreo interna (Fs_mod
 |--------|-----------|--------------|----------------|-------------|
 | ECG (McSharry) | 300 Hz | 150 Hz | 300 Hz | 100% |
 | EMG (Fuglevand) | 1000 Hz | 500 Hz | 1000 Hz | 100% |
-| PPG (Allen) | 20 Hz | 10 Hz | 20 Hz | 100% |
+| PPG (Gaussiano) | 20 Hz | 10 Hz | 20 Hz | 100% |
 
 ---
 
@@ -668,6 +674,102 @@ El CD4051 presenta una resistencia de encendido (Ron) típica de 80Ω a VDD=5V. 
 | CH2 | 33 kΩ | 80Ω | 33.08 kΩ | 4.82 Hz | 4.81 Hz | 0.2% |
 
 El error introducido por Ron es inferior al 1.2% en todos los casos, considerado despreciable para la aplicación educativa.
+
+### 8.5 Metodología de Diseño del Escalado DAC
+
+El proceso de conversión digital-analógica constituye un componente crítico del sistema, dado que establece la correspondencia entre los valores matemáticos generados por los modelos (expresados en milivoltios) y los niveles de tensión física producidos en la salida BNC. El diseño del subsistema de escalado se fundamentó en tres principios metodológicos: **preservación de la morfología**, **maximización de la resolución efectiva** y **protección contra condiciones de saturación**.
+
+> **Diagrama de referencia:** Véase [flujo_escalado_dac.svg](../diagramas/flujo_escalado_dac.svg) para la representación gráfica de la cadena de escalado.
+
+#### 8.5.1 Formulación del Problema de Escalado
+
+El conversor digital-analógico del ESP32 opera con una resolución de 8 bits, lo que implica un rango discreto de 256 niveles (0 a 255) que se mapean linealmente al intervalo de tensión [0, 3.3V]. Esta característica impone dos restricciones fundamentales:
+
+1. **Restricción de signo:** El DAC no admite valores negativos, requiriendo un offset para señales bipolares (ECG, EMG).
+2. **Restricción de rango:** La utilización incompleta del rango [0, 255] reduce la resolución efectiva.
+
+Para cada tipo de señal biomédica, se definió una transformación lineal de la forma:
+
+$$DAC_{value} = \left\lfloor \frac{V_{mV} - V_{min}}{V_{max} - V_{min}} \times 255 \right\rfloor$$
+
+Donde $V_{mV}$ representa el valor instantáneo de la señal en milivoltios, y $V_{min}$, $V_{max}$ definen el rango fisiológico esperado.
+
+#### 8.5.2 Derivación de Parámetros por Tipo de Señal
+
+**Señal ECG (Electrocardiograma)**
+
+El modelo de McSharry genera señales en el rango [-0.5, +1.5] mV, correspondiente a la amplitud típica de las ondas PQRST en derivación Lead II. La derivación del escalado procede como sigue:
+
+$$V_{min} = -0.5 \, mV, \quad V_{max} = +1.5 \, mV, \quad \Delta V = 2.0 \, mV$$
+
+Sustituyendo en la fórmula general:
+
+$$DAC_{ECG} = \frac{V_{mV} - (-0.5)}{2.0} \times 255 = \frac{V_{mV} + 0.5}{2.0} \times 255$$
+
+Simplificando:
+
+$$DAC_{ECG} = (V_{mV} + 0.5) \times 127.5$$
+
+**Tabla 8.5.1: Puntos de verificación del escalado ECG**
+
+| Valor fisiológico | Descripción | DAC calculado | Tensión DAC |
+|-------------------|-------------|---------------|-------------|
+| -0.5 mV | Mínimo (onda S profunda) | 0 | 0.00 V |
+| 0.0 mV | Línea isoeléctrica | 63.75 ≈ 64 | 0.83 V |
+| +0.5 mV | Onda P típica | 127.5 ≈ 128 | 1.65 V |
+| +1.0 mV | Onda R normal | 191.25 ≈ 191 | 2.47 V |
+| +1.5 mV | Máximo (onda R alta) | 255 | 3.30 V |
+
+**Señal EMG (Electromiograma)**
+
+El modelo de Fuglevand produce señales de interferencia en el rango [-5.0, +5.0] mV, representando la actividad eléctrica muscular durante contracción máxima:
+
+$$V_{min} = -5.0 \, mV, \quad V_{max} = +5.0 \, mV, \quad \Delta V = 10.0 \, mV$$
+
+$$DAC_{EMG} = \frac{V_{mV} + 5.0}{10.0} \times 255 = (V_{mV} + 5.0) \times 25.5$$
+
+**Señal PPG (Fotopletismograma)**
+
+El modelo de suma de gaussianas genera una componente AC en el rango [0, 150] mV. A diferencia de las señales anteriores, el PPG es unipolar, eliminando la necesidad de offset:
+
+$$DAC_{PPG} = \frac{V_{AC}}{150.0} \times 255 = V_{AC} \times 1.7$$
+
+Nótese que únicamente se transmite la componente pulsátil (AC) de la señal PPG. La componente DC (~1000 mV), que representa la absorción basal de tejido, se omite deliberadamente dado que no aporta información diagnóstica relevante.
+
+#### 8.5.3 Protección contra Saturación (Clamping)
+
+Para prevenir comportamientos indefinidos ante condiciones extremas (artefactos, parámetros fuera de rango), se implementó una operación de limitación (clamping) posterior al escalado:
+
+```cpp
+uint8_t scaleToDAC(float mV, SignalType type) {
+    float scaled;
+    switch(type) {
+        case ECG: scaled = (mV + 0.5f) * 127.5f; break;
+        case EMG: scaled = (mV + 5.0f) * 25.5f; break;
+        case PPG: scaled = mV * 1.7f; break;
+    }
+    // Clamping: protección contra overflow/underflow
+    if (scaled < 0.0f) return 0;
+    if (scaled > 255.0f) return 255;
+    return (uint8_t)scaled;
+}
+```
+
+Esta operación garantiza que valores fuera del rango esperado se mapeen a los extremos del DAC (0 o 255) en lugar de producir comportamiento indefinido por overflow de enteros sin signo.
+
+#### 8.5.4 Análisis de Resolución Efectiva
+
+La resolución efectiva del sistema depende del rango fisiológico de cada señal:
+
+**Tabla 8.5.2: Resolución efectiva por tipo de señal**
+
+| Señal | Rango total | Bits DAC | Resolución teórica | Resolución práctica |
+|-------|-------------|----------|--------------------|--------------------|
+| ECG | 2.0 mV | 8 | 7.84 µV/bit | 8 µV/LSB |
+| EMG | 10.0 mV | 8 | 39.2 µV/bit | 40 µV/LSB |
+| PPG | 150.0 mV | 8 | 588 µV/bit | 590 µV/LSB |
+
+Para el ECG, la resolución de 8 µV/bit resulta adecuada considerando que el ruido de cuantización está muy por debajo del ruido fisiológico típico (50-100 µV en registros reales). Para el EMG, la resolución de 40 µV/bit es suficiente dado que la señal de interferencia presenta variabilidad inherente del orden de mV. Para el PPG, la resolución de 590 µV/bit es aceptable debido al alto nivel de señal (componente AC ~100 mV pico a pico).
 
 ---
 
@@ -1030,15 +1132,168 @@ Las gráficas del Serial Plotter de VS Code pueden utilizarse directamente para 
 >wave:127,mV:0.00,hr:75,rr:800,pr:160,qrs:90,qtc:400,r:1.05,st:0.02
 ```
 
+### 9.8 Metodología de Diseño de la Interfaz de Visualización Nextion
+
+El diseño de la interfaz de visualización Nextion se estructuró siguiendo una metodología sistemática que abordó tres dominios interrelacionados: el **dimensionamiento del área de visualización**, la **configuración de la cuadrícula (grid) clínica**, y la **estrategia de decimación para adaptación de tasas de datos**. El objetivo fundamental fue reproducir una experiencia de visualización comparable a la de monitores de signos vitales clínicos, manteniendo compatibilidad con las restricciones de ancho de banda del canal UART.
+
+> **Diagramas de referencia:** 
+> - Arquitectura de visualización: [arquitectura_nextion_hmi.svg](../diagramas/arquitectura_nextion_hmi.svg)
+> - Estrategia de decimación: [estrategia_decimacion.svg](../diagramas/estrategia_decimacion.svg)
+> - Arquitectura general del sistema: [arquitectura_salida_digital.svg](../diagramas/arquitectura_salida_digital.svg)
+
+#### 9.8.1 Principios de Diseño
+
+El diseño de la interfaz de visualización se fundamentó en cuatro principios metodológicos:
+
+1. **Fidelidad morfológica:** La representación visual debe preservar las características morfológicas diagnósticamente relevantes de cada señal biomédica.
+
+2. **Estándares clínicos:** Las escalas temporales y de amplitud deben aproximarse a los estándares de monitorización clínica (25 mm/s para ECG, cuadrículas calibradas).
+
+3. **Eficiencia de ancho de banda:** La tasa de transmisión de datos debe optimizarse para el canal UART sin degradar la calidad perceptual de la visualización.
+
+4. **Legibilidad de métricas:** Los indicadores numéricos deben actualizarse a una frecuencia que permita la lectura humana (máximo 4 Hz).
+
+#### 9.8.2 Dimensionamiento del Componente Waveform
+
+El componente waveform de Nextion opera como un buffer circular de visualización con desplazamiento horizontal continuo (rolling display). Las dimensiones se determinaron a partir de los requisitos de visualización clínica y las capacidades del display:
+
+**Tabla 9.8.1: Parámetros dimensionales del waveform**
+
+| Parámetro | Valor | Justificación |
+|-----------|-------|---------------|
+| Ancho del display | 800 px | Especificación NX8048T070 |
+| Alto del display | 480 px | Especificación NX8048T070 |
+| Ancho del waveform | 480 px | 60% del ancho total, dejando margen para métricas |
+| Alto del waveform | 200 px | Proporción 2.4:1 para visualización de señales biomédicas |
+| Buffer interno | 480 muestras | Igual al ancho en píxeles |
+
+El cálculo de la **ventana temporal visible** depende de la frecuencia de actualización del waveform:
+
+$$T_{visible} = \frac{W_{px}}{f_{display}} = \frac{480 \, px}{100 \, Hz} = 4.8 \, s$$
+
+Esta ventana de 4.8 segundos permite visualizar aproximadamente 5-6 ciclos cardíacos a frecuencia normal (60-72 BPM), suficiente para evaluación morfológica del ritmo cardíaco.
+
+#### 9.8.3 Diseño de la Cuadrícula (Grid) Clínica
+
+La cuadrícula de fondo del waveform se diseñó para emular las convenciones de registro electrocardiográfico estándar. En papel milimetrado ECG convencional:
+- Cuadro pequeño: 1 mm × 1 mm (40 ms × 0.1 mV)
+- Cuadro grande: 5 mm × 5 mm (200 ms × 0.5 mV)
+
+La adaptación a la interfaz digital requirió establecer equivalencias en píxeles:
+
+**Tabla 9.8.2: Configuración de grid por tipo de señal**
+
+| Señal | Estándar clínico de referencia | Espaciado temporal (px) | Espaciado amplitud (px) | Divisiones |
+|-------|-------------------------------|-------------------------|-------------------------|------------|
+| ECG | 25 mm/s, 10 mm/mV | 20 px = 200 ms | 50 px = 0.5 mV | 24 × 4 |
+| EMG | 10 mm/s, visualización de envolvente | 48 px = 480 ms | 40 px = 2 mV | 10 × 5 |
+| PPG | Velocidad variable, escala porcentual | 96 px = 960 ms | 50 px = 50% amplitud | 5 × 4 |
+
+**Derivación del espaciado para ECG:**
+
+El estándar clínico define una velocidad de barrido de 25 mm/s. Para una frecuencia de actualización de 100 Hz:
+
+$$T_{pixel} = \frac{1}{100 \, Hz} = 10 \, ms/px$$
+
+Un cuadro grande (200 ms) corresponde a:
+
+$$Espaciado_{temporal} = \frac{200 \, ms}{10 \, ms/px} = 20 \, px$$
+
+Para la escala de amplitud, el estándar define 10 mm/mV. Con un rango total de 2.0 mV mapeado a 200 px de altura:
+
+$$Resolución_{amplitud} = \frac{2.0 \, mV}{200 \, px} = 0.01 \, mV/px$$
+
+Un cuadro grande (0.5 mV) corresponde a:
+
+$$Espaciado_{amplitud} = \frac{0.5 \, mV}{0.01 \, mV/px} = 50 \, px$$
+
+#### 9.8.4 Estrategia de Decimación para Visualización
+
+El problema fundamental de la visualización es la disparidad entre las frecuencias de muestreo de los modelos matemáticos y la capacidad de actualización del display. Los modelos operan a frecuencias optimizadas para la generación de señales (300-1000 Hz), mientras que la visualización requiere una tasa máxima de 100-200 Hz para mantener fluidez perceptual sin saturar el canal UART.
+
+**Formulación del problema:**
+
+Sea $f_{modelo}$ la frecuencia de muestreo del modelo y $f_{display}$ la frecuencia de actualización del waveform. El ratio de decimación $R$ se calcula como:
+
+$$R = \left\lfloor \frac{f_{modelo}}{f_{display}} \right\rfloor$$
+
+**Tabla 9.8.3: Ratios de decimación implementados**
+
+| Señal | $f_{modelo}$ | $f_{display}$ | Ratio $R$ | Justificación |
+|-------|--------------|---------------|-----------|---------------|
+| ECG | 300 Hz | 100 Hz | 3:1 | $f_{display}$ = 100 Hz > 2 × 40 Hz (contenido espectral ECG) |
+| EMG | 1000 Hz | 100 Hz | 10:1 | Visualización de envolvente, no MUAPs individuales |
+| PPG | 20 Hz | 20 Hz | 1:1 | Sin decimación necesaria (señal de baja frecuencia) |
+
+**Verificación del criterio de Nyquist:**
+
+Para que la decimación no produzca aliasing, la frecuencia de visualización debe satisfacer:
+
+$$f_{display} \geq 2 \times f_{max,señal}$$
+
+- **ECG:** $f_{max} \approx 40$ Hz (complejo QRS), $f_{display} = 100$ Hz → margen de 25%
+- **EMG:** La visualización muestra la envolvente del patrón de interferencia ($f_{max,envolvente} \approx 10$ Hz), no los MUAPs individuales
+- **PPG:** $f_{max} \approx 5$ Hz (pulso arterial), $f_{display} = 20$ Hz → margen de 100%
+
+#### 9.8.5 Análisis de Ancho de Banda UART
+
+El canal de comunicación UART2 opera a 115200 bps. El protocolo Nextion requiere comandos ASCII terminados por tres bytes 0xFF:
+
+**Estructura del comando waveform:**
+```
+add <id>,<ch>,<val>\xFF\xFF\xFF
+```
+
+Longitud típica: 15-17 bytes (incluyendo terminador).
+
+**Cálculo de utilización de ancho de banda:**
+
+$$BW_{requerido} = f_{display} \times L_{cmd} \times 8 \, bits/byte$$
+
+Para ECG a 100 Hz con comandos de 17 bytes:
+
+$$BW_{ECG} = 100 \times 17 \times 8 = 13,600 \, bps$$
+
+**Tabla 9.8.4: Utilización de ancho de banda por señal**
+
+| Señal | Comandos/s | Bytes/cmd | Bits/s | % de 115200 bps |
+|-------|------------|-----------|--------|-----------------|
+| ECG | 100 | 17 | 13,600 | 11.8% |
+| EMG (2 ch) | 200 | 17 | 27,200 | 23.6% |
+| PPG | 20 | 17 | 2,720 | 2.4% |
+| Métricas | 4 | 50 (promedio) | 1,600 | 1.4% |
+| **Total máximo** | — | — | **45,120** | **39.2%** |
+
+La utilización máxima del 39.2% deja un margen holgado del 60.8% para latencia de transmisión, comandos de control adicionales y retransmisiones en caso de errores.
+
+#### 9.8.6 Diseño del Panel de Métricas
+
+El panel de métricas se ubicó adyacente al waveform, presentando indicadores numéricos específicos para cada tipo de señal biomédica. La actualización se limitó a 4 Hz (250 ms) para garantizar legibilidad.
+
+**Tabla 9.8.5: Métricas por tipo de señal**
+
+| Señal | Métrica | Unidad | Rango típico | Actualización |
+|-------|---------|--------|--------------|---------------|
+| ECG | Frecuencia cardíaca (HR) | bpm | 40-180 | 4 Hz |
+| ECG | Intervalo RR | ms | 333-1500 | 4 Hz |
+| ECG | Amplitud onda R | mV | 0.5-2.0 | 4 Hz |
+| ECG | Desviación ST | mV | -0.2 a +0.2 | 4 Hz |
+| EMG | Valor RMS | mV | 0-5.0 | 4 Hz |
+| EMG | Unidades motoras activas | # | 0-120 | 4 Hz |
+| EMG | Frecuencia de disparo | Hz | 5-50 | 4 Hz |
+| PPG | Frecuencia cardíaca | bpm | 40-180 | 4 Hz |
+| PPG | Índice de perfusión | % | 0.1-20 | 4 Hz |
+| PPG | Amplitud AC | mV | 0-150 | 4 Hz |
+
 ---
 
-## 6. Subsistema de Comunicación WiFi
+## 10. Subsistema de Comunicación WiFi
 
-### 6.1 Matriz de Decisión: Arquitectura de Comunicación y Aplicación
+### 10.1 Matriz de Decisión: Arquitectura de Comunicación y Aplicación
 
-#### 6.1.1 Criterios de Evaluación y Ponderación
+#### 10.1.1 Criterios de Evaluación y Ponderación
 
-**Tabla 6.1.1a: Criterios para selección de arquitectura de comunicación**
+**Tabla 10.1.1a: Criterios para selección de arquitectura de comunicación**
 
 | Criterio | Peso (%) | Justificación |
 |----------|----------|---------------|
@@ -1048,7 +1303,7 @@ Las gráficas del Serial Plotter de VS Code pueden utilizarse directamente para 
 | Complejidad de Desarrollo | 15% | Importante: tiempo limitado, primera implementación WiFi del equipo |
 | Alcance de Comunicación | 10% | Moderado: uso en laboratorio/aula (~10-15 metros) |
 
-**Tabla 6.1.1b: Evaluación de alternativas (escala 1-5)**
+**Tabla 10.1.1b: Evaluación de alternativas (escala 1-5)**
 
 | Arquitectura | Multi-dispositivo | Streaming RT | Multiplataforma | Desarrollo | Alcance | Total Ponderado |
 |--------------|-------------------|--------------|-----------------|------------|---------|-----------------|
@@ -1107,7 +1362,7 @@ La arquitectura **Web App con WiFi Access Point + WebSocket** obtuvo la mayor pu
 2. **Servidor HTTP (puerto 80):** Sirve `index.html`, `app.js`, `styles.css` almacenados en SPIFFS/LittleFS
 3. **Servidor WebSocket (puerto 81):** Streaming de señal @ 100 Hz (JSON: `{"type":"signal","value":0.85,"dac":172}`) y métricas @ 4 Hz
 
-**Tabla 6.1.1c: Comparativa de ancho de banda**
+**Tabla 10.1.1c: Comparativa de ancho de banda**
 
 | Protocolo | Throughput máx | Latencia típica | Clientes simultáneos |
 |-----------|----------------|-----------------|----------------------|
@@ -1118,11 +1373,11 @@ La arquitectura **Web App con WiFi Access Point + WebSocket** obtuvo la mayor pu
 
 **Ancho de banda requerido:** ~69 kbps (señal 64 kbps + métricas 4.8 kbps) → Margen holgado en WiFi.
 
-### 6.2 Configuración del Access Point
+### 10.2 Configuración del Access Point
 
 El ESP32 se configuró como Access Point WiFi para permitir conexiones directas sin infraestructura de red:
 
-**Tabla 6.1: Configuración WiFi AP**
+**Tabla 10.2: Configuración WiFi AP**
 
 | Parámetro | Valor |
 |-----------|-------|
@@ -1133,7 +1388,7 @@ El ESP32 se configuró como Access Point WiFi para permitir conexiones directas 
 | Máx. clientes | 4 |
 | Modo | SoftAP |
 
-### 6.2 Servidor WebSocket
+### 10.3 Servidor WebSocket
 
 Se implementó un servidor WebSocket en el puerto 81 para streaming bidireccional:
 
@@ -1172,7 +1427,7 @@ Se implementó un servidor WebSocket en el puerto 81 para streaming bidirecciona
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 6.3 Formato de Mensajes WebSocket
+### 10.4 Formato de Mensajes WebSocket
 
 **Mensaje de señal (100 Hz):**
 ```json
@@ -1199,9 +1454,9 @@ Se implementó un servidor WebSocket en el puerto 81 para streaming bidirecciona
 }
 ```
 
-### 6.4 Tasas de Envío y Ancho de Banda
+### 10.5 Tasas de Envío y Ancho de Banda
 
-**Tabla 6.2: Análisis de ancho de banda WebSocket**
+**Tabla 10.5: Análisis de ancho de banda WebSocket**
 
 | Tipo mensaje | Tamaño | Frecuencia | Bytes/s | Bits/s |
 |--------------|--------|------------|---------|--------|
@@ -1211,7 +1466,7 @@ Se implementó un servidor WebSocket en el puerto 81 para streaming bidirecciona
 
 El ancho de banda requerido (~69 kbps) fue muy inferior al disponible en WiFi 802.11n (~50 Mbps), garantizando latencia mínima.
 
-### 6.5 Control de Streaming
+### 10.5.1 Control de Streaming
 
 El streaming se habilitó/deshabilitó según el estado de simulación:
 
@@ -1228,9 +1483,124 @@ case UIEvent::BUTTON_STOP:
     break;
 ```
 
+### 10.6 Metodología de Diseño del Sistema de Comunicación WebSocket
+
+El diseño del subsistema de comunicación WiFi y streaming WebSocket se fundamentó en una metodología que priorizó la **accesibilidad multi-dispositivo**, la **latencia mínima** y la **robustez ante condiciones de red variables**. El objetivo fue proporcionar una interfaz de visualización alternativa accesible desde cualquier navegador web moderno, sin requerir instalación de software adicional.
+
+> **Diagrama de referencia:** Véase [arquitectura_websocket.svg](../diagramas/arquitectura_websocket.svg) para la representación gráfica de la arquitectura de comunicación.
+
+#### 10.6.1 Justificación de la Arquitectura WebSocket
+
+La selección de WebSocket como protocolo de comunicación se basó en un análisis comparativo de alternativas para streaming de datos en tiempo real:
+
+**Tabla 10.6.1: Comparativa de protocolos de comunicación**
+
+| Característica | WebSocket | HTTP Polling | Server-Sent Events |
+|----------------|-----------|--------------|-------------------|
+| Modelo de comunicación | Full-duplex | Half-duplex | Simplex (server→client) |
+| Latencia por mensaje | 2-6 bytes overhead | ~800 bytes headers | ~100 bytes |
+| Conexión | Persistente | Reconexión cada request | Persistente |
+| Bidireccional | Sí | Sí (ineficiente) | No |
+| Soporte navegadores | Universal (2011+) | Universal | Universal (no IE) |
+
+WebSocket fue seleccionado por su capacidad de comunicación full-duplex con overhead mínimo, permitiendo tanto el streaming de señales (server→client) como la recepción de comandos de control (client→server) sobre una única conexión persistente.
+
+#### 10.6.2 Diseño del Flujo de Datos
+
+El flujo de datos entre el ESP32 y los clientes web sigue un patrón productor-consumidor con buffer intermedio:
+
+**Cadena de transmisión:**
+1. **SignalEngine** genera muestras a frecuencia del modelo (300-1000 Hz)
+2. **Buffer de transmisión** acumula muestras para envío por lotes
+3. **WiFiServer** serializa a JSON y transmite vía WebSocket (100 Hz efectivo)
+4. **Cliente JavaScript** deserializa y actualiza canvas Chart.js (60 fps renderizado)
+
+**Formato de mensaje de señal:**
+```json
+{
+  "t": "ecg",      // tipo: ecg|emg|ppg
+  "v": 0.85,       // valor en mV
+  "ts": 1234567890 // timestamp milisegundos
+}
+```
+
+El uso de claves cortas (`t`, `v`, `ts`) minimiza el tamaño del mensaje JSON, reduciendo el ancho de banda requerido.
+
+#### 10.6.3 Análisis de Ancho de Banda y Latencia
+
+**Cálculo detallado de throughput:**
+
+$$BW_{mensaje} = L_{json} \times 8 \, bits/byte = 35 \times 8 = 280 \, bits$$
+
+$$BW_{streaming} = f_{envío} \times BW_{mensaje} = 100 \times 280 = 28,000 \, bps = 28 \, kbps$$
+
+**Tabla 10.6.2: Análisis de capacidad del canal**
+
+| Parámetro | Valor | Cálculo |
+|-----------|-------|---------|
+| Capacidad WiFi 802.11n | 50 Mbps | Especificación |
+| Throughput requerido | 28 kbps | 100 msg/s × 35 bytes × 8 |
+| Utilización | 0.056% | 28 kbps / 50 Mbps |
+| Clientes soportables | ~1000 | Teórico, limitado por RAM ESP32 |
+| Clientes configurados | 4 | Conservador para estabilidad |
+
+La utilización del canal es despreciable (0.056%), garantizando latencia mínima incluso con múltiples clientes simultáneos.
+
+**Análisis de latencia end-to-end:**
+
+| Componente | Latencia típica | Contribución |
+|------------|-----------------|--------------|
+| Generación muestra | < 1 ms | Negligible |
+| Serialización JSON | < 1 ms | Negligible |
+| Transmisión WiFi | 5-20 ms | Dominante |
+| Deserialización JS | < 1 ms | Negligible |
+| Renderizado canvas | 16.7 ms @ 60fps | Fijo |
+| **Total** | **25-40 ms** | Imperceptible |
+
+La latencia total de 25-40 ms es imperceptible para el ojo humano (umbral ~100 ms), proporcionando una experiencia de visualización en "tiempo real".
+
+#### 10.6.4 Diseño de la Interfaz Web
+
+La aplicación web se diseñó con una arquitectura de single-page application (SPA) servida desde el sistema de archivos SPIFFS del ESP32:
+
+**Componentes del frontend:**
+- `index.html`: Estructura HTML5 semántica
+- `styles.css`: Estilos responsivos (mobile-first)
+- `app.js`: Lógica de WebSocket y renderizado Chart.js
+
+**Características implementadas:**
+1. **Conexión automática:** Reconexión WebSocket ante desconexiones
+2. **Buffer circular:** 500 puntos de historial para scroll temporal
+3. **Renderizado eficiente:** Canvas 2D con doble buffer
+4. **Controles interactivos:** Sliders para ajuste de parámetros
+5. **Indicadores de estado:** Conexión, tipo de señal, condición activa
+
+#### 10.6.5 Protocolo de Control Bidireccional
+
+El canal WebSocket soporta comandos de control desde el cliente hacia el ESP32:
+
+**Formato de mensaje de comando:**
+```json
+{
+  "cmd": "setHR",     // comando
+  "val": 72           // valor
+}
+```
+
+**Tabla 10.6.3: Comandos de control implementados**
+
+| Comando | Descripción | Parámetro | Rango válido |
+|---------|-------------|-----------|--------------|
+| `setHR` | Frecuencia cardíaca | bpm | 40-180 |
+| `setAmp` | Amplitud señal | factor | 0.5-2.0 |
+| `setCond` | Cambiar condición | índice | 0-10 (según señal) |
+| `setType` | Cambiar tipo señal | tipo | 0=ECG, 1=EMG, 2=PPG |
+
+Los comandos se procesan en el callback `onWebSocketEvent()` del servidor, aplicándose de forma diferida al ciclo de parámetros (Tipo B) para evitar glitches en la señal.
+
 ---
 
-## 7. Flujo de Datos Integrado
+## 11. Flujo de Datos Integrado
 
 ### 7.1 Diagrama de Flujo Completo
 
@@ -1294,7 +1664,7 @@ El siguiente diagrama muestra el flujo de datos desde la generación hasta las t
 
 ---
 
-## 8. Cálculos Computacionales Representativos
+## 12. Cálculos Computacionales Representativos
 
 ### 8.1 Memoria RAM Utilizada
 
@@ -1368,7 +1738,7 @@ PPG @ 100 Hz: T = 700 / 100 = 7.0 s (~9 latidos @ 75 BPM)
 
 ---
 
-## 9. Metodología de Diseño de Frecuencias
+## 13. Metodología de Diseño de Frecuencias
 
 Esta sección documenta la metodología sistemática utilizada para seleccionar las frecuencias de integración del modelo, oversampling, y decimación para visualización en Nextion. El DAC escribe a 4 kHz sin decimación para preservar el espectro completo.
 
@@ -1421,7 +1791,7 @@ Esta sección documenta la metodología sistemática utilizada para seleccionar 
 **Modelos matemáticos implementados:**
 - **ECG:** McSharry ECGSYN (EDOs con integración RK4)
 - **EMG:** Fuglevand (100 unidades motoras, proceso estocástico)
-- **PPG:** Allen (modelo gaussiano de pulso arterial)
+- **PPG:** Suma de gaussianas (modelo empírico de pulso arterial)
 
 ### 9.3 Timer Maestro y Técnica de Oversampling (FS_TIMER_HZ)
 
@@ -1628,7 +1998,7 @@ PPG:  T = 700 px × 10 ms = 7000 ms = 7.0 s
 
 ---
 
-## 10. Salida Analógica: Arquitectura DAC y BNC
+## 14. Salida Analógica: Arquitectura DAC y BNC
 
 Esta sección documenta la arquitectura de la **salida analógica funcional** del sistema (DAC → BNC), que es el elemento principal del dispositivo. El ADC loopback y Serial Plotter son únicamente herramientas de validación durante desarrollo.
 
@@ -1685,7 +2055,7 @@ La señal pasa por tres etapas de procesamiento digital antes de llegar al DAC:
 │  ┌─────────────────────────────────────────────────────────────────┐        │
 │  │  ECG: McSharry RK4 @ 300 Hz (genera muestras discretas)         │        │
 │  │  EMG: Fuglevand MU @ 1000 Hz (100 unidades motoras)             │        │
-│  │  PPG: Allen Gaussiano @ 20 Hz (pulso cardiovascular)            │        │
+│  │  PPG: Suma Gaussianas @ 20 Hz (pulso cardiovascular)            │        │
 │  └─────────────────────────────────────────────────────────────────┘        │
 │           │                                                                 │
 │           │ Muestras a frecuencia del modelo (variable)                     │
@@ -1851,7 +2221,7 @@ El filtro RC suaviza → ADC lee ~2.32V (correcto)
 │  [Modelo Matemático]                                                        │
 │        │ ECG: McSharry RK4 @ 300 Hz                                         │
 │        │ EMG: Fuglevand MU @ 1000 Hz                                        │
-│        │ PPG: Allen Gaussiano @ 20 Hz                                       │
+│        │ PPG: Suma Gaussianas @ 20 Hz                                       │
 │        ▼                                                                    │
 │  [Interpolación Lineal] ──► Upsampling a 4000 Hz (OVERSAMPLING)             │
 │        ▼                                                                    │
@@ -2109,7 +2479,7 @@ Esta validación cruzada asegura que la señal analógica en el conector BNC es 
 
 ---
 
-## 11. Estructura del Programa BioSignalSimulator Pro
+## 15. Estructura del Programa BioSignalSimulator Pro
 
 El firmware del BioSignalSimulator Pro se organizó siguiendo principios de modularidad y separación de responsabilidades. A continuación se presenta el desglose completo de la estructura de archivos y sus funciones.
 
@@ -2125,7 +2495,7 @@ BioSignalSimulator Pro/
 │   ├── models/                       # Modelos matemáticos de señales
 │   │   ├── ecg_model.h               # Modelo McSharry ECG (ODE + RK4)
 │   │   ├── emg_model.h               # Modelo Fuglevand EMG (MUAPs + filtrado)
-│   │   └── ppg_model.h               # Modelo Allen PPG (doble gaussiana)
+│   │   └── ppg_model.h               # Modelo PPG (suma de gaussianas)
 │   ├── core/                         # Núcleo del sistema
 │   │   ├── signal_engine.h           # Motor de generación: buffer, timer ISR, DAC
 │   │   ├── state_machine.h           # Máquina de estados del sistema
@@ -2189,7 +2559,7 @@ BioSignalSimulator Pro/
 | **SignalEngine** | `signal_engine.cpp` | Generación de muestras, buffer circular, timer ISR, salida DAC | Modelos, config.h |
 | **ECGModel** | `ecg_model.cpp` | Síntesis de ECG (McSharry ODE + RK4), 8 condiciones clínicas | config.h |
 | **EMGModel** | `emg_model.cpp` | Síntesis de EMG (Fuglevand MUAPs), filtrado Butterworth | config.h |
-| **PPGModel** | `ppg_model.cpp` | Síntesis de PPG (Allen gaussiano), PI y SpO2 dinámicos | config.h |
+| **PPGModel** | `ppg_model.cpp` | Síntesis de PPG (suma de gaussianas), PI y SpO2 dinámicos | config.h |
 | **StateMachine** | `state_machine.cpp` | Estados del sistema: INIT→PORTADA→MENU→SIMULATING | - |
 | **ParamController** | `param_controller.cpp` | Validación y aplicación de parámetros | param_limits.h |
 | **NextionDriver** | `nextion_driver.cpp` | Comunicación UART2, waveforms, métricas, eventos táctiles | Serial2 |
@@ -2259,7 +2629,7 @@ BioSignalSimulator Pro/
 
 ---
 
-## 12. Consideraciones de Implementación
+## 16. Consideraciones de Implementación
 
 ### 12.1 Optimizaciones Realizadas
 
@@ -2281,7 +2651,7 @@ BioSignalSimulator Pro/
 
 ---
 
-## 13. Referencias
+## 17. Referencias
 
 [1] Espressif Systems, "ESP32 Technical Reference Manual," Version 4.5.
 

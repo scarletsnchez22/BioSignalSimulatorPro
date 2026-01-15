@@ -26,7 +26,7 @@ BioSignalSimulator Pro es un dispositivo portátil que genera señales biomédic
 |-------|--------|-------------|-------|
 | **ECG** | McSharry ECGSYN | 9 (Normal, Taquicardia, Bradicardia, FA, FV, PVC, Bloqueo, ST↑, ST↓) | -0.5 a +1.5 mV |
 | **EMG** | Fuglevand MU | 6 (Reposo, Leve, Moderada, Fuerte, Temblor, Fatiga) | -5.0 a +5.0 mV |
-| **PPG** | Allen Gaussiano | 6 (Normal, Arritmia, Baja perfusión, Alta perfusión, Vasoconstricción, SpO2 bajo) | 800-1200 mV |
+| **PPG** | Suma de Gaussianas | 6 (Normal, Arritmia, Baja perfusión, Alta perfusión, Vasoconstricción, SpO2 bajo) | 800-1200 mV |
 
 ---
 
@@ -114,7 +114,7 @@ BioSignalSimulator Pro/
 │   ├── models/               # Modelos de señales
 │   │   ├── ecg_model.cpp     # Modelo ECG McSharry
 │   │   ├── emg_model.cpp     # Modelo EMG Fuglevand
-│   │   └── ppg_model.cpp     # Modelo PPG Allen
+│   │   └── ppg_model.cpp     # Modelo PPG Suma Gaussianas
 │   ├── core/                 # Núcleo del sistema
 │   │   ├── signal_engine.cpp # Motor de generación
 │   │   └── state_machine.cpp # Máquina de estados

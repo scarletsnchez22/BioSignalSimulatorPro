@@ -25,7 +25,7 @@ Los requisitos funcionales describen las capacidades específicas que el sistema
 |----|-----------|----------------|--------|
 | RF-GEN-01 | Generar señal ECG sintética | Modelo McSharry ECGSYN con 8 condiciones cardíacas configurables | METODOLOGIA_SIGNALGEN |
 | RF-GEN-02 | Generar señal EMG sintética | Modelo Fuglevand con 6 condiciones musculares y reclutamiento de MUs | METODOLOGIA_SIGNALGEN |
-| RF-GEN-03 | Generar señal PPG sintética | Modelo pulso gaussiano Allen con 6 condiciones vasculares | METODOLOGIA_SIGNALGEN |
+| RF-GEN-03 | Generar señal PPG sintética | Modelo empírico de suma de gaussianas con 6 condiciones vasculares | METODOLOGIA_SIGNALGEN |
 | RF-GEN-04 | Frecuencia cardíaca ajustable | ECG: 40-180 BPM, PPG: 40-180 BPM | METODOLOGIA_SIGNALGEN |
 | RF-GEN-05 | Excitación muscular ajustable | EMG: 0-100% MVC (contracción voluntaria máxima) | METODOLOGIA_SIGNALGEN |
 | RF-GEN-06 | Variabilidad fisiológica | HRV (variabilidad RR) configurable en ECG/PPG | METODOLOGIA_SIGNALGEN |

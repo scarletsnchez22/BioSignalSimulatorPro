@@ -1,34 +1,60 @@
 /**
  * @file cd4051_mux.h
- * @brief Driver para multiplexor analógico CD4051
- * @version 1.2.0
- * @date 09 Enero 2026
+ * @brief Driver para CD4051 como DEMULTIPLEXOR con 3 salidas BNC independientes
+ * @version 3.0.0
+ * @date 13 Enero 2026
  * 
- * Control del CD4051 para selección de filtro RC por señal.
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ARQUITECTURA FINAL: DAC → LM358 → CD4051 (DEMUX) → 3 FILTROS → 3 BNC
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Configuración de hardware:
- * - ESP32 GPIO25 (DAC1) → LM358 (buffer) → CD4051 COM (pin 3)
- * - ESP32 GPIO32 → CD4051 S0/A (pin 11) - Selector A (LSB)
- * - ESP32 GPIO33 → CD4051 S1/B (pin 10) - Selector B
- * - CD4051 S2/C (pin 9) → GND (fijo en 0, solo usamos canales 0-3)
+ * Esta arquitectura usa 1 solo CD4051 como DEMULTIPLEXOR:
+ * - La señal DAC entra al CD4051 por COM (pin 3)
+ * - El DEMUX activa 1 de 3 caminos (CH0, CH1, CH2)
+ * - Cada camino tiene su filtro RC independiente
+ * - Cada filtro tiene su propia salida BNC
  * 
- * Canales disponibles (S2=0) con filtro RC (C=1µF):
- * - CH0 (S1=0, S0=0): R=6.8kΩ  → Fc=23.4 Hz  (ECG, F99%=21.6 Hz)
- * - CH1 (S1=0, S0=1): R=1.0kΩ  → Fc=159 Hz   (EMG, F99%=146 Hz)
- * - CH2 (S1=1, S0=0): R=33kΩ   → Fc=4.8 Hz   (PPG, F99%=4.9 Hz)
+ * VENTAJAS:
+ * - Solo 1 CD4051 necesario
+ * - 3 salidas BNC independientes (ECG, EMG, PPG simultáneamente disponibles)
+ * - Cada filtro completamente aislado
+ * - Sin interferencia entre canales
+ * - Solo el canal seleccionado recibe la señal DAC
  * 
- * Red de salida (filtro RC por canal, capacitor compartido C=1µF):
+ * ═══════════════════════════════════════════════════════════════════════════
+ * DIAGRAMA DE CONEXIONES:
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- *                    ┌─────────────────────┐
- *   CD4051 COM ──────┤  FILTRO RC ACTIVO   ├──────► BNC (+)
- *                    └─────────────────────┘
+ *     ESP32          LM358              CD4051
+ *    ┌──────┐      ┌────────┐          (DEMUX)
+ *    │      │      │        │        ┌─────────┐
+ *    │GPIO25├──────┤+ Buffer├────────┤COM(pin3)│
+ *    │(DAC) │      │  OUT   │        │         │
+ *    │      │      └────────┘        │         │    ┌─[6.8kΩ]─┬─[1µF]─GND ──► BNC_ECG
+ *    │      │                        │CH0(13)  ├────┘         │
+ *    │GPIO32├────────────────────────┤S0(11)   │              │
+ *    │(S0)  │                        │         │    ┌─[1.0kΩ]─┬─[1µF]─GND ──► BNC_EMG
+ *    │      │                        │CH1(14)  ├────┘         │
+ *    │GPIO33├────────────────────────┤S1(10)   │              │
+ *    │(S1)  │                        │         │    ┌─[33kΩ]──┬─[1µF]─GND ──► BNC_PPG
+ *    │      │                        │CH2(15)  ├────┘         │
+ *    │      │                        │         │              │
+ *    │ GND  ├────────────────────────┤S2(9)=GND│              │
+ *    └──────┘                        │VCC=5V   │              │
+ *                                    │GND,VEE,INH=GND         │
+ *                                    └─────────┘              │
+ *                                                            GND
  * 
- *   CH0 ──[6.8kΩ]──┬── NODO ──[1µF]── GND   (Fc=23.4Hz para ECG)
- *   CH1 ──[1.0kΩ]──┤           │
- *   CH2 ──[33kΩ]───┘           └──► BNC (+)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * FILTROS RC INDEPENDIENTES (cada uno con su propio capacitor C=1µF):
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * NOTA: El filtro 1kΩ en CH1 (EMG) se agregó para atenuar ruido
- * de alta frecuencia introducido por el CD4051 (Ron≈80Ω @5V).
+ *   DEMUX CH0 ──[R=6.8kΩ]──┬──[C=1µF]── GND  ──► BNC_ECG (Fc=23.4Hz)
+ *   DEMUX CH1 ──[R=1.0kΩ]──┬──[C=1µF]── GND  ──► BNC_EMG (Fc=159Hz)
+ *   DEMUX CH2 ──[R=33kΩ]───┬──[C=1µF]── GND  ──► BNC_PPG (Fc=4.8Hz)
+ * 
+ * NOTA: Solo se usa GPIO32 (S0) y GPIO33 (S1) para seleccionar canal activo.
+ *       S2 conectado a GND permanentemente (solo usamos canales 0-2).
  */
 
 #ifndef CD4051_MUX_H
@@ -40,26 +66,30 @@
 // ============================================================================
 // CONFIGURACIÓN DE PINES (desde config.h)
 // ============================================================================
-// MUX_SELECT_S0 = GPIO32 - Selector A (LSB)
-// MUX_SELECT_S1 = GPIO33 - Selector B
-// S2 está conectado a GND (siempre 0)
+// MUX_SELECT_S0 = GPIO32 - Selector A (LSB) → CD4051 pin 11
+// MUX_SELECT_S1 = GPIO33 - Selector B       → CD4051 pin 10
+// S2 conectado a GND (siempre 0, solo usamos CH0-CH2)
 
 #define MUX_S0_PIN          MUX_SELECT_S0
 #define MUX_S1_PIN          MUX_SELECT_S1
-#define MUX_ENABLE_PIN      -1      // No usado (ENABLE conectado a GND)
+#define MUX_ENABLE_PIN      -1      // No usado (INH conectado a GND)
 
 // ============================================================================
-// CANALES DEL MULTIPLEXOR (todos con filtro RC, C=1µF compartido)
+// CANALES DEL DEMULTIPLEXOR CD4051
 // ============================================================================
+// Un solo CD4051 distribuye la señal DAC a 3 caminos independientes:
+// - CH0 → Filtro ECG (6.8kΩ) → BNC_ECG
+// - CH1 → Filtro EMG (1.0kΩ) → BNC_EMG  
+// - CH2 → Filtro PPG (33kΩ)  → BNC_PPG
 enum class MuxChannel : uint8_t {
-    CH0_ECG_6K8     = 0,    // Canal 0: R=6.8kΩ, Fc=23.4 Hz (ECG)
-    CH1_EMG_1K0     = 1,    // Canal 1: R=1.0kΩ, Fc=159 Hz  (EMG)
-    CH2_PPG_33K     = 2,    // Canal 2: R=33kΩ,  Fc=4.8 Hz  (PPG)
+    CH0_ECG_6K8     = 0,    // Canal 0: R=6.8kΩ, C=1µF, Fc=23.4Hz → BNC_ECG
+    CH1_EMG_1K0     = 1,    // Canal 1: R=1.0kΩ, C=1µF, Fc=159Hz  → BNC_EMG
+    CH2_PPG_33K     = 2,    // Canal 2: R=33kΩ,  C=1µF, Fc=4.8Hz  → BNC_PPG
     CH3_UNUSED      = 3,    // Canal 3: No conectado
-    CH4_UNUSED      = 4,    // Canal 4: No conectado
-    CH5_UNUSED      = 5,    // Canal 5: No conectado
-    CH6_UNUSED      = 6,    // Canal 6: No conectado
-    CH7_UNUSED      = 7     // Canal 7: No conectado (requiere S2=1)
+    CH4_UNUSED      = 4,    // Canal 4: No accesible (S2=GND)
+    CH5_UNUSED      = 5,    // Canal 5: No accesible
+    CH6_UNUSED      = 6,    // Canal 6: No accesible
+    CH7_UNUSED      = 7     // Canal 7: No accesible
 };
 
 // Alias para tipo de señal (más semántico)

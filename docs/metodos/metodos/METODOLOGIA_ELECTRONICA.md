@@ -372,9 +372,9 @@ La configuración de celdas 18650 en paralelo forma una "mini power bank" y requ
 | Eficiencia @ 0.8A | 92% |
 | Eficiencia @ 1.2A | 88% |
 
-**Cadena energética:** USB 5V (IP5306) → BMS 1S 3A → Pack 2×18650 (paralelo) → Switch → XL6009 → [Fusible 1.5A] → [Filtro LC] → ESP32/Nextion/LM358.
+**Cadena energética:** USB 5V (IP5306) → BMS 1S 3A → Pack 2×18650 (paralelo) → Switch → XL6009 → ESP32/Nextion/LM358/CD4051.
 
-El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 gestiona el perfil CC/CV. El fusible 1.5A protege la carga contra cortocircuito, y el filtro LC (22µH + 1µF + 470nF) suprime el ruido de switching del XL6009.
+El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 gestiona el perfil CC/CV de carga. El XL6009 eleva el voltaje de 3.7V a 5V estables para alimentar todos los componentes.
 
 ### 2.5 Arquitectura del Sistema Electrónico
 
@@ -383,12 +383,12 @@ El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                   BIOSIGNALSIMULATOR PRO v3.0                        │
-│                  ARQUITECTURA DE DOS PLACAS                          │
+│                     ARQUITECTURA SIMPLIFICADA                        │
 ├──────────────────────────────────────────────────────────────────────┤
 │                                                                       │
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │             SUBSISTEMA DE ALIMENTACIÓN                        │  │
-│  │  (Módulos externos + Placa de Filtrado)                       │  │
+│  │                   (Módulos externos)                          │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                       │
 │  USB-C ──► IP5306 ──► BMS 1S 3A ──► BATERÍAS 2×18650 (5200 mAh)     │
@@ -401,23 +401,11 @@ El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 
 │                                     XL6009 (3.7V → 5V)               │
 │                                       η ≈ 88-92%                     │
 │                                              │                        │
+│                                              │ +5V                    │
 │                                              ▼                        │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │           PLACA 1: FILTRADO DE ALIMENTACIÓN                  │   │
-│  │             (PCB 5×7 cm, cara única)                         │   │
-│  │                                                              │   │
-│  │     [F1: Fusible 1.5A] ──► [C14: 470µF] ──► [L1: 22µH]      │   │
-│  │                                │                │            │   │
-│  │                               GND          [C15: 1µF]        │   │
-│  │                                                │             │   │
-│  │                                               GND            │   │
-│  └────────────────────────┬─────────────────────────────────────┘   │
-│                           │ +5V_CTRL (limpio)                       │
-│                           │                                         │
-│                           ▼                                         │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │       PLACA 2: GENERACIÓN Y CONTROL DE SEÑAL                │   │
-│  │             (PCB 10×15 cm)                                   │   │
+│  │     PLACA PRINCIPAL: GENERACIÓN Y CONTROL DE SEÑAL          │   │
+│  │                  (PCB 10×15 cm)                              │   │
 │  │                                                              │   │
 │  │  ┌────────────┐   ┌──────────────┐   ┌──────────────┐       │   │
 │  │  │   ESP32    │   │   NEXTION    │   │  LED RGB     │       │   │
@@ -435,22 +423,17 @@ El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 
 │  │         │         │                                          │   │
 │  │         │         ▼                                          │   │
 │  │         │    ┌─────────┐                                     │   │
-│  │         ├───►│ CD4051  │ MUX Analógico                       │   │
+│  │         ├───►│ CD4051  │ DEMUX Analógico                     │   │
 │  │      GPIO32/│  (S0/S1) │                                     │   │
 │  │       33    └────┬────┘                                      │   │
 │  │                  │                                           │   │
-│  │                  ├─► CH0: R=6.8kΩ  (ECG) ─┐                  │   │
-│  │                  ├─► CH1: R=1.0kΩ  (EMG) ─┤                  │   │
-│  │                  └─► CH2: R=33kΩ   (PPG) ─┤                  │   │
-│  │                                            │                 │   │
-│  │                                            ▼                 │   │
-│  │                                      [C: 1µF común]          │   │
-│  │                                            │                 │   │
-│  │                                            ▼                 │   │
-│  │                                     ┌──────────┐             │   │
-│  │                                     │   BNC    │ ──► Salida  │   │
-│  │                                     │  Conector│             │   │
-│  │                                     └──────────┘             │   │
+│  │                  ├─► CH0: R=6.8kΩ + C=1µF ──► BNC_ECG        │   │
+│  │                  ├─► CH1: R=1.0kΩ + C=1µF ──► BNC_EMG        │   │
+│  │                  └─► CH2: R=33kΩ  + C=1µF ──► BNC_PPG        │   │
+│  │                                                              │   │
+│  │                  (3 filtros RC independientes)               │   │
+│  │                  (3 salidas BNC separadas)                   │   │
+│  │                                                              │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                       │
 └──────────────────────────────────────────────────────────────────────┘
@@ -458,75 +441,11 @@ El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 
 
 **Descripción de la arquitectura:**
 
-El sistema se divide en dos placas PCB físicamente separadas:
+El sistema utiliza una **placa principal única** que integra todos los componentes de generación y control:
 
-1. **Placa de Filtrado (5×7 cm):** Ubicada entre el módulo XL6009 y la placa de control. Contiene el fusible de protección (1.5A), el filtro LC (22µH + 1µF + 470nF) y entrega +5V limpio y protegido.
+- **Placa Principal (10×15 cm):** Contiene el ESP32, la interfaz Nextion, el buffer LM358, el demultiplexor CD4051 que distribuye la señal DAC a 3 filtros RC independientes con sus correspondientes 3 conectores BNC de salida (ECG, EMG, PPG). La alimentación de 5V proviene directamente del módulo XL6009.
 
-2. **Placa de Control (10×15 cm):** Contiene el ESP32, la interfaz Nextion, el buffer LM358, el multiplexor CD4051 con filtros RC selectivos, y el conector BNC de salida.
-
-#### 2.5.2 Placa 1: Filtrado de Alimentación
-
-**Objetivo:** Proteger y limpiar la tensión de 5V proveniente del regulador XL6009 antes de alimentar los componentes sensibles de la placa de control.
-
-**Topología implementada:**
-
-```
-  VIN (+5V del XL6009)
-          │
-    ┌─────┴─────┐
-    │  F1 1.5A  │ Fusible de protección
-    └─────┬─────┘
-          │
-    ┌─────┴─────┐
-    │  C14 470µF│ Capacitor de entrada (electrolítico)
-    │           │
-    └─────┬─────┘
-          │          GND
-          │
-    ┌─────┴─────┐
-    │  L1 22µH  │ Inductor de filtrado
-    └─────┬─────┘
-          │
-    ┌─────┴─────┐
-    │  C15 1µF  │ Capacitor de salida (cerámico X7R)
-    │           │
-    └─────┬─────┘
-          │          GND
-          │
-     +5V_CTRL (hacia Placa 2)
-```
-
-**Componentes de la Placa 1:**
-
-| Designador | Componente | Valor | Función |
-|------------|------------|-------|---------|
-| F1 | Fusible (5×20mm) | 1.5A | Protección contra sobrecorriente |
-| C14 | Capacitor electrolítico | 470µF/25V | Absorbe picos del XL6009 |
-| L1 | Inductor | 22µH/3A | Filtrado de ruido de switching |
-| C15 | Capacitor cerámico | 1µF X7R | Filtrado de alta frecuencia |
-
-**Frecuencia de corte del filtro LC:**
-
-$$f_c = \frac{1}{2\pi\sqrt{LC}} = \frac{1}{2\pi\sqrt{22\mu H \times 1\mu F}} \approx 34 \text{ kHz}$$
-
-**Atenuación del ripple del XL6009:**
-
-- Frecuencia de switching: ~400 kHz (según datasheet)
-- Relación: 400 kHz / 34 kHz ≈ 11.8× (1.07 décadas)
-- Atenuación: ~43 dB @ 400 kHz
-- Ripple residual: < 1 mV (partiendo de 50-100 mV típico)
-
-**Criterios de diseño de la PCB:**
-
-| Criterio | Implementación |
-|----------|----------------|
-| Cara única (Bottom) | Todo el ruteo y plano GND en cara inferior |
-| Ancho de pistas | ≥1.2 mm para líneas de potencia (VIN_CTRL, +5V_CTRL) |
-| Componentes agrupados | F1, C14, L1, C15 dentro de 15 mm para minimizar lazo |
-| Conectores alineados | PWR_XL6009 y PWR_BNC enfrentados (entrada/salida en línea recta) |
-| Montaje | 4 tornillos M1.6×6 mm al chasis, plano GND conectado a tornillos |
-
-#### 2.5.3 Placa 2: Generación y Control de Señal
+#### 2.5.2 Placa Principal: Generación y Control de Señal
 
 **Objetivo:** Generar señales biomédicas (ECG, EMG, PPG) configurables mediante DAC, acondicionar la señal con buffer y filtros selectivos, y proporcionar interfaz de usuario táctil.
 
@@ -543,9 +462,21 @@ $$f_c = \frac{1}{2\pi\sqrt{LC}} = \frac{1}{2\pi\sqrt{22\mu H \times 1\mu F}} \ap
 **B. Subsistema de Acondicionamiento de Señal**
 
 ```
-DAC (GPIO25) → LM358 Buffer → CD4051 MUX → Filtro RC → BNC
-  0-3.3V         Ganancia ×1    Selección    Fc variable  Salida
-                                CH0/CH1/CH2
+DAC (GPIO25) → LM358 Buffer → CD4051 DEMUX → 3 Filtros RC → 3 BNC
+  0-3.3V         Ganancia ×1    Selección      Independientes   Salidas
+                                CH0/CH1/CH2                      ECG/EMG/PPG
+```
+
+**Arquitectura Final con 3 Salidas BNC Independientes:**
+
+Debido a las limitaciones de impedancia del CD4051 con señales analógicas continuas (ver sección 2.5.2.1), se adoptó una arquitectura simplificada con un solo CD4051 como DEMULTIPLEXOR y 3 salidas BNC independientes:
+
+```
+                              ┌──[6.8kΩ]──┬──[1µF]──GND ──► BNC_ECG
+                              │           │
+DAC → LM358 → CD4051(DEMUX) ──┼──[1.0kΩ]──┬──[1µF]──GND ──► BNC_EMG  
+                              │           │
+                              └──[33kΩ]───┬──[1µF]──GND ──► BNC_PPG
 ```
 
 **Cadena de acondicionamiento detallada:**
@@ -568,10 +499,77 @@ DAC (GPIO25) → LM358 Buffer → CD4051 MUX → Filtro RC → BNC
 
 **Notas de diseño:**
 
-- El capacitor de 1µF es **común** para los 3 canales (compartido)
-- Las diferentes Fc se logran variando solo la resistencia
+- Cada canal tiene su **propio capacitor de 1µF** (3 capacitores independientes)
+- Las diferentes Fc se logran variando la resistencia en serie
 - El pin S2 del CD4051 se conecta a GND (limita canales a 0-3)
-- El LM358 se usa por disponibilidad local; el MCP6002 rail-to-rail sería ideal
+- El LM358 se usa como buffer de entrada por disponibilidad local
+- **3 salidas BNC independientes:** ECG, EMG y PPG tienen conectores separados
+
+---
+
+### 2.5.2.1 Justificación de la Arquitectura con 3 BNC: Problemas de Impedancia del CD4051
+
+> **⚠️ SECCIÓN CRÍTICA DE DISEÑO:** Esta sección documenta los problemas encontrados durante el desarrollo y la solución adoptada.
+
+#### Problema Original: Uso del CD4051 como MUX de Salida
+
+Inicialmente se diseñó una arquitectura con un solo BNC y el CD4051 seleccionando entre 3 filtros RC que compartían un capacitor común. Durante las pruebas se detectaron los siguientes problemas:
+
+| Problema Detectado | Causa | Efecto Observado |
+|--------------------|-------|------------------|
+| **Caída de amplitud** | R_ON del CD4051 (~100-400Ω) forma divisor con carga | Pérdida de 10-30% de amplitud |
+| **Offset de voltaje** | Corrientes de fuga + alta impedancia de fuente | Desplazamiento DC de 50-200mV |
+| **Crosstalk entre canales** | Capacitancia parásita + resistencias en paralelo | Señal contaminada de otros canales |
+| **Resistencias en paralelo** | Diseño con capacitor compartido | Los 3 filtros cargan la señal simultáneamente |
+
+#### Análisis del Problema de Resistencias en Paralelo
+
+Con el diseño original donde las 3 resistencias del filtro (6.8kΩ, 1kΩ, 33kΩ) compartían un nodo común con el capacitor:
+
+```
+R_equivalente = 1 / (1/6.8k + 1/1k + 1/33k) = ~870Ω
+```
+
+Esto causaba que **todas las resistencias cargaran la señal simultáneamente**, creando un divisor de voltaje inesperado y pérdida de señal significativa.
+
+#### Problemas Conocidos del CD4051 con Señales Analógicas Continuas
+
+Según la documentación técnica y experiencias de la comunidad electrónica:
+
+1. **R_ON variable con voltaje:** La resistencia ON del switch (100-400Ω) varía con el nivel de señal, causando distorsión no lineal.
+
+2. **Alta impedancia requerida:** Para minimizar caídas de voltaje por R_ON, la carga debe ser >>10× R_ON (idealmente >10kΩ).
+
+3. **Necesidad de buffers:** Se recomienda usar buffers op-amp tanto a la entrada como a la salida del CD4051 para aislar impedancias.
+
+4. **Crosstalk capacitivo:** En aplicaciones de audio/señales continuas, las capacitancias parásitas entre canales causan "bleeding" de señal.
+
+#### Solución Adoptada: Arquitectura con 3 BNC Independientes
+
+En lugar de usar 2 CD4051 (DEMUX + MUX) con buffers adicionales, se optó por una solución más simple y robusta:
+
+```
+                              ┌──[6.8kΩ]──┬──[1µF]──GND ──► BNC_ECG
+                              │           │
+DAC → LM358 → CD4051(DEMUX) ──┼──[1.0kΩ]──┬──[1µF]──GND ──► BNC_EMG  
+                              │           │
+                              └──[33kΩ]───┬──[1µF]──GND ──► BNC_PPG
+```
+
+| Ventaja | Descripción |
+|---------|-------------|
+| **Sin MUX de salida** | Elimina R_ON y distorsión en la etapa de salida |
+| **Filtros aislados** | Cada filtro tiene su propio capacitor, sin carga paralela |
+| **Sin crosstalk** | Las señales no comparten camino de salida |
+| **Simplicidad** | Solo 1 CD4051 en lugar de 2 + buffer adicional |
+| **Costo reducido** | Menos componentes activos, solo 3 BNC adicionales |
+| **3 salidas disponibles** | Aunque solo 1 está activa, las 3 están conectadas permanentemente |
+
+#### Trade-off Aceptado
+
+- **Desventaja:** Solo 1 de las 3 salidas BNC tiene señal activa en cada momento.
+- **Mitigación:** En uso educativo, solo se conecta un canal al osciloscopio a la vez, por lo que esto no afecta la funcionalidad.
+- **Beneficio neto:** Señal limpia, sin pérdidas de amplitud ni offsets, con arquitectura más simple.
 
 **C. Criterios de diseño de la PCB de control:**
 
@@ -592,7 +590,7 @@ DAC (GPIO25) → LM358 Buffer → CD4051 MUX → Filtro RC → BNC
 | Nextion NX8048T070 | 510 mA | 2.55 W | 650 mA | 3.25 W | Datasheet Nextion |
 | ESP32-WROOM-32 (WiFi AP) | 240 mA | 1.20 W | 350 mA | 1.75 W | ESP32 Datasheet v5.2 |
 | LM358 Buffer (1 canal activo) | 0.7 mA | 0.0035 W | 0.7 mA | 0.0035 W | LM358 Datasheet (1.4mA/2 canales) |
-| CD4051 MUX | 0.5 mA | 0.0025 W | 0.5 mA | 0.0025 W | CD4051 Datasheet |
+| CD4051 DEMUX | 0.5 mA | 0.0025 W | 0.5 mA | 0.0025 W | CD4051 Datasheet |
 | LED RGB | 30 mA | 0.15 W | 30 mA | 0.15 W | Cálculo (3× LED @ 10 mA) |
 | XL6009 pérdidas | 69 mA equiv. | 0.35 W | 162 mA equiv. | 0.81 W | Eficiencia 92%/88% |
 | **TOTAL SISTEMA** | **851 mA** | **4.26 W** | **1194 mA** | **5.97 W** | |
@@ -628,75 +626,66 @@ El sistema se implementa con dos PCB separadas más módulos externos. A continu
 | 7 | Cables AWG 18 (rojo/negro, 2m) | 1 | $0.55 | $0.55 | Novatronic |
 | | **Subtotal alimentación externa** | | | **$26.00** | |
 
-### 3.2 Placa 1: Filtrado de Alimentación (PCB 5×7 cm)
+### 3.2 Placa Principal: Control y Generación - Módulos Activos
 
 | # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
 |---|------------|----------|--------------|----------|-----------|
-| 8 | Portafusible 5×20 mm BLX-A | 1 | $0.70 | $0.70 | Novatronic |
-| 9 | Fusible vidrio 5×20 mm 1.5A | 1 | $0.30 | $0.30 | Novatronic |
-| 10 | Inductor 22µH/3A (9×12 mm, pitch 5 mm) | 1 | $0.60 | $0.60 | Novatronic |
-| 11 | Capacitor electrolítico 470µF/25V (8×14 mm) | 1 | $0.35 | $0.35 | Novatronic |
-| 12 | Capacitor cerámico 1µF/16V X7R | 1 | $0.10 | $0.10 | Novatronic |
-| 13 | Conector 2 pines paso 8.05 mm (PWR_XL6009 / PWR_BNC) | 2 | $0.50 | $1.00 | Novatronic |
-| 14 | PCB perforada 5×7 cm | 1 | $0.80 | $0.80 | Novatronic |
-| 15 | Tornillos M1.6×6 mm (4 uds) | 1 | $0.40 | $0.40 | Ferretería |
-| | **Subtotal Placa 1 (Filtrado)** | | | **$4.25** | |
+| 8 | Nextion NX8048T070 7" 800×480 | 1 | $95.75 | $95.75 | Amazon |
+| 9 | ESP32-WROOM-32 NodeMCU | 1 | $13.35 | $13.35 | Novatronic |
+| 10 | LM358 DIP-8 (buffer seguidor) | 1 | $0.50 | $0.50 | Novatronic |
+| 11 | CD4051 DIP-16 (DEMUX 1:8) | 1 | $0.80 | $0.80 | Novatronic |
+| 12 | LED RGB 5 mm cátodo común | 1 | $0.50 | $0.50 | Novatronic |
+| | **Subtotal Placa Principal - Activos** | | | **$110.90** | |
 
-### 3.3 Placa 2: Control y Generación - Módulos Activos
+### 3.3 Placa Principal: Control y Generación - Pasivos y Conectores
 
 | # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
 |---|------------|----------|--------------|----------|-----------|
-| 16 | Nextion NX8048T070 7" 800×480 | 1 | $95.75 | $95.75 | Amazon |
-| 17 | ESP32-WROOM-32 NodeMCU | 1 | $13.35 | $13.35 | Novatronic |
-| 18 | LM358 DIP-8 (dual op-amp) | 1 | $0.50 | $0.50 | Novatronic |
-| 19 | CD4051 DIP-16 (MUX 8:1) | 1 | $0.80 | $0.80 | Novatronic |
-| 20 | LED RGB 5 mm cátodo común | 1 | $0.50 | $0.50 | Novatronic |
-| | **Subtotal Placa 2 - Activos** | | | **$110.90** | |
-
-### 3.4 Placa 2: Control y Generación - Pasivos y Conectores
-
-| # | Componente | Cantidad | Precio Unit. | Subtotal | Proveedor |
-|---|------------|----------|--------------|----------|-----------|
-| 21 | Resistencia 220Ω 1/4W (LED RGB) | 3 | $0.05 | $0.15 | Novatronic |
-| 22 | Resistencia 6.8kΩ 1/4W (filtro ECG) | 1 | $0.05 | $0.05 | Novatronic |
-| 23 | Resistencia 1.0kΩ 1/4W (filtro EMG) | 1 | $0.05 | $0.05 | Novatronic |
-| 24 | Resistencia 33kΩ 1/4W (filtro PPG) | 1 | $0.05 | $0.05 | Novatronic |
-| 25 | Capacitor cerámico 1µF/16V X7R (filtro BNC compartido) | 1 | $0.10 | $0.10 | Novatronic |
-| 28 | Conector BNC hembra | 1 | $1.20 | $1.20 | Novatronic |
-| 29 | Bornera 2 pines paso 8.05 mm (PWR_IN) | 1 | $0.50 | $0.50 | Novatronic |
-| 30 | Bornera 4 pines paso 8.05 mm (LED RGB / NEXTION) | 2 | $0.80 | $1.60 | Novatronic |
-| 31 | PCB perforada 10×15 cm | 1 | $2.00 | $2.00 | Novatronic |
-| 32 | Tornillos M3×10 mm (4 uds) | 1 | $0.40 | $0.40 | Ferretería |
-| | **Subtotal Placa 2 - Pasivos** | | | **$6.10** | |
+| 13 | Resistencia 220Ω 1/4W (LED RGB) | 3 | $0.05 | $0.15 | Novatronic |
+| 14 | Resistencia 6.8kΩ 1/4W (filtro ECG) | 1 | $0.05 | $0.05 | Novatronic |
+| 15 | Resistencia 1.0kΩ 1/4W (filtro EMG) | 1 | $0.05 | $0.05 | Novatronic |
+| 16 | Resistencia 33kΩ 1/4W (filtro PPG) | 1 | $0.05 | $0.05 | Novatronic |
+| 17 | Capacitor cerámico 1µF/16V X7R (filtro ECG) | 1 | $0.10 | $0.10 | Novatronic |
+| 18 | Capacitor cerámico 1µF/16V X7R (filtro EMG) | 1 | $0.10 | $0.10 | Novatronic |
+| 19 | Capacitor cerámico 1µF/16V X7R (filtro PPG) | 1 | $0.10 | $0.10 | Novatronic |
+| 20 | Conector BNC hembra (ECG) | 1 | $1.20 | $1.20 | Novatronic |
+| 21 | Conector BNC hembra (EMG) | 1 | $1.20 | $1.20 | Novatronic |
+| 22 | Conector BNC hembra (PPG) | 1 | $1.20 | $1.20 | Novatronic |
+| 23 | Bornera 2 pines paso 8.05 mm (PWR_IN) | 1 | $0.50 | $0.50 | Novatronic |
+| 24 | Bornera 4 pines paso 8.05 mm (LED RGB / NEXTION) | 2 | $0.80 | $1.60 | Novatronic |
+| 25 | PCB perforada 10×15 cm | 1 | $2.00 | $2.00 | Novatronic |
+| 26 | Tornillos M3×10 mm (4 uds) | 1 | $0.40 | $0.40 | Ferretería |
+| | **Subtotal Placa Principal - Pasivos** | | | **$8.50** | |
 
 ---
 
 **TOTAL SISTEMA ELECTRÓNICO:**  
-$26.00 (módulos) + $4.25 (Placa 1) + $110.90 (Placa 2 activos) + $6.10 (Placa 2 pasivos) = **$147.25**
+$26.00 (módulos alimentación) + $110.90 (activos) + $8.50 (pasivos) = **$145.40**
 
-### 3.5 Resumen por Etapas de Diseño
+### 3.4 Resumen por Etapas de Diseño
 
 | Etapa | Subsistema | Componentes Clave | Subtotal |
 |-------|------------|-------------------|----------|
 | **Potencia** | Módulos externos | 2× 18650, BMS 1S 3A, IP5306, XL6009, portapilas, switch | $26.00 |
-| **Filtrado** | Placa 1 (5×7 cm) | Fusible 1.5A, inductor 22µH, capacitores 470µF + 1µF | $4.25 |
-| **Control - Activos** | Placa 2 (10×15 cm) | Nextion 7", ESP32, LM358, CD4051, LED RGB | $110.90 |
-| **Control - Pasivos** | Placa 2 (10×15 cm) | Resistencias filtro MUX, capacitor BNC, conectores | $6.10 |
-| | | **TOTAL** | **$147.25** |
+| **Control - Activos** | Placa Principal (10×15 cm) | Nextion 7", ESP32, LM358, CD4051 DEMUX, LED RGB | $110.90 |
+| **Control - Pasivos** | Placa Principal (10×15 cm) | 3× filtros RC independientes (1µF cada uno), 3× BNC | $8.50 |
+| | | **TOTAL** | **$145.40** |
 
 **Notas de diseño:**
 - **Sin divisor resistivo UART:** La Nextion NX8048T070 acepta niveles lógicos TTL 3.3V directamente, eliminando necesidad de divisor resistivo 2kΩ/1kΩ.
-- **LM358 vs MCP6002:** Se implementó LM358 DIP-8 por disponibilidad local en Ecuador. MCP6002 sería ideal para futuras versiones (rail-to-rail).
-- **Filtros MUX selectivos:** CD4051 con resistencias 6.8kΩ (ECG), 1.0kΩ (EMG), 33kΩ (PPG) optimiza frecuencia de corte según análisis FFT.
+- **LM358 como buffer de entrada:** Se implementó LM358 DIP-8 por disponibilidad local en Ecuador. Proporciona baja impedancia para alimentar el DEMUX.
+- **Arquitectura DEMUX con 3 BNC:** CD4051 usado como demultiplexor, distribuyendo la señal DAC a 3 caminos independientes con salidas BNC separadas (ECG, EMG, PPG).
+- **Filtros RC independientes:** Cada canal tiene su propio capacitor de 1µF, eliminando problemas de resistencias en paralelo.
+- **Sin placa de filtrado:** La alimentación de 5V del XL6009 se conecta directamente a la placa principal, simplificando el diseño.
+- **Justificación arquitectura:** Se adoptó esta configuración debido a problemas de impedancia del CD4051 con señales continuas (caídas de amplitud, offsets, crosstalk) cuando se usaba como MUX de salida sin buffer adicional.
 
-### 3.6 Esquemáticos de Referencia
+### 3.5 Esquemáticos de Referencia
 
 Los esquemáticos completos del sistema se realizaron en EasyEDA v1.0:
 
-- **Esquemático 1:** Placa de generación y control (ESP32, CD4051, LM358, Nextion, LED RGB, BNC)
-- **Esquemático 2:** Placa de filtrado de alimentación (F1, C14, L1, C15)
+- **Esquemático:** Placa principal de generación y control (ESP32, CD4051, LM358, Nextion, LED RGB, 3× BNC)
 
-Ambos esquemáticos se encuentran en la carpeta `/docs/diagramas/` en formato PDF y fuente EasyEDA.
+El esquemático se encuentra en la carpeta `/docs/diagramas/` en formato PDF y fuente EasyEDA.
 
 ## 4. Manual de Usuario
 
@@ -795,47 +784,51 @@ f_c = 1 / (2π × R × C)
 
 > **Nota:** Se eligió 1 µF (en lugar de 100 nF) para colocar fc entre la frecuencia máxima de las señales biomédicas (500 Hz) y la frecuencia de muestreo del DAC (4 kHz), cumpliendo el criterio de filtro de reconstrucción: fmax < fc < Fs/2.
 
-#### 2.5.3.1 Implementación: Multiplexor CD4051 para Selección de Filtros RC
+#### 2.5.3.1 Implementación: Demultiplexor CD4051 para Distribución de Señal
 
-Basándose en el análisis espectral FFT de las señales generadas por los modelos matemáticos, se implementó un sistema de selección de filtros RC mediante el multiplexor analógico CD4051. Este enfoque permite optimizar la frecuencia de corte según el tipo de señal activa, maximizando la atenuación del stepping del DAC mientras se preserva el contenido espectral útil.
+Basándose en el análisis espectral FFT de las señales generadas por los modelos matemáticos, se implementó un sistema de distribución de señal mediante el demultiplexor analógico CD4051. Este enfoque permite dirigir la señal DAC al filtro RC correspondiente según el tipo de señal activa, con cada canal teniendo su propia salida BNC independiente.
 
-**Topología implementada: DAC → LM358 Buffer → CD4051 → RC Filter → BNC**
+**Topología implementada: DAC → LM358 Buffer → CD4051 DEMUX → 3× RC Filter → 3× BNC**
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│              CADENA DE ACONDICIONAMIENTO DE SEÑAL ANALÓGICA                 │
+│      CADENA DE ACONDICIONAMIENTO CON 3 SALIDAS BNC INDEPENDIENTES           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ESP32           LM358              CD4051                   Filtro RC      │
-│  ┌──────┐       ┌──────┐          ┌──────────┐             ┌──────────┐    │
-│  │GPIO25│──DAC──│Buffer│──────────│► COM     │             │          │    │
-│  │(DAC1)│       │ ×1   │          │          │             │   ───┬── │    │
-│  └──────┘       └──────┘          │ CH0 ◄────│──[6.8kΩ]────│►     │   │    │
-│                                   │          │             │      C   │──►BNC
-│  ┌──────┐                         │ CH1 ◄────│──[1.0kΩ]────│►   1µF   │    │
-│  │GPIO32│─────────────────────────│► S0      │             │      │   │    │
-│  │GPIO33│─────────────────────────│► S1      │             │   ───┴── │    │
-│  └──────┘                         │ S2=GND   │             │    GND   │    │
-│                                   └──────────┘             └──────────┘    │
+│  ESP32           LM358              CD4051                 3× Filtros RC    │
+│  ┌──────┐       ┌──────┐          ┌──────────┐                              │
+│  │GPIO25│──DAC──│Buffer│──────────│► COM     │                              │
+│  │(DAC1)│       │ ×1   │          │          │   ┌─[6.8kΩ]─┬─[1µF]─GND      │
+│  └──────┘       └──────┘          │ CH0 ─────│───┤         └────►BNC_ECG    │
+│                                   │          │   │                          │
+│  ┌──────┐                         │ CH1 ─────│───┼─[1.0kΩ]─┬─[1µF]─GND      │
+│  │GPIO32│─────────────────────────│► S0      │   │         └────►BNC_EMG    │
+│  │GPIO33│─────────────────────────│► S1      │   │                          │
+│  └──────┘                         │ S2=GND   │   └─[33kΩ]──┬─[1µF]─GND      │
+│                                   │ CH2 ─────│─────────────└────►BNC_PPG    │
+│                                   └──────────┘                              │
 │                                                                             │
+│  NOTA: Solo 1 canal activo a la vez. 3 capacitores independientes (1µF c/u)│
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Tabla: Filtros RC implementados según análisis FFT**
+**Tabla: Filtros RC implementados según análisis FFT (cada uno con su capacitor)**
 
-| Señal | F 99% Energía | Fc Diseño | R (C=1µF) | Canal CD4051 | Atenuación @ 4kHz |
-|-------|---------------|-----------|-----------|--------------|-------------------|
-| **ECG** | 21.6 Hz | 23.4 Hz | 6.8 kΩ | CH0 (S1=0, S0=0) | -44 dB |
-| **EMG** | 146.3 Hz | 159 Hz | 1.0 kΩ | CH1 (S1=0, S0=1) | -28 dB |
-| **PPG** | 4.9 Hz | 4.82 Hz | 33 kΩ | CH2 (S1=1, S0=0) | -58 dB |
+| Señal | F 99% Energía | Fc Diseño | R | C | Salida BNC | Atenuación @ 4kHz |
+|-------|---------------|-----------|---|---|------------|-------------------|
+| **ECG** | 21.6 Hz | 23.4 Hz | 6.8 kΩ | 1µF | BNC_ECG | -44 dB |
+| **EMG** | 146.3 Hz | 159 Hz | 1.0 kΩ | 1µF | BNC_EMG | -28 dB |
+| **PPG** | 4.9 Hz | 4.82 Hz | 33 kΩ | 1µF | BNC_PPG | -58 dB |
 
 **Justificación de la selección de componentes:**
 
-1. **Buffer LM358:** Proporciona impedancia de salida baja (<100Ω) para alimentar el multiplexor sin pérdidas significativas. Configurado como seguidor de voltaje (ganancia unitaria).
+1. **Buffer LM358:** Proporciona impedancia de salida baja (<100Ω) para alimentar el demultiplexor sin pérdidas significativas. Configurado como seguidor de voltaje (ganancia unitaria).
 
-2. **Multiplexor CD4051:** Seleccionado por su baja resistencia Ron (80Ω típico @ VDD=5V), bajo consumo y disponibilidad local. El pin S2 se conectó a GND permanentemente, limitando la selección a canales 0-3.
+2. **Demultiplexor CD4051:** Usado como DEMUX (1 entrada, 3 salidas) para distribuir la señal DAC a uno de los tres filtros RC. El pin S2 se conectó a GND permanentemente, limitando la selección a canales 0-2.
 
-3. **Capacitor común (1µF):** Un único capacitor cerámico X7R compartido por todas las ramas simplifica el diseño y reduce costos. Las diferentes Fc se logran variando únicamente la resistencia.
+3. **3× Capacitores independientes (1µF):** Cada filtro tiene su propio capacitor cerámico X7R, eliminando problemas de resistencias en paralelo que causaban pérdida de señal en la arquitectura original con capacitor compartido.
+
+4. **3× Conectores BNC:** Cada tipo de señal tiene su propia salida física, permitiendo conexión directa al osciloscopio sin necesidad de MUX de salida.
 
 **Cálculo de frecuencias de corte:**
 
@@ -875,7 +868,7 @@ El error introducido por Ron es inferior al 1.2% en todos los casos, despreciabl
 | Nextion NX8048T070 | 510 mA | 2.55 W | 650 mA | 3.25 W | Datasheet Basic Series [1] |
 | ESP32-WROOM-32 (WiFi AP) | 240 mA | 1.20 W | 350 mA | 1.75 W | ESP32 Datasheet v5.2, Tabla 5-4 [2] |
 | LM358 Buffer (1 canal activo) | 0.7 mA | 0.0035 W | 0.7 mA | 0.0035 W | LM358 Datasheet (1.4mA/2 canales) |
-| CD4051 MUX | 0.5 mA | 0.0025 W | 0.5 mA | 0.0025 W | CD4051 Datasheet |
+| CD4051 DEMUX | 0.5 mA | 0.0025 W | 0.5 mA | 0.0025 W | CD4051 Datasheet |
 | LED RGB | 30 mA | 0.15 W | 30 mA | 0.15 W | Cálculo: Vf≈2.0V (R), 3.0V (G/B) |
 | XL6009 (pérdidas) | 69 mA equiv. | 0.35 W | 162 mA equiv. | 0.81 W | XL6009 Datasheet, η≈92%/88% [4] |
 | **TOTAL** | **851 mA** | **4.26 W** | **1194 mA** | **5.97 W** | |
