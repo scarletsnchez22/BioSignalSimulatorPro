@@ -25,7 +25,7 @@
 #define WIFI_SSID           "BioSignalSimulator_Pro"
 #define WIFI_PASSWORD       "biosignal123"
 #define WIFI_CHANNEL        1
-#define WIFI_MAX_CLIENTS    6
+#define WIFI_MAX_CLIENTS    4       // Reducido a 4 para mayor estabilidad
 
 // IP Configuration
 #define WIFI_LOCAL_IP       IPAddress(192, 168, 4, 1)
@@ -40,9 +40,10 @@
 // CONFIGURACIÓN STREAMING
 // ============================================================================
 
-#define WS_SEND_INTERVAL_MS     20      // 50 Hz de streaming (menos agresivo)
+#define WS_SEND_INTERVAL_MS     25      // 40 Hz - Más conservador para 4 clientes
 #define WS_METRICS_INTERVAL_MS  500     // 2 Hz para métricas
-#define WS_MAX_QUEUE_SIZE       10      // Buffer de mensajes
+#define WS_MAX_QUEUE_SIZE       8       // Buffer reducido para mejor gestión de memoria
+#define WS_CLEANUP_INTERVAL_MS  1000    // Cleanup cada 1 segundo
 
 // ============================================================================
 // ESTRUCTURAS DE DATOS
@@ -163,6 +164,7 @@ private:
     
     uint32_t _lastSendTime;
     uint32_t _lastMetricsTime;
+    uint32_t _lastCleanupTime;      // Para cleanup periódico
     
     // Handlers
     void setupRoutes();

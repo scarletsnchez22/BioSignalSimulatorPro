@@ -21,6 +21,7 @@ WiFiServer_BioSim::WiFiServer_BioSim()
     , _streamingEnabled(false)
     , _lastSendTime(0)
     , _lastMetricsTime(0)
+    , _lastCleanupTime(0)
 {
 }
 
@@ -218,8 +219,11 @@ void WiFiServer_BioSim::sendSignalData(const WSSignalData& data) {
     if (now - _lastSendTime < WS_SEND_INTERVAL_MS) return;
     _lastSendTime = now;
     
-    // Limpiar clientes antes de enviar
-    _ws->cleanupClients();
+    // Cleanup periódico más frecuente para evitar acumulación
+    if (now - _lastCleanupTime >= WS_CLEANUP_INTERVAL_MS) {
+        _ws->cleanupClients();
+        _lastCleanupTime = now;
+    }
     
     if (_ws->count() == 0) return;
     
