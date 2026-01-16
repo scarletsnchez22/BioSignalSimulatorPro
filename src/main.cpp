@@ -261,7 +261,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                         nextion->updateECGScaleLabels();  // 0.2 mV/div, 350 ms/div
                         break;
                     case SignalType::EMG: 
-                        nextion->updateEMGScaleLabels();  // RAW: 1.0 mV/div, ENV: 0.2 mV/div, 700 ms/div
+                        nextion->updateEMGScaleLabels();  // RAW: 1.0 mV/div, ENV: 1.0 mV/div, 700 ms/div
                         break;
                     case SignalType::PPG: 
                         nextion->updatePPGScaleLabels();  // 15 mV/div, 700 ms/div
@@ -501,7 +501,7 @@ void handleUIEvent(UIEvent event, uint8_t param) {
                 }
                 emgSliderValues.modified = false;
                 nextion->goToPage(NextionPage::WAVEFORM_EMG);
-                nextion->updateEMGScaleLabels();  // Actualizar escalas: RAW 1.0 mV/div, ENV 0.2 mV/div, 700 ms/div
+                nextion->updateEMGScaleLabels();  // Actualizar escalas: RAW 1.0 mV/div, ENV 1.0 mV/div, 700 ms/div
             } else if (stateMachine.getSelectedSignal() == SignalType::PPG) {
                 if (ppgSliderValues.modified) {
                     PPGModel& ppg = signalEngine->getPPGModel();
@@ -907,6 +907,9 @@ void handleStateChange(SystemState oldState, SystemState newState) {
 // Variable estática para tracking de muestras
 static uint32_t lastSampleCount = 0;
 
+// NOTA: Sin interpolación - envío directo 1 muestra = 1 punto Nextion
+// Escalas: ECG 350 ms/div (3.5s), EMG/PPG 700 ms/div (7.0s)
+
 // Función para resetear contadores (llamada al iniciar nueva simulación)
 void resetDisplayCounters() {
     lastSampleCount = 0;
@@ -919,10 +922,10 @@ void updateDisplay() {
     
     // =========================================================================
     // WAVEFORM: Arquitectura unificada con signal_engine (contador de ticks)
-    // Downsampling respecto a Fs_timer (4kHz) usando NEXTION_DOWNSAMPLE_*
-    // ECG: 4000/200 = 20:1 → 200 Hz efectivo
-    // EMG: 4000/100 = 40:1 → 100 Hz efectivo
-    // PPG: 4000/100 = 40:1 → 100 Hz efectivo
+    // Downsampling respecto a Fs_timer (2kHz) usando NEXTION_DOWNSAMPLE_*
+    // ECG: 2000/200 = 10:1 → 200 Hz efectivo
+    // EMG: 2000/100 = 20:1 → 100 Hz efectivo
+    // PPG: 2000/100 = 20:1 → 100 Hz efectivo
     // =========================================================================
     if (signalEngine->getState() == SignalState::RUNNING) {
         uint32_t currentSampleCount = signalEngine->getSignalData().sampleCount;
@@ -934,7 +937,7 @@ void updateDisplay() {
             case SignalType::ECG: downsampleRatio = NEXTION_DOWNSAMPLE_ECG; break;
             case SignalType::EMG: downsampleRatio = NEXTION_DOWNSAMPLE_EMG; break;
             case SignalType::PPG: downsampleRatio = NEXTION_DOWNSAMPLE_PPG; break;
-            default: downsampleRatio = 20; break;
+            default: downsampleRatio = 10; break;
         }
         
         // Enviar puntos cada vez que crucemos el múltiplo del ratio, incluso si se acumularon muestras
@@ -958,25 +961,21 @@ void updateDisplay() {
                 bool hasSample = signalEngine->getDisplaySample(sampleIndex, mV_value);
 
                 if (type == SignalType::ECG && hasSample) {
-                    // ECG: Un solo canal - getter retorna 0-255
+                    // ECG: Un solo canal - SIN interpolación (prueba directa)
                     ECGModel& ecg = signalEngine->getECGModel();
                     uint8_t waveValue = ecg.getWaveformValue();
                     nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, waveValue);
                     
                 } else if (type == SignalType::EMG) {
-                    // EMG: DOS canales - getters retornan 0-255
+                    // EMG: DOS canales - SIN interpolación (prueba directa)
                     EMGModel& emg = signalEngine->getEMGModel();
-                    
-                    // Canal 0: Señal RAW bipolar
                     uint8_t ch0_value = emg.getWaveformValue_Ch0();
-                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, ch0_value);
-                    
-                    // Canal 1: Envolvente RMS
                     uint8_t ch1_value = emg.getWaveformValue_Ch1();
+                    nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, ch0_value);
                     nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 1, ch1_value);
                     
                 } else if (type == SignalType::PPG) {
-                    // PPG: Un solo canal - getter retorna 0-255
+                    // PPG: Un solo canal - SIN interpolación (prueba directa)
                     PPGModel& ppg = signalEngine->getPPGModel();
                     uint8_t waveValue = ppg.getWaveformValue();
                     nextion->addWaveformPoint(WAVEFORM_COMPONENT_ID, 0, waveValue);
@@ -1197,7 +1196,7 @@ void loop() {
     // ============================================================================
     // ARQUITECTURA DE MUESTREO:
     // ┌─────────────────────────────────────────────────────────────────────────┐
-    // │  Timer ISR @ 4000 Hz (FS_TIMER_HZ)                                      │
+    // │  Timer ISR @ 2000 Hz (FS_TIMER_HZ)                                      │
     // │  └─> DAC escribe señal a máxima resolución temporal                     │
     // │       └─> Filtro RC analógico suaviza escalones del DAC                 │
     // │            └─> Señal analógica lista para osciloscopio/ECG real         │
@@ -1208,7 +1207,7 @@ void loop() {
     // │       └─> EMG/PPG: 100 Hz (10ms) - Señales más lentas, menos puntos    │
     // │                                                                          │
     // │  JUSTIFICACIÓN TÉCNICA:                                                 │
-    // │  - DAC @ 4kHz: Necesario para reconstrucción analógica de alta calidad │
+    // │  - DAC @ 2kHz: Suficiente para señales biomédicas (BW < 500 Hz)        │
     // │  - Visualización @ 100-200 Hz: Suficiente para percepción humana       │
     // │  - Promediado: Actúa como filtro anti-aliasing natural                  │
     // │  - Nyquist: ECG tiene componentes hasta ~150 Hz, 200 Hz es suficiente  │
@@ -1220,9 +1219,9 @@ void loop() {
         static float adcAccum = 0.0f;
         static uint8_t sampleCount = 0;
         
-        // Acumular muestras a 4000 Hz para promediar (igual que Timer ISR)
+        // Acumular muestras a 2000 Hz para promediar (igual que Timer ISR)
         static unsigned long lastSample_us = 0;
-        if (micros() - lastSample_us >= 250) {  // 250 µs = 4000 Hz
+        if (micros() - lastSample_us >= 500) {  // 500 µs = 2000 Hz
             lastSample_us = micros();
             
             uint16_t adcRaw = analogRead(ADC_LOOPBACK_PIN);
@@ -1294,7 +1293,12 @@ void loop() {
                 wsMetrics.rr = (int)ecg.getCurrentRRInterval();
                 wsMetrics.qrs = ecg.getQRSAmplitude();
                 wsMetrics.st = ecg.getSTDeviation_mV();
-                wsMetrics.hrv = ecg.getHRStd();  // HRV como desviación estándar del HR
+                wsMetrics.hrv = ecg.getHRStd();
+                wsMetrics.pr = (int)ecg.getPRInterval_ms();
+                wsMetrics.qtc = (int)ecg.getQTcInterval_ms();
+                wsMetrics.p = ecg.getPAmplitude_mV();
+                wsMetrics.r = ecg.getRAmplitude_mV();
+                wsMetrics.t = ecg.getTAmplitude_mV();
                 break;
             }
             case SignalType::EMG: {
@@ -1311,6 +1315,8 @@ void loop() {
                 wsMetrics.excitation = (int)(emg.getExcitation() * 100);
                 wsMetrics.activeUnits = emg.getActiveMotorUnits();
                 wsMetrics.freq = (int)emg.getFatigueMDF();  // Frecuencia mediana (MDF)
+                wsMetrics.mvc = (int)emg.getContractionLevel();
+                wsMetrics.raw = emg.getCurrentValueMV();
                 break;
             }
             case SignalType::PPG: {
@@ -1327,6 +1333,8 @@ void loop() {
                 wsMetrics.rr = (int)ppg.getCurrentRRInterval();
                 wsMetrics.pi = ppg.getPerfusionIndex();
                 wsMetrics.ac = ppg.getLastACValue();
+                wsMetrics.sys = (int)ppg.getMeasuredSystoleTime();
+                wsMetrics.dia = (int)ppg.getMeasuredDiastoleTime();
                 break;
             }
             default:

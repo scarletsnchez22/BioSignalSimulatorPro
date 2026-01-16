@@ -85,7 +85,7 @@ CLINICAL_STANDARDS = {
 # Configuración del ESP32
 ESP32_CONFIG = {
     'baud_rate': 115200,
-    'fs_timer': 4000,  # Hz - frecuencia del timer ISR
+    'fs_timer': 2000,  # Hz - frecuencia del timer ISR
 }
 
 
@@ -101,7 +101,7 @@ class FFTSpectrumAnalyzer:
     normalización correcta para obtener amplitudes en unidades físicas.
     """
     
-    def __init__(self, port: str, baud: int = 115200, fs: float = 4000.0):
+    def __init__(self, port: str, baud: int = 115200, fs: float = 2000.0):
         """
         Inicializa el analizador.
         
@@ -782,9 +782,9 @@ Ejemplos de uso:
     # Determinar Fs automáticamente según tipo de señal
     # ESP32 envía: ECG @ 200 Hz, EMG/PPG @ 100 Hz (según downsample en main.cpp)
     fs_by_signal = {
-        'ECG': 200.0,   # 4000/20 = 200 Hz
-        'EMG': 100.0,   # 4000/40 = 100 Hz
-        'PPG': 100.0    # 4000/40 = 100 Hz
+        'ECG': 200.0,   # 2000/10 = 200 Hz
+        'EMG': 100.0,   # 2000/20 = 100 Hz
+        'PPG': 100.0    # 2000/20 = 100 Hz
     }
     fs_auto = fs_by_signal.get(args.signal.upper(), 200.0)
     

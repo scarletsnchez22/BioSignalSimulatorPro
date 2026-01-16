@@ -577,6 +577,104 @@ Captura datos del ESP32 vía Serial y analiza con FFT.
 
 ---
 
-**Revisado:** 06.01.2026  
+## 📊 Análisis Automático de Resultados para Tesis
+
+### 🔬 Análisis de Parámetros Temporales
+
+Mide automáticamente PR, QRS, QTc, RR para ECG y otros parámetros clínicos.
+
+```powershell
+# Analizar ECG (detecta picos R y calcula parámetros)
+& $PYTHON "tools/temporal_parameters_analyzer.py" --port COM4 --signal ECG --duration 10
+
+# Analizar EMG (RMS, MDF, tiempo de contracción)
+& $PYTHON "tools/temporal_parameters_analyzer.py" --port COM4 --signal EMG --duration 10
+
+# Analizar PPG (HR, PI, tiempos sistólico/diastólico)
+& $PYTHON "tools/temporal_parameters_analyzer.py" --port COM4 --signal PPG --duration 10
+
+# Guardar en carpeta específica
+& $PYTHON "tools/temporal_parameters_analyzer.py" --port COM4 --signal ECG --output "results/temporal"
+```
+
+**Salida:** 
+- Reportes TXT con validación vs. rangos clínicos
+- Archivos JSON con datos procesables
+- Gráficos PNG (detección de picos, señales)
+
+---
+
+### ⚡ Monitor de Métricas de Sistema
+
+Mide latencia UI, estabilidad temporal (drift) y pérdida de paquetes.
+
+```powershell
+# Monitorear métricas por 60 segundos
+& $PYTHON "tools/system_metrics_monitor.py" --port COM4 --duration 60
+
+# Especificar tasa esperada (Hz)
+& $PYTHON "tools/system_metrics_monitor.py" --port COM4 --duration 120 --rate 200
+
+# Guardar resultados
+& $PYTHON "tools/system_metrics_monitor.py" --port COM4 --output "results/metrics"
+```
+
+**Salida:**
+- Latencia media, desviación estándar, min/max
+- Gráficos de latencia vs tiempo, histograma, drift
+- Tasa de pérdida de paquetes
+- Evaluación automática (EXCELENTE/ACEPTABLE/MEJORAR)
+
+---
+
+### 🚀 Análisis por Lotes (Automatizado)
+
+Ejecuta TODOS los análisis en secuencia para la tesis.
+
+```powershell
+# Ejecutar análisis completo (requiere interacción)
+& $PYTHON "tools/batch_analysis.py" --port COM4
+
+# Especificar carpeta de salida
+& $PYTHON "tools/batch_analysis.py" --port COM4 --output "tesis_resultados"
+```
+
+**Flujo automático:**
+1. Análisis FFT de modelos (ECG, EMG, PPG) - sin hardware
+2. Parámetros temporales - requiere ESP32 ejecutando señales
+3. Métricas de sistema - monitoreo de 60s
+4. FFT desde hardware (opcional)
+5. Genera resumen consolidado
+
+**Salida:**
+- Carpeta `thesis_results/batch_YYYYMMDD_HHMMSS/`
+- Subcarpetas: `fft_models/`, `temporal/`, `metrics/`, `fft_hardware/`
+- Archivo `RESUMEN_ANALISIS.txt` con estadísticas
+- JSON con todos los resultados
+
+---
+
+### 📋 Workflow Completo para Tesis
+
+```powershell
+# PASO 1: Compilar y subir firmware
+pio run -e esp32_debug --target upload
+
+# PASO 2: Ejecutar análisis por lotes
+& $PYTHON "tools/batch_analysis.py" --port COM4 --output "tesis_resultados"
+
+# PASO 3: Revisar resultados generados
+# - Gráficos PNG: Incluir en documento
+# - Tablas JSON: Procesar para estadísticas
+# - Reportes TXT: Validación clínica
+
+# PASO 4 (OPCIONAL): Análisis adicional específico
+& $PYTHON "tools/temporal_parameters_analyzer.py" --port COM4 --signal ECG --duration 30
+& $PYTHON "tools/system_metrics_monitor.py" --port COM4 --duration 300
+```
+
+---
+
+**Revisado:** 16.01.2026  
 **Proyecto:** BioSignalSimulator Pro  
 **Hardware:** ESP32-WROOM-32

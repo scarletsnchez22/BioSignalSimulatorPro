@@ -83,13 +83,13 @@
 // 4. Filtro RC completa la reconstrucción analógica
 //
 // Criterios para Fs_timer:
-// 1. Fs_timer > Fs_modelo_máximo (EMG @ 2000 Hz)
-// 2. Factor de seguridad 2× → 4000 Hz
+// 1. Fs_timer > Fs_modelo_máximo (EMG @ 1000 Hz)
+// 2. Factor de seguridad 2× → 2000 Hz
 // 3. Divisible por Fds (200, 100) para decimación entera
-// Conclusión: Fs_timer = 4000 Hz
+// Conclusión: Fs_timer = 2000 Hz
 
 // Timer maestro (frecuencia de buffer interno)
-const uint16_t FS_TIMER_HZ = 4000;             // Hz - Timer ISR @ 4 kHz
+const uint16_t FS_TIMER_HZ = 2000;             // Hz - Timer ISR @ 2 kHz
 const uint16_t SAMPLE_RATE_HZ = FS_TIMER_HZ;   // Alias legacy
 
 // ============================================================================
@@ -105,12 +105,12 @@ const uint16_t SAMPLE_RATE_HZ = FS_TIMER_HZ;   // Alias legacy
 //
 // *NOTA PPG: Aunque Nyquist solo requiere 20 Hz para BW de 10 Hz, se usa
 // 100 Hz para evitar escalones visibles en el display Nextion. Con 20 Hz
-// y upsampling 200:1 a 4 kHz, la interpolación lineal genera "escalones"
+// y upsampling 100:1 a 2 kHz, la interpolación lineal genera "escalones"
 // perceptibles. Al usar 100 Hz (igual a la tasa de refresco del display),
 // cada punto enviado es una muestra real del modelo, no una interpolación.
 // Esto no afecta el contenido frecuencial ya que 100 Hz >> 2×10 Hz de BW.
 //
-// Luego se interpola a FS_TIMER_HZ (4000 Hz) para salida al DAC.
+// Luego se interpola a FS_TIMER_HZ (2000 Hz) para salida al DAC.
 // ============================================================================
 
 const uint16_t MODEL_SAMPLE_RATE_ECG = 300;    // Hz - 2×150Hz (BW clínico ECG)
@@ -129,9 +129,9 @@ const uint32_t MODEL_TICK_US_PPG = 1000000 / MODEL_SAMPLE_RATE_PPG;  // 10000 us
 
 // Ratios de upsampling: interpolación de Fs_modelo a Fs_timer
 // Ratio = Fs_timer / Fs_modelo
-const uint8_t UPSAMPLE_RATIO_ECG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_ECG;  // 4000/300 ≈ 13
-const uint8_t UPSAMPLE_RATIO_EMG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_EMG;  // 4000/1000 = 4
-const uint8_t UPSAMPLE_RATIO_PPG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_PPG;  // 4000/100 = 40
+const uint8_t UPSAMPLE_RATIO_ECG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_ECG;  // 2000/300 ≈ 6
+const uint8_t UPSAMPLE_RATIO_EMG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_EMG;  // 2000/1000 = 2
+const uint8_t UPSAMPLE_RATIO_PPG = FS_TIMER_HZ / MODEL_SAMPLE_RATE_PPG;  // 2000/100 = 20
 
 // Frecuencias de salida a displays
 const uint16_t FDS_ECG = 200;                  // Hz - display ECG
@@ -140,9 +140,9 @@ const uint16_t FDS_PPG = 100;                  // Hz - display PPG
 
 // Ratios de downsampling para display (respecto a Fs_timer)
 // Ratio = Fs_timer / Fds
-const uint8_t NEXTION_DOWNSAMPLE_ECG = FS_TIMER_HZ / FDS_ECG;   // 4000/200 = 20
-const uint8_t NEXTION_DOWNSAMPLE_PPG = FS_TIMER_HZ / FDS_PPG;   // 4000/100 = 40
-const uint8_t NEXTION_DOWNSAMPLE_EMG = FS_TIMER_HZ / FDS_EMG;   // 4000/100 = 40
+const uint8_t NEXTION_DOWNSAMPLE_ECG = FS_TIMER_HZ / FDS_ECG;   // 2000/200 = 10
+const uint8_t NEXTION_DOWNSAMPLE_PPG = FS_TIMER_HZ / FDS_PPG;   // 2000/100 = 20
+const uint8_t NEXTION_DOWNSAMPLE_EMG = FS_TIMER_HZ / FDS_EMG;   // 2000/100 = 20
 
 // Alias para compatibilidad
 const uint16_t NEXTION_SEND_RATE = 200;
@@ -187,8 +187,8 @@ const uint16_t SERIAL_PLOTTER_RATE_EMG = FDS_EMG;
 // Esto NO tiene relación con Fs_timer ni downsampling de waveform.
 #define METRICS_UPDATE_MS       250     // 4 Hz actualización métricas texto
 
-// NOTA: El WAVEFORM usa contador de ticks del timer @ 4kHz
-// con los ratios NEXTION_DOWNSAMPLE_* (ECG 20:1, EMG/PPG 40:1)
+// NOTA: El WAVEFORM usa contador de ticks del timer @ 2kHz
+// con los ratios NEXTION_DOWNSAMPLE_* (ECG 10:1, EMG/PPG 20:1)
 
 // ============================================================================
 // CONFIGURACION NEXTION WAVEFORM (7" Basic)

@@ -47,21 +47,21 @@ import os
 CONFIG = {
     'ECG': {
         'fs_modelo': 300,      # Hz - MODEL_SAMPLE_RATE_ECG
-        'fs_timer': 4000,      # Hz - FS_TIMER_HZ
+        'fs_timer': 2000,      # Hz - FS_TIMER_HZ
         'bw_clinico_min': 0.05,
         'bw_clinico_max': 150.0,
         'descripcion': 'ECG McSharry ECGSYN @ 300 Hz'
     },
     'EMG': {
         'fs_modelo': 1000,     # Hz - MODEL_SAMPLE_RATE_EMG
-        'fs_timer': 4000,
+        'fs_timer': 2000,
         'bw_clinico_min': 20.0,
         'bw_clinico_max': 500.0,
         'descripcion': 'EMG Fuglevand MUAP @ 1000 Hz'
     },
     'PPG': {
         'fs_modelo': 20,       # Hz - MODEL_SAMPLE_RATE_PPG
-        'fs_timer': 4000,
+        'fs_timer': 2000,
         'bw_clinico_min': 0.5,
         'bw_clinico_max': 10.0,
         'descripcion': 'PPG Allen Gaussiano @ 20 Hz'

@@ -85,7 +85,7 @@ void CD4051Mux::setAttenuation(AttenuationLevel level) {
             selectChannel(MuxChannel::CH0_ECG_6K8);  // ECG: R media
             break;
         case AttenuationLevel::ATTEN_HIGH:
-            selectChannel(MuxChannel::CH2_PPG_33K);  // PPG: mayor R, menor Fc
+            selectChannel(MuxChannel::CH2_PPG_25K);  // PPG: mayor R, menor Fc
             break;
     }
 }
@@ -106,7 +106,7 @@ const char* CD4051Mux::getChannelName() const {
     switch (currentChannel) {
         case 0: return "ECG → BNC_ECG (6.8k, Fc=23Hz)";
         case 1: return "EMG → BNC_EMG (1.0k, Fc=159Hz)";
-        case 2: return "PPG → BNC_PPG (33k, Fc=4.8Hz)";
+        case 2: return "PPG → BNC_PPG (25k, Fc=6.37Hz)";
         case 3: return "CH3 (No conectado)";
         case 4: return "CH4 (No accesible)";
         case 5: return "CH5 (No accesible)";
@@ -122,7 +122,7 @@ float CD4051Mux::getCutoffFrequency() const {
     switch (currentChannel) {
         case 0: return 23.4f;   // ECG: 6.8kΩ + 1µF → Fc = 23.4 Hz
         case 1: return 159.0f;  // EMG: 1.0kΩ + 1µF → Fc = 159 Hz
-        case 2: return 4.82f;   // PPG: 33kΩ + 1µF  → Fc = 4.82 Hz
+        case 2: return 6.37f;   // PPG: 25kΩ + 1µF  → Fc = 6.37 Hz
         default: return 0.0f;   // Canales no conectados
     }
 }
@@ -139,7 +139,7 @@ void CD4051Mux::applyChannelBits(uint8_t channel) {
     // ------+-------+-------+-------+-----------------+-----------
     //   0   |   0   |   0   |   0   | Filtro 6.8kΩ    | BNC_ECG
     //   1   |   0   |   0   |   1   | Filtro 1.0kΩ    | BNC_EMG
-    //   2   |   0   |   1   |   0   | Filtro 33kΩ     | BNC_PPG
+    //   2   |   0   |   1   |   0   | Filtro 25kΩ     | BNC_PPG
     //   3   |   0   |   1   |   1   | (no usado)      | ---
     
     uint8_t s0 = (channel >> 0) & 0x01;  // Bit 0 → S0 (GPIO32)

@@ -266,22 +266,34 @@ String WiFiServer_BioSim::buildDataJson(const WSSignalData& data) {
 }
 
 String WiFiServer_BioSim::buildMetricsJson(const WSSignalMetrics& metrics) {
-    StaticJsonDocument<384> doc;
+    StaticJsonDocument<512> doc;
     doc["type"] = "metrics";
     
     JsonObject m = doc.createNestedObject("m");
+    // ECG
     m["hr"] = metrics.hr;
     m["rr"] = metrics.rr;
     m["qrs"] = metrics.qrs;
     m["st"] = metrics.st;
     m["hrv"] = metrics.hrv;
+    m["pr"] = metrics.pr;
+    m["qtc"] = metrics.qtc;
+    m["p"] = metrics.p;
+    m["r"] = metrics.r;
+    m["t"] = metrics.t;
+    // EMG
     m["rms"] = metrics.rms;
     m["exc"] = metrics.excitation;
     m["mus"] = metrics.activeUnits;
     m["freq"] = metrics.freq;
+    m["mvc"] = metrics.mvc;
+    m["raw"] = metrics.raw;
+    // PPG
     m["pi"] = metrics.pi;
     m["dc"] = metrics.dcLevel;
     m["ac"] = metrics.ac;
+    m["sys"] = metrics.sys;
+    m["dia"] = metrics.dia;
     
     String json;
     serializeJson(doc, json);

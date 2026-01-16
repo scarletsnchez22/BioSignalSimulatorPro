@@ -72,13 +72,13 @@
     <!-- Contenido -->
     <text x="15" y="65" font-family="Segoe UI, Arial" font-size="11" fill="#2d3748">GPIO25 (DAC1)</text>
     <text x="15" y="85" font-family="Consolas, monospace" font-size="10" fill="#4a5568">• Resolución: 8-bit</text>
-    <text x="15" y="103" font-family="Consolas, monospace" font-size="10" fill="#4a5568">• Fs: 4000 Hz</text>
+    <text x="15" y="103" font-family="Consolas, monospace" font-size="10" fill="#4a5568">• Fs: 2000 Hz</text>
     <text x="15" y="121" font-family="Consolas, monospace" font-size="10" fill="#4a5568">• Rango: 0-3.3V</text>
     <text x="15" y="139" font-family="Consolas, monospace" font-size="10" fill="#4a5568">• Zout: ~1kΩ</text>
     
     <!-- Señal escalonada -->
     <rect x="15" y="150" width="150" height="22" rx="4" fill="#fed7d7" stroke="#e53e3e" stroke-width="1"/>
-    <text x="90" y="165" font-family="Segoe UI, Arial" font-size="9" fill="#c53030" text-anchor="middle">⚠ Stepping 4kHz</text>
+    <text x="90" y="165" font-family="Segoe UI, Arial" font-size="9" fill="#c53030" text-anchor="middle">⚠ Stepping 2kHz</text>
   </g>
   
   <!-- Señal de salida DAC (stepping) -->
@@ -201,7 +201,7 @@
     <rect x="245" y="15" width="60" height="60" rx="6" fill="#fed7d7"/>
     <text x="275" y="35" font-family="Segoe UI, Arial" font-size="9" fill="#c53030" text-anchor="middle">Fc</text>
     <text x="275" y="52" font-family="Consolas, monospace" font-size="12" font-weight="bold" fill="#c53030" text-anchor="middle">23.4Hz</text>
-    <text x="275" y="68" font-family="Consolas, monospace" font-size="8" fill="#c53030" text-anchor="middle">-44dB@4k</text>
+    <text x="275" y="68" font-family="Consolas, monospace" font-size="8" fill="#c53030" text-anchor="middle">-38dB@2k</text>
     
     <!-- BNC -->
     <circle cx="340" cy="45" r="25" fill="#c53030" stroke="#991b1b" stroke-width="2"/>
@@ -239,7 +239,7 @@
     <rect x="245" y="15" width="60" height="60" rx="6" fill="#c6f6d5"/>
     <text x="275" y="35" font-family="Segoe UI, Arial" font-size="9" fill="#276749" text-anchor="middle">Fc</text>
     <text x="275" y="52" font-family="Consolas, monospace" font-size="12" font-weight="bold" fill="#276749" text-anchor="middle">159Hz</text>
-    <text x="275" y="68" font-family="Consolas, monospace" font-size="8" fill="#276749" text-anchor="middle">-28dB@4k</text>
+    <text x="275" y="68" font-family="Consolas, monospace" font-size="8" fill="#276749" text-anchor="middle">-22dB@2k</text>
     
     <circle cx="340" cy="45" r="25" fill="#38a169" stroke="#276749" stroke-width="2"/>
     <circle cx="340" cy="45" r="10" fill="#f0fff4"/>
@@ -276,7 +276,7 @@
     <rect x="245" y="15" width="60" height="60" rx="6" fill="#bee3f8"/>
     <text x="275" y="35" font-family="Segoe UI, Arial" font-size="9" fill="#2b6cb0" text-anchor="middle">Fc</text>
     <text x="275" y="52" font-family="Consolas, monospace" font-size="12" font-weight="bold" fill="#2b6cb0" text-anchor="middle">4.8Hz</text>
-    <text x="275" y="68" font-family="Consolas, monospace" font-size="8" fill="#2b6cb0" text-anchor="middle">-58dB@4k</text>
+    <text x="275" y="68" font-family="Consolas, monospace" font-size="8" fill="#2b6cb0" text-anchor="middle">-52dB@2k</text>
     
     <circle cx="340" cy="45" r="25" fill="#3182ce" stroke="#2b6cb0" stroke-width="2"/>
     <circle cx="340" cy="45" r="10" fill="#ebf8ff"/>
@@ -362,7 +362,7 @@
     F_99% &lt; Fc_filtro &lt; Fs_DAC / 2
   </text>
   <text x="660" y="620" font-family="Segoe UI, Arial" font-size="10" fill="#276749" text-anchor="middle">
-    Preservar 99% energía + Atenuar stepping 4kHz
+    Preservar 99% energía + Atenuar stepping 2kHz
   </text>
   
   <!-- Panel de señal antes/después -->
@@ -396,20 +396,20 @@
   <!-- Atenuación summary -->
   <g transform="translate(1080, 455)">
     <rect x="0" y="0" width="160" height="150" rx="8" fill="#e9d8fd" stroke="#805ad5" stroke-width="1"/>
-    <text x="80" y="22" font-family="Segoe UI, Arial" font-size="10" font-weight="bold" fill="#553c9a" text-anchor="middle">Atenuación @4kHz</text>
+    <text x="80" y="22" font-family="Segoe UI, Arial" font-size="10" font-weight="bold" fill="#553c9a" text-anchor="middle">Atenuación @2kHz</text>
     <line x1="10" y1="32" x2="150" y2="32" stroke="#805ad5" stroke-width="1"/>
     
     <circle cx="25" cy="52" r="8" fill="#e53e3e"/>
-    <text x="45" y="56" font-family="Segoe UI, Arial" font-size="10" fill="#553c9a">ECG: -44 dB</text>
-    <text x="100" y="70" font-family="Consolas, monospace" font-size="9" fill="#718096">(158×)</text>
+    <text x="45" y="56" font-family="Segoe UI, Arial" font-size="10" fill="#553c9a">ECG: -38 dB</text>
+    <text x="100" y="70" font-family="Consolas, monospace" font-size="9" fill="#718096">(79×)</text>
     
     <circle cx="25" cy="92" r="8" fill="#38a169"/>
-    <text x="45" y="96" font-family="Segoe UI, Arial" font-size="10" fill="#553c9a">EMG: -28 dB</text>
-    <text x="100" y="110" font-family="Consolas, monospace" font-size="9" fill="#718096">(25×)</text>
+    <text x="45" y="96" font-family="Segoe UI, Arial" font-size="10" fill="#553c9a">EMG: -22 dB</text>
+    <text x="100" y="110" font-family="Consolas, monospace" font-size="9" fill="#718096">(12.5×)</text>
     
     <circle cx="25" cy="132" r="8" fill="#3182ce"/>
-    <text x="45" y="136" font-family="Segoe UI, Arial" font-size="10" fill="#553c9a">PPG: -58 dB</text>
-    <text x="100" y="150" font-family="Consolas, monospace" font-size="9" fill="#718096">(800×)</text>
+    <text x="45" y="136" font-family="Segoe UI, Arial" font-size="10" fill="#553c9a">PPG: -52 dB</text>
+    <text x="100" y="150" font-family="Consolas, monospace" font-size="9" fill="#718096">(400×)</text>
   </g>
   
   <!-- ═══════════════════════════════════════════════════════════════════════ -->

@@ -15,6 +15,7 @@ NextionDriver::NextionDriver(HardwareSerial& serialPort) : serial(serialPort) {
     rxIndex = 0;
     currentPage = NextionPage::PORTADA;
     displayedSignal = SignalType::NONE;
+    lastRxTime = 0;
 }
 
 // ============================================================================
@@ -25,6 +26,18 @@ bool NextionDriver::begin() {
     delay(500);
     
     // Limpiar buffer
+    while(serial.available()) serial.read();
+    
+    // Resetear estado
+    rxIndex = 0;
+    memset(rxBuffer, 0, sizeof(rxBuffer));
+    lastRxTime = millis();
+    
+    // Enviar comando de reset a Nextion
+    sendCommand("rest");
+    delay(500);
+    
+    // Limpiar buffer nuevamente después del reset
     while(serial.available()) serial.read();
     
     // Ir a página portada
@@ -56,17 +69,22 @@ void NextionDriver::sendEndSequence() {
 // PROCESAR EVENTOS
 // ============================================================================
 void NextionDriver::process() {
+    // Timeout: si han pasado >200ms sin completar mensaje, limpiar buffer
+    if (rxIndex > 0 && (millis() - lastRxTime) > 200) {
+        rxIndex = 0;
+        memset(rxBuffer, 0, sizeof(rxBuffer));
+    }
+    
     while (serial.available()) {
         uint8_t byte = serial.read();
-        
-        // DEBUG: Mostrar cada byte recibido
-        // Serial.printf("[RX] 0x%02X\n", byte);
+        lastRxTime = millis();
         
         if (rxIndex < sizeof(rxBuffer)) {
             rxBuffer[rxIndex++] = byte;
         } else {
-            // Buffer overflow, resetear
+            // Buffer overflow, resetear completamente
             rxIndex = 0;
+            memset(rxBuffer, 0, sizeof(rxBuffer));
             rxBuffer[rxIndex++] = byte;
         }
         
@@ -76,9 +94,11 @@ void NextionDriver::process() {
             rxBuffer[rxIndex-2] == 0xFF &&
             rxBuffer[rxIndex-3] == 0xFF) {
             
-            // Serial.printf("[Nextion] Mensaje completo: %d bytes\n", rxIndex);
             parseEvent();
-            rxIndex = 0;  // IMPORTANTE: limpiar buffer después de parsear
+            
+            // CRÍTICO: limpiar buffer Y resetear índice
+            memset(rxBuffer, 0, sizeof(rxBuffer));
+            rxIndex = 0;
         }
     }
 }
@@ -102,7 +122,6 @@ void NextionDriver::parseEvent() {
     }
     
     if (eventStart < 0) {
-        // No es un evento touch, ignorar (puede ser respuesta a comando)
         return;
     }
     
@@ -110,10 +129,7 @@ void NextionDriver::parseEvent() {
     uint8_t component = rxBuffer[eventStart + 2];
     uint8_t touchEvent = rxBuffer[eventStart + 3];
     
-    Serial.printf("[Nextion] Touch: page=%d, comp=%d, event=%d\n", page, component, touchEvent);
-    
     if (touchEvent != 1) {
-        // Serial.println("[Nextion] Ignorando (no es release)");
         return;  // Solo eventos de release (1)
     }
     
@@ -124,7 +140,6 @@ void NextionDriver::parseEvent() {
         case 0:  // PORTADA
             if (component == 1) {  // bt_comenzar
                 uiEvent = UIEvent::BUTTON_COMENZAR;
-                Serial.println("[Nextion] -> BUTTON_COMENZAR");
             }
             break;
             
@@ -313,11 +328,9 @@ void NextionDriver::parseEvent() {
                     break;
                 case 26:  // bt0 - Envelope al DAC
                     uiEvent = UIEvent::BUTTON_EMG_DAC_ENV;
-                    Serial.println("[Nextion] -> BUTTON_EMG_DAC_ENV");
                     break;
                 case 27:  // bt1 - Raw al DAC
                     uiEvent = UIEvent::BUTTON_EMG_DAC_RAW;
-                    Serial.println("[Nextion] -> BUTTON_EMG_DAC_RAW");
                     break;
             }
             break;
@@ -437,8 +450,6 @@ void NextionDriver::goToPage(NextionPage page) {
 // ACTUALIZAR BOTONES DEL MENÚ
 // ============================================================================
 void NextionDriver::updateMenuButtons(SignalType selected) {
-    Serial.printf("[Menu] updateMenuButtons: selected=%d\n", (int)selected);
-    
     // Primero apagar todos los botones
     sendCommand("bt_ecg.val=0");
     sendCommand("bt_emg.val=0");
@@ -465,8 +476,6 @@ void NextionDriver::updateMenuButtons(SignalType selected) {
 // ACTUALIZAR BOTONES DE CONDICIONES ECG
 // ============================================================================
 void NextionDriver::updateECGConditionButtons(int selectedCondition) {
-    Serial.printf("[ECG] updateConditionButtons: cond=%d\n", selectedCondition);
-    
     // Estructura ecg_sim (800x480):
     // ID 1-8: bt_norm, bt_taq, bt_bra, bt_blk, bt_fa, bt_fv, bt_stup, bt_stdn
     // ID 9: bt_atras, ID 10: bt_ir, ID 11: sel_ecg
@@ -515,8 +524,6 @@ void NextionDriver::updateECGConditionButtons(int selectedCondition) {
 // ACTUALIZAR BOTONES DE CONDICIONES EMG
 // ============================================================================
 void NextionDriver::updateEMGConditionButtons(int selectedCondition) {
-    Serial.printf("[EMG] updateConditionButtons: cond=%d\n", selectedCondition);
-    
     // Estructura emg_sim (800x480):
     // ID 1-6: bt_reposo, bt_leve, bt_moderada, bt_maxima, bt_temblor, bt_fatiga
     // ID 7: bt_atras, ID 8: bt_ir, ID 9: sel_emg
@@ -552,8 +559,6 @@ void NextionDriver::updateEMGConditionButtons(int selectedCondition) {
 // ACTUALIZAR BOTONES DE CONDICIONES PPG
 // ============================================================================
 void NextionDriver::updatePPGConditionButtons(int selectedCondition) {
-    Serial.printf("[PPG] updateConditionButtons: cond=%d\n", selectedCondition);
-    
     // Estructura ppg_sim (800x480):
     // ID 1-6: bt_norm, bt_arr, bt_lowp, bt_vascon, bt_highp, bt_vasod
     // ID 7: bt_atras, ID 8: bt_ir, ID 9: sel_ppg
@@ -969,16 +974,14 @@ void NextionDriver::updateECGScale(int zoomPercent) {
     sendCommand(cmd);
     
     // Actualizar ms/div (ID 31: msdiv)
-    // Waveform Nextion: 700 px ancho @ 200 Hz efectivo = 3.5 segundos visibles
-    // 3500 ms / 10 divisiones = 350 ms/div
+    // Waveform Nextion: 700 px, 200Hz (sin interp) = 200 pts/s
+    // 70px / 200pts/s × 1000 = 350 ms/div, T_pantalla = 3.5s
     sprintf(cmd, "msdiv.txt=\"350 ms/div\"");
     sendCommand(cmd);
     
     // Actualizar en parametros_ecg (t_esc ID 18) si está visible
     sprintf(cmd, "t_esc.txt=\"%.2f mV/div\"", mvDiv);
     sendCommand(cmd);
-    
-    Serial.printf("[ECG] Zoom: %d%%, Escala: %.2f mV/div, 350 ms/div\n", zoomPercent, mvDiv);
 }
 
 // ============================================================================
@@ -1102,25 +1105,25 @@ int NextionDriver::readSliderValue(const char* sliderName) {
 
 /**
  * @brief Actualiza etiquetas de escala para ECG
- * Según Tabla 9.6: ECG = 0.2 mV/div, 350 ms/div
+ * Cálculo: 200 Hz (sin interp) → 70px / 200pts/s × 1000 = 350 ms/div
  * IDs: mvdiv=32, msdiv=31
  */
 void NextionDriver::updateECGScaleLabels() {
     char cmd[48];
     
-    // ID 32: mvdiv - Escala vertical
+    // ID 32: mvdiv - Escala vertical (rango 2.0 mV / 10 div)
     sprintf(cmd, "mvdiv.txt=\"0.2 mV/div\"");
     sendCommand(cmd);
     
-    // ID 31: msdiv - Escala temporal
+    // ID 31: msdiv - Escala temporal (350 ms/div, T_pantalla = 3.5s)
     sprintf(cmd, "msdiv.txt=\"350 ms/div\"");
     sendCommand(cmd);
 }
 
 /**
  * @brief Actualiza etiquetas de escala para EMG
- * Ambos canales usan la MISMA escala: ±5 mV (10 mV total, 10 div = 1.0 mV/div)
- * El envelope se muestra proporcional al raw (como en Serial Plotter)
+ * Cálculo: 100 Hz (sin interp) → 70px / 100pts/s × 1000 = 700 ms/div
+ * Ambos canales: ±5 mV (10 mV / 10 div = 1.0 mV/div)
  * IDs: mvdiv=20 (RAW Ch0), msdiv=21, mvdiv2=22 (ENV Ch1)
  */
 void NextionDriver::updateEMGScaleLabels() {
@@ -1130,29 +1133,28 @@ void NextionDriver::updateEMGScaleLabels() {
     sprintf(cmd, "mvdiv.txt=\"1.0 mV/div\"");
     sendCommand(cmd);
     
-    // ID 21: msdiv - Escala temporal
+    // ID 21: msdiv - Escala temporal (700 ms/div, T_pantalla = 7.0s)
     sprintf(cmd, "msdiv.txt=\"700 ms/div\"");
     sendCommand(cmd);
     
     // ID 22: mvdiv2 - Escala vertical Envolvente (misma escala que raw)
-    // Envelope usa escala del raw para visualización proporcional
     sprintf(cmd, "mvdiv2.txt=\"1.0 mV/div\"");
     sendCommand(cmd);
 }
 
 /**
  * @brief Actualiza etiquetas de escala para PPG
- * Según Tabla 9.6: PPG = 15 mV/div, 700 ms/div
+ * Cálculo: 100 Hz (sin interp) → 70px / 100pts/s × 1000 = 700 ms/div
  * IDs: mvdiv=23, msdiv=22
  */
 void NextionDriver::updatePPGScaleLabels() {
     char cmd[48];
     
-    // ID 23: mvdiv - Escala vertical
+    // ID 23: mvdiv - Escala vertical (rango 150 mV / 10 div)
     sprintf(cmd, "mvdiv.txt=\"15 mV/div\"");
     sendCommand(cmd);
     
-    // ID 22: msdiv - Escala temporal
+    // ID 22: msdiv - Escala temporal (700 ms/div, T_pantalla = 7.0s)
     sprintf(cmd, "msdiv.txt=\"700 ms/div\"");
     sendCommand(cmd);
 }

@@ -43,7 +43,7 @@ void SerialHandler::process() {
             serial.println("\n--- Multiplexor CD4051 ---");
             serial.printf("Canal actual: %d (%s)\n", mux.getCurrentChannel(), mux.getChannelName());
             serial.printf("Frecuencia de corte: %.1f Hz\n", mux.getCutoffFrequency());
-            serial.println("Comandos: 0=ECG(6.8k,Fc=23Hz), 1=EMG(1k,Fc=159Hz), 2=PPG(33k,Fc=5Hz)\n");
+            serial.println("Comandos: 0=ECG(6.8k,Fc=23Hz), 1=EMG(1k,Fc=159Hz), 2=PPG(25k,Fc=6.37Hz)\n");
         } else if (c == '0') {
             mux.selectChannel(MuxChannel::CH0_ECG_6K8);
             serial.println("[MUX] Canal 0 (ECG: 6.8k, Fc=23.4 Hz)");
@@ -51,8 +51,8 @@ void SerialHandler::process() {
             mux.selectChannel(MuxChannel::CH1_EMG_1K0);
             serial.println("[MUX] Canal 1 (EMG: 1.0k, Fc=159 Hz)");
         } else if (c == '2') {
-            mux.selectChannel(MuxChannel::CH2_PPG_33K);
-            serial.println("[MUX] Canal 2 (PPG: 33k, Fc=4.8 Hz)");
+            mux.selectChannel(MuxChannel::CH2_PPG_25K);
+            serial.println("[MUX] Canal 2 (PPG: 25k, Fc=6.37 Hz)");
         }
     }
 }
@@ -129,7 +129,7 @@ void SerialHandler::printHelp() {
     serial.println("  m - Estado del multiplexor CD4051");
     serial.println("  0 - Seleccionar CH0 (6.8k ohm)");
     serial.println("  1 - Seleccionar CH1 (directo)");
-    serial.println("  2 - Seleccionar CH2 (33k ohm)");
+    serial.println("  2 - Seleccionar CH2 (25k ohm)");
     serial.println("\nUse la pantalla Nextion para control interactivo");
 }
 

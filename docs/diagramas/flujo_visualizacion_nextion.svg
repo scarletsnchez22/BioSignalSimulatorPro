@@ -36,7 +36,7 @@
   <!-- Interpolación -->
   <rect x="235" y="70" width="120" height="60" rx="4" fill="#fff" stroke="#555" stroke-width="1.2"/>
   <text x="295" y="92" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle" font-weight="bold">Interpolación</text>
-  <text x="295" y="107" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">Lineal a 4000 Hz</text>
+  <text x="295" y="107" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">Lineal a 2000 Hz</text>
   <text x="295" y="118" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">y = y₀ + (y₁-y₀)·t</text>
   
   <line x1="355" y1="100" x2="385" y2="100" stroke="#555" stroke-width="1" marker-end="url(#arrow)"/>
@@ -45,14 +45,14 @@
   <rect x="390" y="70" width="110" height="60" rx="4" fill="#e8f5e9" stroke="#388e3c" stroke-width="1.2"/>
   <text x="445" y="92" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle" font-weight="bold">Buffer Circular</text>
   <text x="445" y="107" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">2048 muestras</text>
-  <text x="445" y="118" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">@ 4000 Hz</text>
+  <text x="445" y="118" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">@ 2000 Hz</text>
   
   <line x1="500" y1="100" x2="530" y2="100" stroke="#555" stroke-width="1" marker-end="url(#arrow)"/>
   
   <!-- Timer ISR -->
   <rect x="535" y="70" width="100" height="60" rx="4" fill="#ffebee" stroke="#c62828" stroke-width="1.2"/>
   <text x="585" y="92" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle" font-weight="bold">Timer ISR</text>
-  <text x="585" y="107" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">4 kHz (250 µs)</text>
+  <text x="585" y="107" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">2 kHz (500 µs)</text>
   <text x="585" y="118" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">sampleCount++</text>
   
   <!-- BIFURCACIÓN -->
@@ -65,7 +65,7 @@
   
   <rect x="755" y="55" width="130" height="40" rx="4" fill="#c8e6c9" stroke="#2e7d32" stroke-width="1.5"/>
   <text x="820" y="72" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle" font-weight="bold">DAC GPIO25</text>
-  <text x="820" y="85" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">4000 Hz → Analógico</text>
+  <text x="820" y="85" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">2000 Hz → Analógico</text>
   
   <line x1="885" y1="75" x2="920" y2="75" stroke="#555" stroke-width="1" marker-end="url(#arrow)"/>
   <text x="970" y="78" font-family="Arial, sans-serif" font-size="8" fill="#666" text-anchor="middle">→ BNC</text>
@@ -108,23 +108,23 @@
   
   <!-- ECG -->
   <text x="370" y="228" font-family="Arial, sans-serif" font-size="9" fill="#2e7d32" text-anchor="middle" font-weight="bold">ECG</text>
-  <text x="440" y="228" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">4000 Hz</text>
+  <text x="440" y="228" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">2000 Hz</text>
   <text x="510" y="228" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">200 Hz</text>
-  <text x="580" y="228" font-family="Arial, sans-serif" font-size="9" fill="#7b1fa2" text-anchor="middle" font-weight="bold">20:1</text>
+  <text x="580" y="228" font-family="Arial, sans-serif" font-size="9" fill="#7b1fa2" text-anchor="middle" font-weight="bold">10:1</text>
   <text x="635" y="228" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">5 ms</text>
   
   <!-- EMG -->
   <text x="370" y="248" font-family="Arial, sans-serif" font-size="9" fill="#e65100" text-anchor="middle" font-weight="bold">EMG</text>
-  <text x="440" y="248" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">4000 Hz</text>
+  <text x="440" y="248" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">2000 Hz</text>
   <text x="510" y="248" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">100 Hz</text>
-  <text x="580" y="248" font-family="Arial, sans-serif" font-size="9" fill="#7b1fa2" text-anchor="middle" font-weight="bold">40:1</text>
+  <text x="580" y="248" font-family="Arial, sans-serif" font-size="9" fill="#7b1fa2" text-anchor="middle" font-weight="bold">20:1</text>
   <text x="635" y="248" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">10 ms</text>
   
   <!-- PPG -->
   <text x="370" y="268" font-family="Arial, sans-serif" font-size="9" fill="#1565c0" text-anchor="middle" font-weight="bold">PPG</text>
-  <text x="440" y="268" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">4000 Hz</text>
+  <text x="440" y="268" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">2000 Hz</text>
   <text x="510" y="268" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">100 Hz</text>
-  <text x="580" y="268" font-family="Arial, sans-serif" font-size="9" fill="#7b1fa2" text-anchor="middle" font-weight="bold">40:1</text>
+  <text x="580" y="268" font-family="Arial, sans-serif" font-size="9" fill="#7b1fa2" text-anchor="middle" font-weight="bold">20:1</text>
   <text x="635" y="268" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">10 ms</text>
   
   <line x1="670" y1="235" x2="710" y2="235" stroke="#555" stroke-width="1" marker-end="url(#arrow)"/>
@@ -245,7 +245,7 @@
         fill="none" stroke="#2ecc71" stroke-width="2"/>
   
   <text x="80" y="605" font-family="Arial, sans-serif" font-size="9" fill="#2ecc71">ECG Lead II</text>
-  <text x="80" y="765" font-family="Arial, sans-serif" font-size="8" fill="#7f8c8d">700 px = 3.5 s | 10 div × 350 ms/div</text>
+  <text x="80" y="765" font-family="Arial, sans-serif" font-size="8" fill="#7f8c8d">700 px | Sin interpolación | ECG: 350 ms/div, EMG/PPG: 700 ms/div</text>
   
   <!-- Dimensiones anotadas -->
   <line x1="70" y1="775" x2="420" y2="775" stroke="#666" stroke-width="1"/>
@@ -281,7 +281,7 @@
   <!-- ECG row -->
   <rect x="455" y="640" width="60" height="35" rx="3" fill="#2ecc71"/>
   <text x="485" y="662" font-family="Arial, sans-serif" font-size="10" fill="white" text-anchor="middle" font-weight="bold">ECG</text>
-  <text x="560" y="662" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">200 Hz</text>
+  <text x="560" y="662" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">200</text>
   <text x="620" y="662" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">5 ms</text>
   <text x="690" y="662" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle" font-weight="bold">3.5 s</text>
   <text x="760" y="662" font-family="Arial, sans-serif" font-size="9" fill="#7b1fa2" text-anchor="middle" font-weight="bold">350</text>
@@ -292,7 +292,7 @@
   <!-- EMG row -->
   <rect x="455" y="685" width="60" height="35" rx="3" fill="#e67e22"/>
   <text x="485" y="707" font-family="Arial, sans-serif" font-size="10" fill="white" text-anchor="middle" font-weight="bold">EMG</text>
-  <text x="560" y="707" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">100 Hz</text>
+  <text x="560" y="707" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">100</text>
   <text x="620" y="707" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">10 ms</text>
   <text x="690" y="707" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle" font-weight="bold">7.0 s</text>
   <text x="760" y="707" font-family="Arial, sans-serif" font-size="9" fill="#7b1fa2" text-anchor="middle" font-weight="bold">700</text>
@@ -303,7 +303,7 @@
   <!-- PPG row -->
   <rect x="455" y="730" width="60" height="35" rx="3" fill="#3498db"/>
   <text x="485" y="752" font-family="Arial, sans-serif" font-size="10" fill="white" text-anchor="middle" font-weight="bold">PPG</text>
-  <text x="560" y="752" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">100 Hz</text>
+  <text x="560" y="752" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">100</text>
   <text x="620" y="752" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle">10 ms</text>
   <text x="690" y="752" font-family="Arial, sans-serif" font-size="9" fill="#333" text-anchor="middle" font-weight="bold">7.0 s</text>
   <text x="760" y="752" font-family="Arial, sans-serif" font-size="9" fill="#7b1fa2" text-anchor="middle" font-weight="bold">700</text>

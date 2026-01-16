@@ -127,7 +127,7 @@ El siguiente diagrama muestra el flujo completo desde la interacción del usuari
 │  │  │0-3.3V│      │       │     │ GPIO   │  ├───►│1.0k+1µF│──►│ EMG │     │   │
 │  │  └──────┘      └───────┘     │ 32/33  │  │    └────────┘   └─────┘     │   │
 │  │                              │        │  │    ┌────────┐   ┌─────┐     │   │
-│  │                              │        │  └───►│ 33k+1µF│──►│ PPG │     │   │
+│  │                              │        │  └───►│ 25k+1µF│──►│ PPG │     │   │
 │  │                              └────────┘       └────────┘   └─────┘     │   │
 │  │                                                                         │   │
 │  │  NOTA: Solo 1 canal activo a la vez (seleccionado por tipo de señal)   │   │

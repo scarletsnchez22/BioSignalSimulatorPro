@@ -1,0 +1,27 @@
+
+================================================================================
+REPORTE DE VALIDACIÓN MORFOLÓGICA
+================================================================================
+Fecha: 2026-01-16 02:07:12
+Tipo de Señal: EMG
+Condición: moderate_contraction
+Frecuencia de Muestreo: 1000 Hz
+Muestras: 5000
+Duración: 5.00 segundos
+
+
+COMPARACIÓN MORFOLÓGICA CON REFERENCIA CLÍNICA
+--------------------------------------------------------------------------------
+Correlación de Pearson:     -0.0218
+P-value:                   0.627028
+RMSE:                        1.4295
+RMSE Normalizado:            1.4295
+Índice de Similitud:           0.0%
+
+INTERPRETACIÓN:
+  ✗ BAJA similitud
+  La morfología no coincide con patrones clínicos esperados
+
+================================================================================
+VALIDACIÓN COMPLETADA
+================================================================================

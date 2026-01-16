@@ -72,9 +72,9 @@ USB-C → IP5306 → BMS 1S 3A → Baterías 2×18650 → Switch → XL6009 → 
 
 ```
 DAC 8-bit → LM358 Buffer → CD4051 Multiplexor → Filtro RC Selectivo → BNC
-  (4 kHz)    (ganancia ×1)   CH0: 6.8kΩ (ECG, Fc=23.4Hz)    C=1µF
+  (2 kHz)    (ganancia ×1)   CH0: 6.8kΩ (ECG, Fc=23.4Hz)    C=1µF
                              CH1: 1.0kΩ (EMG, Fc=159Hz)     compartido
-                             CH2: 33kΩ  (PPG, Fc=4.82Hz)
+                             CH2: 25kΩ  (PPG, Fc=6.37Hz)
 ```
 
 > **Nota:** Se usa LM358 por disponibilidad local en Ecuador. El MCP6002 (rail-to-rail) sería ideal para aprovechar el rango completo 0-3.3V del DAC.
@@ -140,13 +140,13 @@ pio device monitor         # Monitor serial
 
 | Parámetro | Valor | Justificación |
 |-----------|-------|---------------|
-| Fs Timer (DAC) | 4000 Hz | Nyquist ×4 sobre EMG 500 Hz |
+| Fs Timer (DAC) | 2000 Hz | Nyquist ×2 sobre EMG 1000 Hz |
 | Fs Modelo ECG | 300 Hz | F99% energía = 21.6 Hz |
 | Fs Modelo EMG | 1000 Hz | F99% energía = 146.3 Hz |
-| Fs Modelo PPG | 20 Hz | F99% energía = 4.9 Hz |
+| Fs Modelo PPG | 100 Hz | F99% energía = 4.9 Hz |
 | Resolución DAC | 8 bits (0-255) | Suficiente para aplicación educativa |
 | Voltaje salida | 0-3.3V | Rango DAC ESP32 |
-| Refresh Nextion | 100-200 Hz | Downsampling desde 4 kHz |
+| Refresh Nextion | 100-200 Hz | Downsampling desde 2 kHz |
 | Autonomía | ~3.8 horas | 5200 mAh @ 1.26 A promedio |
 | Costo total | ~$154 USD | Componentes disponibles localmente |
 

@@ -1,0 +1,54 @@
+{
+  "ECG_normal": {
+    "fft": {
+      "dominant_freq": 0.0,
+      "bw_3db": 0.0,
+      "f99": 30.0,
+      "plot_file": "results/complete_analysis/01_espectral/fft_ECG_normal_20260116_025804.png"
+    },
+    "temporal": {
+      "hr": 82.0476858345021,
+      "rr_mean": 731.2820512820513,
+      "rr_std": 143.3991408951513,
+      "qrs": 95,
+      "pr": 150,
+      "qtc": 410,
+      "n_peaks": 14,
+      "plot_file": "results/complete_analysis/02_temporal/temporal_ECG_normal_20260116_025806.png"
+    }
+  },
+  "ECG_tachycardia": {
+    "fft": {
+      "dominant_freq": 0.0,
+      "bw_3db": 0.0,
+      "f99": 26.1,
+      "plot_file": "results/complete_analysis/01_espectral/fft_ECG_tachycardia_20260116_025807.png"
+    },
+    "temporal": {
+      "hr": 121.10481586402268,
+      "rr_mean": 495.438596491228,
+      "rr_std": 19.352396116684464,
+      "qrs": 95,
+      "pr": 150,
+      "qtc": 410,
+      "n_peaks": 20,
+      "plot_file": "results/complete_analysis/02_temporal/temporal_ECG_tachycardia_20260116_025809.png"
+    }
+  },
+  "EMG_high": {
+    "fft": {
+      "dominant_freq": 229.60000000000002,
+      "bw_3db": 379.8,
+      "f99": 440.0,
+      "plot_file": "results/complete_analysis/01_espectral/fft_EMG_high_contraction_20260116_025810.png"
+    }
+  },
+  "PPG_normal": {
+    "fft": {
+      "dominant_freq": 0.0,
+      "bw_3db": 0.0,
+      "f99": 38.7,
+      "plot_file": "results/complete_analysis/01_espectral/fft_PPG_normal_20260116_025812.png"
+    }
+  }
+}

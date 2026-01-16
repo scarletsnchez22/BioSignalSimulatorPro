@@ -28,16 +28,16 @@
  * │  entonces Nextion mostrará exactamente lo mismo.                         │
  * └──────────────────────────────────────────────────────────────────────────┘
  * 
- * MAPEO DE VALORES (idéntico a main.cpp updateDisplay()):
- * - ECG: mV → normalizado (mV + 0.5) / 2.0 → Nextion 20 + (norm × 215)
- * - EMG RAW: Ch0 valor 0-380 → Nextion 20-235
- * - EMG ENV: Ch1 valor 0-380 → Nextion 20-235
- * - PPG: AC mV / 150 → Nextion 20 + (norm × 215)
+ * MAPEO DE VALORES (idéntico a funciones getWaveformValue() de modelos):
+ * - ECG: [-0.5, 1.5] mV → normalizado → Nextion [0, 255] rango completo
+ * - EMG RAW: ±5 mV → normalizado → Nextion [0, 255] rango completo
+ * - EMG ENV: 0-2 mV → normalizado (escala raw) → Nextion [0, 255]
+ * - PPG: 0-150 mV AC → Nextion [26, 255] (piso 10%)
  * 
  * FRECUENCIAS DE ENVÍO (idénticas a Nextion):
- * - ECG: 200 Hz (downsampling 4000/200 = 20:1)
- * - EMG: 100 Hz (downsampling 4000/100 = 40:1) × 2 canales
- * - PPG: 100 Hz (downsampling 4000/100 = 40:1)
+ * - ECG: 200 Hz (downsampling 2000/200 = 10:1)
+ * - EMG: 100 Hz (downsampling 2000/100 = 20:1) × 2 canales
+ * - PPG: 100 Hz (downsampling 2000/100 = 20:1)
  * 
  * Compilar y subir:
  * pio run -e esp32_debug --target upload
@@ -83,8 +83,8 @@
 // --------------------------------------------------------------------------
 // MODO DE EJECUCION
 // --------------------------------------------------------------------------
-#define AUTO_CONTINUOUS         1       // 1=continuo, 0=duracion fija
-#define PLOT_DURATION_MS        10000   // Duracion en ms (si no es continuo)
+#define AUTO_CONTINUOUS         0      // 1=continuo, 0=duracion fija
+#define PLOT_DURATION_MS        3500   // Duracion en ms (si no es continuo)
 
 // ============================================================================
 // INSTANCIAS GLOBALES
@@ -110,9 +110,9 @@ uint32_t sampleCounter = 0;
 uint32_t timerTickCounter = 0;
 
 // ============================================================================
-// ARQUITECTURA: Fs_timer = 4 kHz (igual que signal_engine.cpp)
+// ARQUITECTURA: Fs_timer = 2 kHz (igual que signal_engine.cpp)
 // ============================================================================
-const uint32_t TIMER_TICK_US = 1000000 / FS_TIMER_HZ;  // 250 us = 4 kHz
+const uint32_t TIMER_TICK_US = 1000000 / FS_TIMER_HZ;  // 500 us = 2 kHz
 
 // Variables para timing real e interpolación
 static uint32_t lastModelTick_us = 0;
@@ -348,7 +348,7 @@ void loop() {
         sampleCounter++;
     }
     
-    // ========== TIMER TICK @ 4 kHz ==========
+    // ========== TIMER TICK @ 2 kHz ==========
     bool timerTick = false;
     uint8_t dacValue = 128;
     
@@ -375,27 +375,29 @@ void loop() {
     }
     
     // ========================================================================
-    // ENVIO A SERIAL PLOTTER - MAPEO IDÉNTICO A NEXTION (main.cpp updateDisplay)
+    // ENVIO A SERIAL PLOTTER - MAPEO IDÉNTICO A NEXTION (getWaveformValue())
     // ========================================================================
     // Formato VS Code Serial Plotter: >var:val,var2:val2\r\n
-    // El valor "wave" representa exactamente lo que Nextion muestra (0-255)
-    // Rango útil: 20-235 (igual que Nextion waveform)
+    // El valor "wave" representa exactamente lo que Nextion muestra:
+    // - ECG: [0, 255] rango completo (igual que ecg_model.cpp)
+    // - EMG: [0, 255] rango completo (igual que emg_model.cpp)
+    // - PPG: [26, 255] con piso 10% (igual que ppg_model.cpp)
     // ========================================================================
     
     if (timerTick) {
         
         #if AUTO_SIGNAL_TYPE == 0  // ECG @ 200 Hz (igual que Nextion)
         if (timerTickCounter % PLOT_DOWNSAMPLE_ECG == 0) {
-            // === MAPEO IDÉNTICO A main.cpp línea 967-970 ===
+            // === MAPEO IDÉNTICO A ecg_model.cpp getWaveformValue() ===
             float mV_value = ecgModel.getCurrentValueMV();
             
-            // Normalización: (mV + 0.5) / 2.0 para rango -0.5 a +1.5 mV
+            // Normalización: [-0.5, 1.5] mV → [0, 1] (rango 2.0 mV)
             float normalized = (mV_value + 0.5f) / 2.0f;
             if (normalized < 0.0f) normalized = 0.0f;
             if (normalized > 1.0f) normalized = 1.0f;
             
-            // Mapeo a rango Nextion: 20 + (normalized × 215)
-            int waveValue = (int)(20 + (normalized * 215));
+            // Mapeo a rango Nextion: [0, 255] rango completo
+            int waveValue = (int)(normalized * 255.0f);
             
             // Track min/max en mV
             if (mV_value < minVal) minVal = mV_value;
@@ -428,15 +430,13 @@ void loop() {
             
         #elif AUTO_SIGNAL_TYPE == 1  // EMG @ 100 Hz (igual que Nextion)
         if (timerTickCounter % PLOT_DOWNSAMPLE_EMG == 0) {
-            // === MAPEO IDÉNTICO A main.cpp líneas 975-984 ===
+            // === MAPEO IDÉNTICO A emg_model.cpp getWaveformValue_Ch0/Ch1() ===
             
-            // Canal 0: Señal RAW bipolar (-5 a +5 mV)
-            uint16_t ch0_value = emgModel.getWaveformValue_Ch0();
-            uint8_t ch0_mapped = map(ch0_value, 0, 380, 20, 235);
+            // Canal 0: Señal RAW bipolar (-5 a +5 mV) → [0, 255]
+            uint8_t ch0_mapped = emgModel.getWaveformValue_Ch0();
             
-            // Canal 1: Envolvente RMS unipolar (0 a +2 mV)
-            uint16_t ch1_value = emgModel.getWaveformValue_Ch1();
-            uint8_t ch1_mapped = map(ch1_value, 0, 380, 20, 235);
+            // Canal 1: Envolvente RMS unipolar (0 a +2 mV) → [0, 255] en escala raw
+            uint8_t ch1_mapped = emgModel.getWaveformValue_Ch1();
             
             // Valores originales para tracking
             float rawMV = emgModel.getRawSample();
@@ -467,16 +467,18 @@ void loop() {
             
         #else  // PPG @ 100 Hz (igual que Nextion)
         if (timerTickCounter % PLOT_DOWNSAMPLE_PPG == 0) {
-            // === MAPEO IDÉNTICO A main.cpp líneas 992-1001 ===
+            // === MAPEO IDÉNTICO A ppg_model.cpp getWaveformValue() ===
             float acValue_mV = ppgModel.getLastACValue();
             
-            // Mapeo unipolar: 0 → 20, 150 mV → 235
+            // Mapeo unipolar: 0 → 26 (piso 10%), 150 mV → 255
             const float AC_DISPLAY_MAX = 150.0f;
+            const uint8_t WAVEFORM_MIN = 26;       // Piso: 26/255 ≈ 10%
+            const uint8_t WAVEFORM_RANGE = 229;    // 255 - 26 = 229 niveles útiles
             float normalized = acValue_mV / AC_DISPLAY_MAX;
             if (normalized < 0.0f) normalized = 0.0f;
             if (normalized > 1.0f) normalized = 1.0f;
             
-            int waveValue = (int)(20 + (normalized * 215));
+            int waveValue = WAVEFORM_MIN + (int)(normalized * WAVEFORM_RANGE);
             
             if (acValue_mV < minVal) minVal = acValue_mV;
             if (acValue_mV > maxVal) maxVal = acValue_mV;

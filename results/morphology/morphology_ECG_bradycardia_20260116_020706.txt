@@ -1,0 +1,36 @@
+
+================================================================================
+REPORTE DE VALIDACIÓN MORFOLÓGICA
+================================================================================
+Fecha: 2026-01-16 02:07:07
+Tipo de Señal: ECG
+Condición: bradycardia
+Frecuencia de Muestreo: 300 Hz
+Muestras: 3600
+Duración: 12.00 segundos
+
+COMPONENTES ECG DETECTADOS
+--------------------------------------------------------------------------------
+P_wave         : ✗ AUSENTE
+Q_wave         : ✓ PRESENTE
+R_peak         : ✓ PRESENTE
+S_wave         : ✓ PRESENTE
+T_wave         : ✗ AUSENTE
+
+Completitud: 60%
+
+COMPARACIÓN MORFOLÓGICA CON REFERENCIA CLÍNICA
+--------------------------------------------------------------------------------
+Correlación de Pearson:      0.5627
+P-value:                   0.000000
+RMSE:                        0.9352
+RMSE Normalizado:            0.9352
+Índice de Similitud:          56.3%
+
+INTERPRETACIÓN:
+  ⚠ SIMILITUD MODERADA
+  Revisar parámetros del modelo para mejorar morfología
+
+================================================================================
+VALIDACIÓN COMPLETADA
+================================================================================

@@ -1,0 +1,36 @@
+
+================================================================================
+REPORTE DE VALIDACIÓN MORFOLÓGICA
+================================================================================
+Fecha: 2026-01-16 02:07:05
+Tipo de Señal: ECG
+Condición: tachycardia
+Frecuencia de Muestreo: 300 Hz
+Muestras: 3600
+Duración: 12.00 segundos
+
+COMPONENTES ECG DETECTADOS
+--------------------------------------------------------------------------------
+P_wave         : ✗ AUSENTE
+Q_wave         : ✓ PRESENTE
+R_peak         : ✓ PRESENTE
+S_wave         : ✓ PRESENTE
+T_wave         : ✗ AUSENTE
+
+Completitud: 60%
+
+COMPARACIÓN MORFOLÓGICA CON REFERENCIA CLÍNICA
+--------------------------------------------------------------------------------
+Correlación de Pearson:     -0.3073
+P-value:                   0.000070
+RMSE:                        1.6551
+RMSE Normalizado:            1.6551
+Índice de Similitud:           0.0%
+
+INTERPRETACIÓN:
+  ✗ BAJA similitud
+  La morfología no coincide con patrones clínicos esperados
+
+================================================================================
+VALIDACIÓN COMPLETADA
+================================================================================

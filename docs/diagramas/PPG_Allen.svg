@@ -17,12 +17,12 @@
   
   <!-- Frecuencia de muestreo con nota -->
   <rect x="140" y="60" width="340" height="36" rx="3" fill="#e3f2fd" stroke="#1976d2" stroke-width="1"/>
-  <text x="310" y="76" text-anchor="middle" class="box-text">Fs_modelo = 100 Hz  •  Upsampling 40:1 → 4 kHz DAC</text>
-  <text x="310" y="90" text-anchor="middle" class="note">Nota: Nyquist requiere 20 Hz (BW=10 Hz), pero se usa 100 Hz para evitar escalones en display</text>
+  <text x="310" y="76" text-anchor="middle" class="box-text">Fs_modelo = 20 Hz  •  Upsampling 100:1 → 2 kHz DAC</text>
+  <text x="310" y="90" text-anchor="middle" class="note">Nota: Nyquist requiere 10 Hz (BW=5 Hz), Fs_modelo = 20 Hz cumple criterio</text>
   
   <!-- deltaTime -->
   <rect x="235" y="108" width="150" height="28" rx="4" fill="#d5d5d5" stroke="#333" stroke-width="1.5"/>
-  <text x="310" y="127" text-anchor="middle" class="box-bold">deltaTime = 10 ms</text>
+  <text x="310" y="127" text-anchor="middle" class="box-bold">deltaTime = 50 ms</text>
   <path d="M310 136 L310 151 L306 146 M310 151 L314 146" stroke="#333" stroke-width="1.5" fill="none"/>
   
   <!-- generateSample -->
@@ -108,7 +108,7 @@
   <text x="450" y="938" text-anchor="middle" class="note">0mV→26 (piso 10%)  150mV→255</text>
   
   <text x="310" y="975" text-anchor="middle" class="note">Muesca dicrótica: β (escala) y λ (atraso) según SpO₂ y condición vascular</text>
-  <text x="310" y="995" text-anchor="middle" class="note">Display @ 100 Hz (downsample 40:1) – sin interpolación = sin escalones</text>
+  <text x="310" y="995" text-anchor="middle" class="note">Timer @ 2 kHz → Display @ 100 Hz (downsample 20:1 desde timer)</text>
   
   <text x="310" y="1030" text-anchor="middle" style="font:9px Arial;fill:#999">BioSimulator Pro v1.0.0 – PPG Allen Gaussian Pulse Model</text>
 </svg>

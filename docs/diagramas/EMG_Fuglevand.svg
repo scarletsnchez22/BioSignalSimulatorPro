@@ -17,7 +17,7 @@
   
   <!-- Frecuencia de muestreo -->
   <rect x="195" y="60" width="260" height="22" rx="3" fill="#e3f2fd" stroke="#1976d2" stroke-width="1"/>
-  <text x="325" y="76" text-anchor="middle" class="box-text">Fs_modelo = 1000 Hz  •  Upsampling 4:1 → 4 kHz DAC</text>
+  <text x="325" y="76" text-anchor="middle" class="box-text">Fs_modelo = 1000 Hz  •  Upsampling 2:1 → 2 kHz DAC</text>
   
   <!-- deltaTime -->
   <rect x="250" y="95" width="150" height="28" rx="4" fill="#d5d5d5" stroke="#333" stroke-width="1.5"/>
@@ -129,7 +129,7 @@
   <text x="490" y="1003" text-anchor="middle" class="box-text">Ch0 (RAW): ±5mV → 0-255</text>
   <text x="490" y="1020" text-anchor="middle" class="box-code">val = 128 + (mV/5)×127</text>
   <text x="490" y="1040" text-anchor="middle" class="box-text">Ch1 (ENV): misma escala</text>
-  <text x="490" y="1057" text-anchor="middle" class="note">Display @ 100 Hz (downsample 40:1)</text>
+  <text x="490" y="1057" text-anchor="middle" class="note">Timer @ 2 kHz → Display @ 100 Hz (downsample 20:1)</text>
   
   <text x="325" y="1095" text-anchor="middle" style="font:9px Arial;fill:#999">BioSimulator Pro v1.0.0 – EMG Fuglevand Motor Unit Model</text>
 </svg>

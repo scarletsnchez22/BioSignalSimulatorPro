@@ -38,9 +38,9 @@ Los requisitos funcionales describen las capacidades específicas que el sistema
 
 | ID | Requisito | Especificación | Origen |
 |----|-----------|----------------|--------|
-| RF-HW-01 | Salida analógica única | 0-3.3V vía DAC ESP32 + buffer LM358 | METODOLOGIA_ELECTRONICA |
+| RF-HW-01 | Salida analógica única | Compatible con equipos de laboratorio y microcontroladores (0-3.3V vía DAC ESP32 + buffer LM358) | METODOLOGIA_ELECTRONICA |
 | RF-HW-02 | Conector BNC | Salida para conexión a osciloscopio/equipo médico | METODOLOGIA_ELECTRONICA |
-| RF-HW-03 | Filtrado selectivo por señal | RC pasabajos: ECG (23.4 Hz), EMG (159 Hz), PPG (4.82 Hz) | METODOLOGIA_ELECTRONICA |
+| RF-HW-03 | Filtrado selectivo por señal | RC pasabajos: ECG (23.4 Hz), EMG (159 Hz), PPG (6.37 Hz) | METODOLOGIA_ELECTRONICA |
 | RF-HW-04 | Multiplexación automática | CD4051 selecciona filtro RC según tipo de señal activa | METODOLOGIA_ELECTRONICA |
 | RF-HW-05 | Alimentación autónoma | Batería Li-ion 2×18650 paralelo (5200 mAh) recargable | METODOLOGIA_ELECTRONICA |
 | RF-HW-06 | Carga por USB-C | Módulo IP5306 con carga hasta 2A | METODOLOGIA_ELECTRONICA |
@@ -88,7 +88,7 @@ Los requisitos funcionales describen las capacidades específicas que el sistema
 
 | ID | Requisito | Especificación | Origen |
 |----|-----------|----------------|--------|
-| RF-SW-01 | Generación en tiempo real | Tasa de muestreo DAC: 4 kHz (jitter < ±50 µs) | METODOLOGIA_COMPUTACIONAL |
+| RF-SW-01 | Generación en tiempo real | Tasa de muestreo DAC: 2 kHz (jitter < ±50 µs) | METODOLOGIA_COMPUTACIONAL |
 | RF-SW-02 | Separación de núcleos | Core 0: UI/WiFi, Core 1: Generación de señales | METODOLOGIA_COMPUTACIONAL |
 | RF-SW-03 | Buffer circular | 2048 muestras para desacoplamiento generación/DAC | METODOLOGIA_COMPUTACIONAL |
 | RF-SW-04 | Detección de underruns | Monitoreo de buffer vacío con estadísticas | METODOLOGIA_COMPUTACIONAL |
@@ -106,7 +106,7 @@ Los requisitos no funcionales describen las cualidades y restricciones del siste
 
 | ID | Requisito | Especificación | Origen |
 |----|-----------|----------------|--------|
-| RNF-PERF-01 | Frecuencia de muestreo DAC | 4000 Hz (250 µs por muestra) | METODOLOGIA_COMPUTACIONAL |
+| RNF-PERF-01 | Frecuencia de muestreo DAC | 2000 Hz (500 µs por muestra) | METODOLOGIA_COMPUTACIONAL |
 | RNF-PERF-02 | Latencia DAC | < 1 ms desde generación hasta salida analógica | METODOLOGIA_COMPUTACIONAL |
 | RNF-PERF-03 | Refresh UI Nextion | Waveform: 100-200 Hz, Métricas: 4 Hz | METODOLOGIA_COMPUTACIONAL |
 | RNF-PERF-04 | Frecuencia WebSocket | 100 Hz señal, 4 Hz métricas | METODOLOGIA_APPWEB |
@@ -141,7 +141,7 @@ Los requisitos no funcionales describen las cualidades y restricciones del siste
 
 | ID | Requisito | Especificación | Origen |
 |----|-----------|----------------|--------|
-| RNF-MEC-01 | Peso total ensamblado | < 500 g (cumple: ~350 g) | METODOLOGIA_MECANICA |
+| RNF-MEC-01 | Peso total ensamblado | < 2 kg (cumple: ~350 g) | METODOLOGIA_MECANICA |
 | RNF-MEC-02 | Dimensiones externas | 180 × 120 × 45 mm | METODOLOGIA_MECANICA |
 | RNF-MEC-03 | Material carcasa | PETG impreso 3D, espesor 2.5 mm | METODOLOGIA_MECANICA |
 | RNF-MEC-04 | Tornillería estándar | M3 para ensamblaje exterior | METODOLOGIA_MECANICA |
@@ -250,7 +250,7 @@ Los requisitos no funcionales describen las cualidades y restricciones del siste
 │  • Rendimiento:                6 requisitos (latencia, frecuencias)         │
 │  • Energía/Autonomía:          6 requisitos (≥3h, 5200mAh)                  │
 │  • Seguridad Eléctrica:        8 requisitos (SELV, IEC 61010-1)             │
-│  • Mecánica:                   6 requisitos (<500g, PETG)                   │
+│  • Mecánica:                   6 requisitos (<2 kg, PETG)                   │
 │  • Térmico:                    5 requisitos (<75°C, ventilación pasiva)     │
 │  • Fidelidad de Señales:       9 requisitos (rangos mV, BW, Fs)             │
 │  • WiFi:                       5 requisitos (AP, 6 clientes)                │

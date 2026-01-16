@@ -429,7 +429,7 @@ El BMS garantiza protección celda-celda antes del elevador, mientras el IP5306 
 │  │                  │                                           │   │
 │  │                  ├─► CH0: R=6.8kΩ + C=1µF ──► BNC_ECG        │   │
 │  │                  ├─► CH1: R=1.0kΩ + C=1µF ──► BNC_EMG        │   │
-│  │                  └─► CH2: R=33kΩ  + C=1µF ──► BNC_PPG        │   │
+│  │                  └─► CH2: R=25kΩ  + C=1µF ──► BNC_PPG        │   │
 │  │                                                              │   │
 │  │                  (3 filtros RC independientes)               │   │
 │  │                  (3 salidas BNC separadas)                   │   │
@@ -476,7 +476,7 @@ Debido a las limitaciones de impedancia del CD4051 con señales analógicas cont
                               │           │
 DAC → LM358 → CD4051(DEMUX) ──┼──[1.0kΩ]──┬──[1µF]──GND ──► BNC_EMG  
                               │           │
-                              └──[33kΩ]───┬──[1µF]──GND ──► BNC_PPG
+                              └──[25kΩ]───┬──[1µF]──GND ──► BNC_PPG
 ```
 
 **Cadena de acondicionamiento detallada:**
@@ -486,16 +486,16 @@ DAC → LM358 → CD4051(DEMUX) ──┼──[1.0kΩ]──┬──[1µF]─�
 | 1. Generación | ESP32 DAC (GPIO25) | Digital | 0-3.3V analógico | Conversión D/A de la señal biomédica |
 | 2. Buffer | LM358 (configuración seguidor) | 0-3.3V | 0-3.3V | Impedancia baja (~100Ω) para alimentar MUX |
 | 3. Multiplexación | CD4051 (canales 0-2) | 0-3.3V | 0-3.3V | Selección de resistencia de filtro RC |
-| 4. Filtrado | RC pasabajos (R variable + C=1µF) | 0-3.3V | 0-3.3V filtrada | Elimina stepping del DAC (4 kHz) |
+| 4. Filtrado | RC pasabajos (R variable + C=1µF) | 0-3.3V | 0-3.3V filtrada | Elimina stepping del DAC (2 kHz) |
 | 5. Salida | Conector BNC hembra | Señal filtrada | BNC | Conexión a osciloscopio |
 
 **Tabla de filtros RC selectivos (basada en análisis FFT):**
 
-| Señal | Canal CD4051 | R (kΩ) | Fc (Hz) | F99% energía | Atenuación @ 4 kHz |
+| Señal | Canal CD4051 | R (kΩ) | Fc (Hz) | F99% energía | Atenuación @ 2 kHz |
 |-------|--------------|--------|---------|--------------|-------------------|
-| ECG | CH0 (S1=0, S0=0) | 6.8 | 23.4 | 21.6 Hz | -44 dB |
-| EMG | CH1 (S1=0, S0=1) | 1.0 | 159 | 146.3 Hz | -28 dB |
-| PPG | CH2 (S1=1, S0=0) | 33 | 4.82 | 4.9 Hz | -58 dB |
+| ECG | CH0 (S1=0, S0=0) | 6.8 | 23.4 | 21.6 Hz | -38 dB |
+| EMG | CH1 (S1=0, S0=1) | 1.0 | 159 | 146.3 Hz | -22 dB |
+| PPG | CH2 (S1=1, S0=0) | 25 | 6.37 | 4.9 Hz | -48 dB |
 
 **Notas de diseño:**
 
@@ -524,10 +524,10 @@ Inicialmente se diseñó una arquitectura con un solo BNC y el CD4051 selecciona
 
 #### Análisis del Problema de Resistencias en Paralelo
 
-Con el diseño original donde las 3 resistencias del filtro (6.8kΩ, 1kΩ, 33kΩ) compartían un nodo común con el capacitor:
+Con el diseño original donde las 3 resistencias del filtro (6.8kΩ, 1kΩ, 25kΩ) compartían un nodo común con el capacitor:
 
 ```
-R_equivalente = 1 / (1/6.8k + 1/1k + 1/33k) = ~870Ω
+R_equivalente = 1 / (1/6.8k + 1/1k + 1/25k) = ~870Ω
 ```
 
 Esto causaba que **todas las resistencias cargaran la señal simultáneamente**, creando un divisor de voltaje inesperado y pérdida de señal significativa.
@@ -553,7 +553,7 @@ En lugar de usar 2 CD4051 (DEMUX + MUX) con buffers adicionales, se optó por un
                               │           │
 DAC → LM358 → CD4051(DEMUX) ──┼──[1.0kΩ]──┬──[1µF]──GND ──► BNC_EMG  
                               │           │
-                              └──[33kΩ]───┬──[1µF]──GND ──► BNC_PPG
+                              └──[25kΩ]───┬──[1µF]──GND ──► BNC_PPG
 ```
 
 | Ventaja | Descripción |
@@ -644,7 +644,7 @@ El sistema se implementa con dos PCB separadas más módulos externos. A continu
 | 13 | Resistencia 220Ω 1/4W (LED RGB) | 3 | $0.05 | $0.15 | Novatronic |
 | 14 | Resistencia 6.8kΩ 1/4W (filtro ECG) | 1 | $0.05 | $0.05 | Novatronic |
 | 15 | Resistencia 1.0kΩ 1/4W (filtro EMG) | 1 | $0.05 | $0.05 | Novatronic |
-| 16 | Resistencia 33kΩ 1/4W (filtro PPG) | 1 | $0.05 | $0.05 | Novatronic |
+| 16 | Resistencia 25kΩ 1/4W (filtro PPG) | 1 | $0.05 | $0.05 | Novatronic |
 | 17 | Capacitor cerámico 1µF/16V X7R (filtro ECG) | 1 | $0.10 | $0.10 | Novatronic |
 | 18 | Capacitor cerámico 1µF/16V X7R (filtro EMG) | 1 | $0.10 | $0.10 | Novatronic |
 | 19 | Capacitor cerámico 1µF/16V X7R (filtro PPG) | 1 | $0.10 | $0.10 | Novatronic |
@@ -779,10 +779,10 @@ f_c = 1 / (2π × R × C)
 **Justificación del diseño:**
 
 - **Señales biomédicas:** ECG (0-50 Hz), EMG (0-500 Hz), PPG (0-10 Hz) pasan sin atenuación apreciable (fc >> fmax).
-- **Stepping del DAC:** El DAC del ESP32 opera a 4 kHz (Fs_timer). Con fc = 1.59 kHz, los armónicos del stepping se atenúan ~8 dB a 4 kHz y ~20 dB a 16 kHz, suavizando visualmente la señal en el osciloscopio.
+- **Stepping del DAC:** El DAC del ESP32 opera a 2 kHz (Fs_timer). Con fc = 1.59 kHz, los armónicos del stepping se atenúan ~2 dB a 2 kHz y ~14 dB a 8 kHz, suavizando visualmente la señal en el osciloscopio.
 - **Ripple residual del XL6009:** A 400 kHz, la atenuación es >48 dB, eliminando cualquier componente de conmutación que haya pasado el filtro π.
 
-> **Nota:** Se eligió 1 µF (en lugar de 100 nF) para colocar fc entre la frecuencia máxima de las señales biomédicas (500 Hz) y la frecuencia de muestreo del DAC (4 kHz), cumpliendo el criterio de filtro de reconstrucción: fmax < fc < Fs/2.
+> **Nota:** Se eligió 1 µF (en lugar de 100 nF) para colocar fc entre la frecuencia máxima de las señales biomédicas (500 Hz) y la frecuencia de muestreo del DAC (2 kHz), cumpliendo el criterio de filtro de reconstrucción: fmax < fc < Fs/2.
 
 #### 2.5.3.1 Implementación: Demultiplexor CD4051 para Distribución de Señal
 
@@ -804,7 +804,7 @@ Basándose en el análisis espectral FFT de las señales generadas por los model
 │  ┌──────┐                         │ CH1 ─────│───┼─[1.0kΩ]─┬─[1µF]─GND      │
 │  │GPIO32│─────────────────────────│► S0      │   │         └────►BNC_EMG    │
 │  │GPIO33│─────────────────────────│► S1      │   │                          │
-│  └──────┘                         │ S2=GND   │   └─[33kΩ]──┬─[1µF]─GND      │
+│  └──────┘                         │ S2=GND   │   └─[25kΩ]──┬─[1µF]─GND      │
 │                                   │ CH2 ─────│─────────────└────►BNC_PPG    │
 │                                   └──────────┘                              │
 │                                                                             │
@@ -814,11 +814,11 @@ Basándose en el análisis espectral FFT de las señales generadas por los model
 
 **Tabla: Filtros RC implementados según análisis FFT (cada uno con su capacitor)**
 
-| Señal | F 99% Energía | Fc Diseño | R | C | Salida BNC | Atenuación @ 4kHz |
+| Señal | F 99% Energía | Fc Diseño | R | C | Salida BNC | Atenuación @ 2kHz |
 |-------|---------------|-----------|---|---|------------|-------------------|
-| **ECG** | 21.6 Hz | 23.4 Hz | 6.8 kΩ | 1µF | BNC_ECG | -44 dB |
-| **EMG** | 146.3 Hz | 159 Hz | 1.0 kΩ | 1µF | BNC_EMG | -28 dB |
-| **PPG** | 4.9 Hz | 4.82 Hz | 33 kΩ | 1µF | BNC_PPG | -58 dB |
+| **ECG** | 21.6 Hz | 23.4 Hz | 6.8 kΩ | 1µF | BNC_ECG | -38 dB |
+| **EMG** | 146.3 Hz | 159 Hz | 1.0 kΩ | 1µF | BNC_EMG | -22 dB |
+| **PPG** | 4.9 Hz | 6.37 Hz | 25 kΩ | 1µF | BNC_PPG | -48 dB |
 
 **Justificación de la selección de componentes:**
 
@@ -836,7 +836,7 @@ $$F_c = \frac{1}{2\pi R C}$$
 
 - **ECG:** $F_c = \frac{1}{2\pi \times 6800 \times 10^{-6}} = 23.4 \, Hz$ (ligeramente superior a F99%=21.6 Hz)
 - **EMG:** $F_c = \frac{1}{2\pi \times 1000 \times 10^{-6}} = 159 \, Hz$ (ligeramente superior a F99%=146.3 Hz)
-- **PPG:** $F_c = \frac{1}{2\pi \times 33000 \times 10^{-6}} = 4.82 \, Hz$ (coincide con F99%=4.9 Hz)
+- **PPG:** $F_c = \frac{1}{2\pi \times 25000 \times 10^{-6}} = 6.37 \, Hz$ (superior a F99%=4.9 Hz)
 
 **Nota:** El filtro RC para EMG (R=1kΩ) fue necesario para eliminar ruido de alta frecuencia introducido por el multiplexor CD4051 cuando operaba sin filtro. La conexión directa (bypass) generaba interferencias visibles en el osciloscopio.
 
@@ -846,7 +846,7 @@ $$F_c = \frac{1}{2\pi R C}$$
 |-------|-----------|------------|---------|------------|---------|-------|
 | CH0 (ECG) | 6.8 kΩ | 80 Ω | 6.88 kΩ | 23.4 Hz | 23.1 Hz | <1.2% |
 | CH1 (EMG) | 1.0 kΩ | 80 Ω | 1.08 kΩ | 159 Hz | 147 Hz | <7.5% |
-| CH2 (PPG) | 33 kΩ | 80 Ω | 33.08 kΩ | 4.82 Hz | 4.81 Hz | <0.3% |
+| CH2 (PPG) | 25 kΩ | 80 Ω | 25.08 kΩ | 6.37 Hz | 6.34 Hz | <0.5% |
 
 El error introducido por Ron es inferior al 1.2% en todos los casos, despreciable para la aplicación educativa.
 
@@ -854,8 +854,8 @@ El error introducido por Ron es inferior al 1.2% en todos los casos, despreciabl
 
 | Parámetro | Filtro RC único (Fc=1.59kHz) | CD4051 + RC selectivo |
 |-----------|------------------------------|------------------------|
-| Atenuación ECG @ 4kHz | -8 dB | -44 dB (5.5× mejor) |
-| Atenuación PPG @ 4kHz | -8 dB | -58 dB (7.3× mejor) |
+| Atenuación ECG @ 2kHz | -2 dB | -38 dB (19× mejor) |
+| Atenuación PPG @ 2kHz | -2 dB | -52 dB (26× mejor) |
 | Complejidad | 2 componentes | 5 componentes + control GPIO |
 | Costo adicional | $0 | ~$2 (CD4051 + resistores) |
 

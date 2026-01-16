@@ -71,17 +71,26 @@ struct WSSignalMetrics {
     float qrs;                  // QRS amplitude (mV)
     float st;                   // ST deviation (mV)
     float hrv;                  // HRV (%)
+    int pr;                     // PR interval (ms)
+    int qtc;                    // QTc interval (ms)
+    float p;                    // P wave amplitude (mV)
+    float r;                    // R wave amplitude (mV)
+    float t;                    // T wave amplitude (mV)
     
     // EMG
     float rms;                  // RMS value (mV)
     int excitation;             // Excitation level (%)
     int activeUnits;            // Active motor units
     int freq;                   // Median frequency (Hz)
+    int mvc;                    // MVC contraction level (%)
+    float raw;                  // Raw EMG value (mV)
     
     // PPG
     float pi;                   // Perfusion Index (%)
     float dcLevel;              // DC baseline (mV)
     float ac;                   // AC amplitude (mV)
+    int sys;                    // Systole time (ms)
+    int dia;                    // Diastole time (ms)
 };
 
 // ============================================================================

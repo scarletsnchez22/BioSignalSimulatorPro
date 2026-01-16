@@ -204,7 +204,7 @@ El siguiente diagrama muestra la arquitectura computacional completa del sistema
 │                                             │                    ▼                        │ │
 │                                             │  ┌─────────────────────────────────────┐    │ │
 │                                             │  │   Timer ISR (hw_timer_t)            │    │ │
-│                                             │  │   Período: 0.25 ms (4 kHz)          │    │ │
+│                                             │  │   Período: 0.5 ms (2 kHz)          │    │ │
 │                                             │  │   IRAM_ATTR (ejecución rápida)      │    │ │
 │                                             │  │                                     │    │ │
 │                                             │  │   timerISR():                       │    │ │
@@ -224,7 +224,7 @@ El siguiente diagrama muestra la arquitectura computacional completa del sistema
 │  │   Salida Analógica    │   │   Display Táctil      │   │   Streaming Remoto          │   │
 │  ├───────────────────────┤   ├───────────────────────┤   ├─────────────────────────────┤   │
 │  │                       │   │                       │   │                             │   │
-│  │  Actualización: 4 kHz │   │  Waveform: 100-200 Hz │   │  Señal: 100 Hz (10 ms)      │   │
+│  │  Actualización: 2 kHz │   │  Waveform: 100-200 Hz │   │  Señal: 100 Hz (10 ms)      │   │
 │  │  Resolución: 8-bit    │   │  Métricas: 4 Hz       │   │  Métricas: 4 Hz (250 ms)    │   │
 │  │  Rango: 0-3.3 V       │   │  Baudios: 115200      │   │  Formato: JSON              │   │
 │  │  Jitter: < ±50 µs     │   │  Área: 700×380 px     │   │  Max clientes: 4            │   │
@@ -257,7 +257,7 @@ La distribución de tareas entre los dos núcleos del ESP32 se diseñó para ais
 | Core 0 | loop() | Nextion, UI, WiFi | Continuo | 1 | Default |
 | Core 0 | WiFi | AP + WebSocket server | Asíncrono | 1 | 4096 |
 | Core 1 | generationTask | Generación de muestras | 1 ms | 5 | 4096 |
-| Core 1 | Timer ISR | Salida DAC | 0.25 ms (4 kHz) | Máxima | ISR |
+| Core 1 | Timer ISR | Salida DAC | 0.5 ms (2 kHz) | Máxima | ISR |
 
 **Tabla 3.2: Constantes de configuración (config.h)**
 
@@ -267,7 +267,7 @@ La distribución de tareas entre los dos núcleos del ESP32 se diseñó para ais
 | `CORE_UI_COMMUNICATION` | 0 | Núcleo para UI/WiFi |
 | `TASK_PRIORITY_SIGNAL` | 5 | Prioridad máxima de tarea |
 | `STACK_SIZE_SIGNAL` | 4096 | Stack de tarea de señal |
-| `FS_TIMER_HZ` | 4000 | Timer maestro DAC (4 kHz) |
+| `FS_TIMER_HZ` | 2000 | Timer maestro DAC (2 kHz) |
 | `SIGNAL_BUFFER_SIZE` | 2048 | Tamaño buffer circular |
 
 ### 3.3 Recursos Compartidos y Sincronización
@@ -318,7 +318,7 @@ El `SignalEngine` se implementó como un singleton que coordina la generación d
 │  ┌─────────────────┐              ┌─────────────────┐           │
 │  │ startSignal()   │              │ DAC GPIO25      │           │
 │  │ stopSignal()    │              │ 0-255 (8-bit)   │           │
-│  │ setParameters() │              │ 4 kHz update    │           │
+│  │ setParameters() │              │ 2 kHz update    │           │
 │  └────────┬────────┘              └────────▲────────┘           │
 │           │                                │                    │
 │           ▼                                │                    │
@@ -352,7 +352,7 @@ El `SignalEngine` se implementó como un singleton que coordina la generación d
 │                              │                                  │
 │                              ▼                                  │
 │  ┌─────────────────────────────────────────────────────────────┐ │
-│  │                      timerISR() @ 4 kHz                     │ │
+│  │                      timerISR() @ 2 kHz                     │ │
 │  │                                                             │ │
 │  │   void IRAM_ATTR timerISR() {                               │ │
 │  │       if (readIdx != writeIdx) {                            │ │
@@ -369,16 +369,16 @@ El `SignalEngine` se implementó como un singleton que coordina la generación d
 
 ### 4.2 Timer de Hardware y ISR
 
-El timer de hardware se configuró para generar interrupciones a 4 kHz (Fs_timer):
+El timer de hardware se configuró para generar interrupciones a 2 kHz (Fs_timer):
 
 ```cpp
 // Configuración del timer (signal_engine.cpp)
 void SignalEngine::setupTimer() {
-    // Timer a Fs_timer (4 kHz)
-    // Criterio: Fs_timer >= Fs_modelo_máximo (EMG=2000) con margen 2×
+    // Timer a Fs_timer (2 kHz)
+    // Criterio: Fs_timer >= Fs_modelo_máximo (EMG=1000) con margen 2×
     signalTimer = timerBegin(0, 80, true);  // Timer 0, prescaler 80 (1 µs)
     timerAttachInterrupt(signalTimer, &timerISR, true);
-    timerAlarmWrite(signalTimer, 250, true);  // 250 µs = 4 kHz
+    timerAlarmWrite(signalTimer, 500, true);  // 500 µs = 2 kHz
     timerAlarmEnable(signalTimer);
 }
 ```
@@ -391,10 +391,10 @@ void SignalEngine::setupTimer() {
 
 ### 4.3 Gestión del Buffer Circular
 
-El buffer circular de 2048 muestras proporcionó aproximadamente 0.5 segundos de autonomía a 4 kHz, suficiente para absorber variaciones temporales de la tarea de generación:
+El buffer circular de 2048 muestras proporcionó aproximadamente 1 segundo de autonomía a 2 kHz, suficiente para absorber variaciones temporales de la tarea de generación:
 
 **Cálculo de autonomía del buffer:**
-$$T_{buffer} = \frac{N_{muestras}}{f_s} = \frac{2048}{4000\,Hz} = 0.512\,s$$
+$$T_{buffer} = \frac{N_{muestras}}{f_s} = \frac{2048}{2000\,Hz} = 1.024\,s$$
 
 **Nivel de llenado óptimo:**
 - Mínimo: 25% (512 muestras) para evitar underruns
@@ -421,9 +421,9 @@ Se ejecutó un análisis espectral de 7 segundos de duración sobre cada modelo,
 
 Los valores de F 99% Energía (21.6 Hz para ECG, 146.3 Hz para EMG, 4.9 Hz para PPG) representan las frecuencias donde se concentra el 99% de la energía espectral de cada señal, constituyendo el límite práctico del contenido útil.
 
-### 5.2 Justificación de Fs_timer = 4 kHz
+### 5.2 Justificación de Fs_timer = 2 kHz
 
-La frecuencia del timer maestro del DAC (Fs_timer = 4000 Hz) se seleccionó mediante el siguiente análisis:
+La frecuencia del timer maestro del DAC (Fs_timer = 2000 Hz) se seleccionó mediante el siguiente análisis:
 
 **Criterio de Nyquist aplicado:**
 
@@ -433,17 +433,17 @@ $$F_s \geq 2 \times F_{max}$$
 
 Para el sistema BioSignalSimulator Pro, la señal con mayor contenido frecuencial es el EMG, cuyo ancho de banda clínico se extiende hasta 500 Hz. Aplicando el criterio de Nyquist con margen de seguridad:
 
-$$F_{s,timer} = 2 \times F_{max,EMG} \times Factor_{seguridad} = 2 \times 500 \times 4 = 4000 \, Hz$$
+$$F_{s,timer} = 2 \times F_{max,EMG} \times Factor_{seguridad} = 2 \times 500 \times 2 = 2000 \, Hz$$
 
 **Verificación de cumplimiento de Nyquist:**
 
 | Señal | Fmax Real (99% energía) | Fs Timer | Relación Fs/Fmax | Cumplimiento |
 |-------|-------------------------|----------|------------------|--------------|
-| ECG | 21.6 Hz | 4000 Hz | 185× | ✓ Holgado |
-| EMG | 146.3 Hz | 4000 Hz | 27× | ✓ Holgado |
-| PPG | 4.9 Hz | 4000 Hz | 816× | ✓ Holgado |
+| ECG | 21.6 Hz | 2000 Hz | 93× | ✓ Holgado |
+| EMG | 146.3 Hz | 2000 Hz | 14× | ✓ Holgado |
+| PPG | 4.9 Hz | 2000 Hz | 408× | ✓ Holgado |
 
-El factor de 4× sobre Nyquist se justificó por:
+El factor de 2× sobre Nyquist se justificó por:
 1. **Margen para filtro anti-aliasing pasivo:** Los filtros RC de primer orden requieren separación entre Fc y Fs/2.
 2. **Suavizado de escalones del DAC:** Mayor sobremuestreo produce transiciones más suaves.
 3. **Uniformidad del timer:** Un único Fs_timer simplifica la arquitectura de interrupciones.
@@ -468,16 +468,16 @@ El sistema implementó una estrategia de muestreo en dos etapas para conciliar l
 
 ### 6.1 Upsampling: Modelo → Timer DAC
 
-Los modelos generan muestras a frecuencias nativas (Fs_modelo) que posteriormente se interpolan para alimentar el timer del DAC a 4 kHz:
+Los modelos generan muestras a frecuencias nativas (Fs_modelo) que posteriormente se interpolan para alimentar el timer del DAC a 2 kHz:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         UPSAMPLING (Interpolación)                       │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  PPG:   20 Hz  ──[×200]──► 4000 Hz   (interpolación lineal)            │
-│  ECG:  300 Hz  ──[×13.3]─► 4000 Hz   (interpolación lineal)            │
-│  EMG: 1000 Hz  ──[×4]────► 4000 Hz   (interpolación lineal)            │
+│  PPG:   20 Hz  ──[×100]──► 2000 Hz  (interpolación lineal)             │
+│  ECG:  300 Hz  ──[×7]────► 2000 Hz  (interpolación lineal)             │
+│  EMG: 1000 Hz  ──[×2]────► 2000 Hz  (interpolación lineal)             │
 │                                                                         │
 │  Fórmula: Ratio_up = Fs_timer / Fs_modelo                               │
 │                                                                         │
@@ -493,26 +493,26 @@ Los modelos generan muestras a frecuencias nativas (Fs_modelo) que posteriorment
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Caso crítico: PPG (20 Hz → 4000 Hz)**
+**Caso crítico: PPG (100 Hz → 2000 Hz)**
 
-El modelo PPG opera a solo 20 Hz debido a su bajo contenido frecuencial (F99% = 4.9 Hz). La interpolación 200:1 fue validada espectralmente, confirmando que no introduce artefactos significativos dado que el contenido original está muy por debajo del límite de Nyquist.
+El modelo PPG opera a 100 Hz debido a su bajo contenido frecuencial (F99% = 4.9 Hz). La interpolación 20:1 fue validada espectralmente, confirmando que no introduce artefactos significativos dado que el contenido original está muy por debajo del límite de Nyquist.
 
 ### 6.2 Downsampling: Timer DAC → Visualización
 
-Las interfaces de visualización (Nextion y WebSocket) no requieren la tasa completa de 4 kHz. Se aplicó decimación selectiva:
+Las interfaces de visualización (Nextion y WebSocket) no requieren la tasa completa de 2 kHz. Se aplicó decimación selectiva:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    DOWNSAMPLING (Decimación para Display)                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  Timer @ 4 kHz ────┬──► Decimación 20:1 ──► Nextion ECG 200 Hz          │
+│  Timer @ 2 kHz ────┬──► Decimación 10:1 ──► Nextion ECG 200 Hz          │
 │                    │                                                    │
-│                    ├──► Decimación 40:1 ──► Nextion EMG 100 Hz          │
+│                    ├──► Decimación 20:1 ──► Nextion EMG 100 Hz          │
 │                    │                                                    │
-│                    ├──► Decimación 40:1 ──► Nextion PPG 100 Hz          │
+│                    ├──► Decimación 20:1 ──► Nextion PPG 100 Hz          │
 │                    │                                                    │
-│                    └──► Decimación 40:1 ──► WebSocket 100 Hz            │
+│                    └──► Decimación 20:1 ──► WebSocket 100 Hz            │
 │                                                                         │
 │  Fórmula: Ratio_down = Fs_timer / Fs_display                            │
 │                                                                         │
@@ -523,10 +523,10 @@ Las interfaces de visualización (Nextion y WebSocket) no requieren la tasa comp
 
 | Destino | Señal | Fs_timer | Fs_display | Ratio | Justificación |
 |---------|-------|----------|------------|-------|---------------|
-| Nextion | ECG | 4000 Hz | 200 Hz | 20:1 | Resolución temporal QRS (5 ms) |
-| Nextion | EMG | 4000 Hz | 100 Hz | 40:1 | Fluidez visual suficiente |
-| Nextion | PPG | 4000 Hz | 100 Hz | 40:1 | F99%=4.9 Hz, 100 Hz es holgado |
-| WebSocket | Todas | 4000 Hz | 100 Hz | 40:1 | Ancho de banda WiFi limitado |
+| Nextion | ECG | 2000 Hz | 200 Hz | 10:1 | Resolución temporal QRS (5 ms) |
+| Nextion | EMG | 2000 Hz | 100 Hz | 20:1 | Fluidez visual suficiente |
+| Nextion | PPG | 2000 Hz | 100 Hz | 20:1 | F99%=4.9 Hz, 100 Hz es holgado |
+| WebSocket | Todas | 2000 Hz | 100 Hz | 20:1 | Ancho de banda WiFi limitado |
 
 El downsampling se implementó mediante contador de muestras:
 
@@ -604,7 +604,7 @@ Se implementó un sistema de selección de filtros RC analógicos mediante el mu
 │  │ (Select) │                   │ CH1 ◄────│──[1.0kΩ]─────│►   1µF   │  │
 │  │          │                   │          │              │      │   │  │
 │  │ GPIO33   │──────────────────►│ S1       │              │   ───┴── │  │
-│  │ (Select) │                   │ CH2 ◄────│──[33kΩ]──────│►    GND  │  │
+│  │ (Select) │                   │ CH2 ◄────│──[25kΩ]──────│►    GND  │  │
 │  └──────────┘                   └──────────┘              └──────────┘  │
 │                                                                         │
 │  Tabla de selección:                                                    │
@@ -613,7 +613,7 @@ Se implementó un sistema de selección de filtros RC analógicos mediante el mu
 │  ├─────────┼─────┼─────┼────────────┼────────────────────────────────┤  │
 │  │ CH0     │  0  │  0  │ 6.8 kΩ     │ 23.4 Hz → ECG (F99%=21.6 Hz)   │  │
 │  │ CH1     │  0  │  1  │ 1.0 kΩ     │ 159 Hz → EMG (F99%=146 Hz)     │  │
-│  │ CH2     │  1  │  0  │ 33 kΩ      │ 4.82 Hz → PPG (F99%=4.9 Hz)    │  │
+│  │ CH2     │  1  │  0  │ 25 kΩ      │ 6.37 Hz → PPG (F99%=4.9 Hz)    │  │
 │  └─────────┴─────┴─────┴────────────┴────────────────────────────────┘  │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -629,11 +629,11 @@ $$F_c = \frac{1}{2\pi R C} = \frac{1}{2\pi \times 6800 \times 10^{-6}} = 23.4 \,
 
 Esta Fc está ligeramente por encima de F99% = 21.6 Hz del ECG, preservando todo el contenido espectral útil mientras atenúa el stepping del DAC.
 
-**PPG (CH2):** Fc = 4.82 Hz
+**PPG (CH2):** Fc = 6.37 Hz
 
-$$F_c = \frac{1}{2\pi \times 33000 \times 10^{-6}} = 4.82 \, Hz$$
+$$F_c = \frac{1}{2\pi \times 25000 \times 10^{-6}} = 6.37 \, Hz$$
 
-Fc coincide con F99% = 4.9 Hz del PPG, proporcionando máxima atenuación del ruido de muestreo.
+Fc es superior a F99% = 4.9 Hz del PPG, proporcionando buena atenuación del ruido de muestreo.
 
 **EMG (CH1):** Fc = 159 Hz
 
@@ -656,7 +656,7 @@ void SignalEngine::setSignalType(SignalType type) {
             mux.selectChannel(MUX_CH_EMG);  // CH1: 1.0kΩ, Fc=159 Hz
             break;
         case SIGNAL_PPG:
-            mux.selectChannel(MUX_CH_PPG);  // CH2: 33kΩ, Fc=4.8 Hz
+            mux.selectChannel(MUX_CH_PPG);  // CH2: 25kΩ, Fc=6.37 Hz
             break;
     }
 }
@@ -671,7 +671,7 @@ El CD4051 presenta una resistencia de encendido (Ron) típica de 80Ω a VDD=5V. 
 | Canal | R nominal | Ron | R total | Fc nominal | Fc real | Error |
 |-------|-----------|-----|---------|------------|---------|-------|
 | CH0 | 6.8 kΩ | 80Ω | 6.88 kΩ | 23.4 Hz | 23.1 Hz | 1.2% |
-| CH2 | 33 kΩ | 80Ω | 33.08 kΩ | 4.82 Hz | 4.81 Hz | 0.2% |
+| CH2 | 25 kΩ | 80Ω | 25.08 kΩ | 6.37 Hz | 6.34 Hz | 0.5% |
 
 El error introducido por Ron es inferior al 1.2% en todos los casos, considerado despreciable para la aplicación educativa.
 
@@ -830,7 +830,7 @@ Para el ECG, la resolución de 8 µV/bit resulta adecuada considerando que el ru
 
 **Conclusión:**
 
-El **Nextion NX8048T070** obtuvo la mayor puntuación (4.65/5.00) gracias a su procesador gráfico standalone que libera al ESP32 de tareas de renderizado. Esta característica fue **crítica** para el proyecto: mientras el Core 1 del ESP32 generaba muestras a 4 kHz (carga temporal ~80%), el Core 0 solo necesitaba enviar comandos UART simples cada 10 ms (`"add 1,0,128"`) en lugar de renderizar 700×380 píxeles por frame.
+El **Nextion NX8048T070** obtuvo la mayor puntuación (4.65/5.00) gracias a su procesador gráfico standalone que libera al ESP32 de tareas de renderizado. Esta característica fue **crítica** para el proyecto: mientras el Core 1 del ESP32 generaba muestras a 2 kHz (carga temporal ~40%), el Core 0 solo necesitaba enviar comandos UART simples cada 10 ms (`"add 1,0,128"`) en lugar de renderizar 700×380 píxeles por frame.
 
 La interfaz de desarrollo Nextion Editor permitió diseñar la GUI completa (waveforms, medidores, botones) en ~8 horas vs. las estimadas 40+ horas con TFT LCD manual. La pantalla táctil capacitiva eliminó la necesidad de 10+ botones externos que hubieran requerido GPIO adicionales y debouncing por software.
 
@@ -865,30 +865,30 @@ Se definieron dos tasas de actualización independientes para optimizar el ancho
 
 ### 5.3 Downsampling para Waveform
 
-El downsampling se calcula **respecto a Fs_timer (4 kHz)**, no respecto al modelo:
+El downsampling se calcula **respecto a Fs_timer (2 kHz)**, no respecto al modelo:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    DOWNSAMPLING PARA NEXTION                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Timer @ 4 kHz ────┬──► Decimación 20:1 ──► Nextion ECG 200 Hz   │
+│  Timer @ 2 kHz ────┬──► Decimación 10:1 ──► Nextion ECG 200 Hz   │
 │                    │                                            │
-│                    ├──► Decimación 40:1 ──► Nextion EMG 100 Hz   │
+│                    ├──► Decimación 20:1 ──► Nextion EMG 100 Hz   │
 │                    │                                            │
-│                    └──► Decimación 40:1 ──► Nextion PPG 100 Hz   │
+│                    └──► Decimación 20:1 ──► Nextion PPG 100 Hz   │
 │                                                                 │
 │  Fórmula: Ratio = Fs_timer / Fds                                │
 │                                                                 │
 │  Implementación (config.h):                                     │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  const uint16_t FS_TIMER_HZ = 4000;                      │    │
+│  │  const uint16_t FS_TIMER_HZ = 2000;                      │    │
 │  │  const uint16_t FDS_ECG = 200;                          │    │
 │  │  const uint16_t FDS_EMG = 100;                          │    │
 │  │  const uint16_t FDS_PPG = 100;                          │    │
-│  │  const uint8_t NEXTION_DOWNSAMPLE_ECG = 4000/200 = 20;  │    │
-│  │  const uint8_t NEXTION_DOWNSAMPLE_EMG = 4000/100 = 40;  │    │
-│  │  const uint8_t NEXTION_DOWNSAMPLE_PPG = 4000/100 = 40;  │    │
+│  │  const uint8_t NEXTION_DOWNSAMPLE_ECG = 2000/200 = 10;  │    │
+│  │  const uint8_t NEXTION_DOWNSAMPLE_EMG = 2000/100 = 20;  │    │
+│  │  const uint8_t NEXTION_DOWNSAMPLE_PPG = 2000/100 = 20;  │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -898,9 +898,9 @@ El downsampling se calcula **respecto a Fs_timer (4 kHz)**, no respecto al model
 
 | Señal | Fs_timer | Fds | Ratio = Fs_timer/Fds | Muestras/s enviadas |
 |-------|----------|-----|----------------------|---------------------|
-| ECG | 4000 Hz | 200 Hz | 20:1 | 200 |
-| EMG | 4000 Hz | 100 Hz | 40:1 | 200 (2 canales) |
-| PPG | 4000 Hz | 100 Hz | 40:1 | 100 |
+| ECG | 2000 Hz | 200 Hz | 10:1 | 200 |
+| EMG | 2000 Hz | 100 Hz | 20:1 | 200 (2 canales) |
+| PPG | 2000 Hz | 100 Hz | 20:1 | 100 |
 
 ### 5.4 Formato de Comandos Waveform
 
@@ -930,32 +930,41 @@ El waveform de Nextion opera como un **rolling display** (desplazamiento continu
 A diferencia de un osciloscopio digital que captura en memoria y permite re-escalar, el waveform de Nextion tiene una **escala temporal fija** determinada por:
 
 1. **Ancho del waveform en píxeles** (700 px según `config.h`)
-2. **Frecuencia de envío de puntos** (Fs_display)
+2. **Frecuencia de envío de puntos** (Fs_display, sin interpolación)
 3. **Comportamiento de Nextion**: 1 comando `add` = 1 píxel de desplazamiento
 
-**Fórmula de cálculo:**
+**Fórmula de cálculo (envío directo sin interpolación):**
 
-$$T_{pixel} = \frac{1}{F_{display}} \quad ; \quad T_{total} = W_{px} \times T_{pixel} \quad ; \quad \frac{ms}{div} = \frac{T_{total}}{N_{div}}$$
+$$\text{Puntos/s} = F_{display}$$
+
+$$\frac{ms}{div} = \frac{\text{px/div}}{\text{Puntos/s}} \times 1000 = \frac{70}{\text{Puntos/s}} \times 1000$$
 
 Donde:
-- $T_{pixel}$ = tiempo que representa cada píxel
-- $F_{display}$ = frecuencia de envío (puntos/segundo)
-- $W_{px}$ = ancho del waveform (700 píxeles)
-- $N_{div}$ = número de divisiones horizontales (10)
+- $F_{display}$ = frecuencia de muestreo para display (Hz)
+- px/div = 700 px / 10 divisiones = 70 px/div
 
-**Tabla 9.5: Cálculo de escalas temporales**
+**Tabla 9.5: Cálculo de escalas temporales (sin interpolación)**
 
-| Señal | Fs_display | T/pixel | T_total (700px) | Divisiones | **ms/div** |
-|-------|------------|---------|-----------------|------------|------------|
-| ECG | 200 Hz | 5 ms | 3500 ms | 10 | **350 ms/div** |
-| EMG | 100 Hz | 10 ms | 7000 ms | 10 | **700 ms/div** |
-| PPG | 100 Hz | 10 ms | 7000 ms | 10 | **700 ms/div** |
+| Señal | Fs_display | Puntos/s | px/div | **ms/div** | T_pantalla |
+|-------|------------|----------|--------|------------|------------|
+| ECG | 200 Hz | 200 | 70 | **350 ms** | 3.5 s |
+| EMG | 100 Hz | 100 | 70 | **700 ms** | 7.0 s |
+| PPG | 100 Hz | 100 | 70 | **700 ms** | 7.0 s |
 
 **Ejemplo de cálculo para ECG:**
 ```
-Fs_display = 200 Hz → T_pixel = 1/200 = 5 ms/píxel
-T_total = 700 px × 5 ms/px = 3500 ms = 3.5 segundos visibles
-ms/div = 3500 ms / 10 divisiones = 350 ms/div
+Fs_display = 200 Hz (sin interpolación)
+Puntos/s = 200 pts/s
+ms/div = (70 px / 200 pts/s) × 1000 = 350 ms/div
+T_pantalla = 10 div × 350 ms = 3500 ms = 3.5 s
+```
+
+**Ejemplo de cálculo para EMG/PPG:**
+```
+Fs_display = 100 Hz (sin interpolación)
+Puntos/s = 100 pts/s
+ms/div = (70 px / 100 pts/s) × 1000 = 700 ms/div
+T_pantalla = 10 div × 700 ms = 7000 ms = 7.0 s
 ```
 
 #### 9.5.2 Cálculo de la Escala de Amplitud (mV/div)
@@ -968,8 +977,10 @@ La escala vertical depende del rango de voltaje del modelo y la altura del wavef
 |-------|--------------|-------------|------------|------------|
 | ECG | -0.5 a +1.5 mV (2.0 mV) | 380 px | 10 | **0.2 mV/div** |
 | EMG RAW | -5.0 a +5.0 mV (10 mV) | 380 px | 10 | **1.0 mV/div** |
-| EMG ENV | 0 a +2.0 mV | 380 px | 10 | **0.2 mV/div** |
-| PPG (AC) | -100 a +100 mV (200 mV) | 380 px | 10 | **20 mV/div** |
+| EMG ENV | 0 a +5.0 mV (escala raw) | 380 px | 10 | **1.0 mV/div** |
+| PPG (AC) | 0 a 150 mV | 380 px | 10 | **15 mV/div** |
+
+**Nota sobre EMG ENV:** El envelope se muestra en la misma escala del RAW (±5 mV → 1.0 mV/div) para visualización proporcional, similar a como aparece en Serial Plotter.
 
 **Nota sobre PPG:** La salida DAC y el waveform Nextion muestran únicamente la componente AC de la señal PPG. El componente DC (~1000 mV) se omite porque no aporta información clínica; la utilidad diagnóstica reside en la componente pulsátil.
 
@@ -983,7 +994,7 @@ La escala vertical depende del rango de voltaje del modelo y la altura del wavef
 │  OSCILOSCOPIO DIGITAL:                   NEXTION WAVEFORM:                  │
 │  ┌───────────────────────────┐           ┌───────────────────────────┐      │
 │  │ 1. ADC muestrea a Fs fija │           │ 1. ESP32 envía puntos     │      │
-│  │ 2. Almacena en memoria    │           │    a Fs_display fija      │      │
+│  │ 2. Almacena en memoria    │           │    a Fs_display (directo) │      │
 │  │ 3. Usuario ajusta ms/div  │           │ 2. NO hay memoria         │      │
 │  │ 4. Software re-escala     │           │ 3. ms/div es FIJO         │      │
 │  │ 5. Muestra ventana        │           │ 4. Rolling display        │      │
@@ -1091,9 +1102,9 @@ El Serial Plotter utiliza **exactamente los mismos ratios de downsampling** que 
 
 | Señal | Fs_timer | Ratio Downsampling | Frecuencia Envío | Definición en config.h |
 |-------|----------|-------------------|------------------|------------------------|
-| ECG | 4000 Hz | 20:1 | **200 Hz** | `NEXTION_DOWNSAMPLE_ECG` |
-| EMG | 4000 Hz | 40:1 | **100 Hz** | `NEXTION_DOWNSAMPLE_EMG` |
-| PPG | 4000 Hz | 40:1 | **100 Hz** | `NEXTION_DOWNSAMPLE_PPG` |
+| ECG | 2000 Hz | 10:1 | **200 Hz** | `NEXTION_DOWNSAMPLE_ECG` |
+| EMG | 2000 Hz | 20:1 | **100 Hz** | `NEXTION_DOWNSAMPLE_EMG` |
+| PPG | 2000 Hz | 20:1 | **100 Hz** | `NEXTION_DOWNSAMPLE_PPG` |
 
 Esto garantiza que el número de puntos por segundo y la resolución temporal sean idénticos entre el Serial Plotter y Nextion.
 
@@ -1609,7 +1620,7 @@ El siguiente diagrama muestra el flujo de datos desde la generación hasta las t
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │                  GENERACIÓN (Core 1, 4 kHz) + INTERPOLACIÓN              │
+│  │                  GENERACIÓN (Core 1, 2 kHz) + INTERPOLACIÓN              │
 │  │                                                                     │
 │  │   Condición ──► Modelo Activo ──► sample_mV ──► getDACValue()      │
 │  │   (ECG/EMG/PPG)   (RK4/MU/Gauss)   (float)      (uint8_t 0-255)    │
@@ -1627,13 +1638,13 @@ El siguiente diagrama muestra el flujo de datos desde la generación hasta las t
 │          ▼                       ▼                       ▼                  │
 │  ┌───────────────┐      ┌───────────────┐      ┌───────────────┐           │
 │  │  SALIDA DAC   │      │  NEXTION      │      │  WebSocket    │           │
-│  │  (ISR 4 kHz)  │      │  (100-200 Hz) │      │  (100 Hz)     │           │
+│  │  (ISR 2 kHz)  │      │  (100-200 Hz) │      │  (100 Hz)     │           │
 │  ├───────────────┤      ├───────────────┤      ├───────────────┤           │
 │  │               │      │               │      │               │           │
 │  │ timerISR():   │      │ updateDisplay │      │ sendSignal    │           │
 │  │ dacWrite()    │      │ ()            │      │ Data()        │           │
 │  │               │      │               │      │               │           │
-│  │ Cada 0.25 ms  │      │ Cada 5-10 ms  │      │ Cada 10 ms    │           │
+│  │ Cada 0.5 ms   │      │ Cada 5-10 ms  │      │ Cada 10 ms    │           │
 │  │ Sin filtro    │      │ Downsampled   │      │ JSON format   │           │
 │  │               │      │               │      │               │           │
 │  └───────┬───────┘      └───────┬───────┘      └───────┬───────┘           │
@@ -1740,7 +1751,7 @@ PPG @ 100 Hz: T = 700 / 100 = 7.0 s (~9 latidos @ 75 BPM)
 
 ## 13. Metodología de Diseño de Frecuencias
 
-Esta sección documenta la metodología sistemática utilizada para seleccionar las frecuencias de integración del modelo, oversampling, y decimación para visualización en Nextion. El DAC escribe a 4 kHz sin decimación para preservar el espectro completo.
+Esta sección documenta la metodología sistemática utilizada para seleccionar las frecuencias de integración del modelo, oversampling, y decimación para visualización en Nextion. El DAC escribe a 2 kHz sin decimación para preservar el espectro completo.
 
 ### 9.1 Contenido Espectral de Señales Biomédicas (Referencias Clínicas)
 
@@ -1799,27 +1810,27 @@ Esta sección documenta la metodología sistemática utilizada para seleccionar 
 
 **Criterios de selección del timer:**
 1. **Fs_timer > Fs_modelo_máximo** (para no perder información del modelo más rápido)
-2. **Factor de seguridad 4×** sobre el modelo más exigente
+2. **Factor de seguridad 2×** sobre el modelo más exigente
 3. **Divisibilidad** por frecuencias de salida (100 Hz, 200 Hz) para decimación entera
 
 **Cálculo:**
 ```
 Fs_modelo_máximo = EMG @ 1000 Hz
-Factor de seguridad = 4×
-Fs_timer = 1000 Hz × 4 = 4000 Hz
+Factor de seguridad = 2×
+Fs_timer = 1000 Hz × 2 = 2000 Hz
 ```
 
 **Tabla 9.3: Configuración del timer maestro**
 
 | Parámetro | Valor | Justificación |
 |-----------|-------|---------------|
-| FS_TIMER_HZ | 4000 Hz | 4× EMG (1000 Hz), factor seguridad |
-| Buffer circular | 2048 muestras | ~0.5 s de autonomía |
-| Jitter esperado | < 0.25 ms | 1 tick de timer |
+| FS_TIMER_HZ | 2000 Hz | 2× EMG (1000 Hz), factor seguridad |
+| Buffer circular | 2048 muestras | ~1.0 s de autonomía |
+| Jitter esperado | < 0.5 ms | 1 tick de timer |
 
 ### 9.4 Interpolación Lineal (Upsampling de Modelo a Timer)
 
-**Objetivo:** Rellenar huecos entre muestras del modelo para alimentar el buffer del timer a 4000 Hz.
+**Objetivo:** Rellenar huecos entre muestras del modelo para alimentar el buffer del timer a 2000 Hz.
 
 **Fórmula de interpolación lineal:**
 ```
@@ -1836,9 +1847,9 @@ Donde:
 
 | Señal | Fs_modelo | Fs_timer | Ratio upsampling |
 |-------|-----------|----------|------------------|
-| **ECG** | 300 Hz | 4000 Hz | **13:1** (~13 muestras interpoladas) |
-| **EMG** | 1000 Hz | 4000 Hz | **4:1** (4 muestras interpoladas) |
-| **PPG** | 20 Hz | 4000 Hz | **200:1** (~200 muestras interpoladas) |
+| **ECG** | 300 Hz | 2000 Hz | **7:1** (~7 muestras interpoladas) |
+| **EMG** | 1000 Hz | 2000 Hz | **2:1** (2 muestras interpoladas) |
+| **PPG** | 20 Hz | 2000 Hz | **100:1** (~100 muestras interpoladas) |
 
 ### 9.5 Decimación para Visualización (Solo Nextion)
 
@@ -1865,12 +1876,12 @@ Simplificado: Fds = Ancho_waveform / T_ventana_deseada
 
 | Señal | Fs_timer | Fds_Nextion | Ratio decimación | Aplica a |
 |-------|----------|-------------|------------------|----------|
-| **ECG** | 4000 Hz | 200 Hz | **20:1** | Solo Nextion (visualización) |
-| **EMG** | 4000 Hz | 100 Hz | **40:1** | Solo Nextion (visualización) |
-| **PPG** | 4000 Hz | 100 Hz | **40:1** | Solo Nextion (visualización) |
+| **ECG** | 2000 Hz | 200 Hz | **10:1** | Solo Nextion (visualización) |
+| **EMG** | 2000 Hz | 100 Hz | **20:1** | Solo Nextion (visualización) |
+| **PPG** | 2000 Hz | 100 Hz | **20:1** | Solo Nextion (visualización) |
 
 **IMPORTANTE:** 
-- El **DAC escribe a 4000 Hz sin decimación** para preservar el espectro frecuencial completo de las señales (especialmente EMG con contenido hasta 500 Hz).
+- El **DAC escribe a 2000 Hz sin decimación** para preservar el espectro frecuencial completo de las señales (especialmente EMG con contenido hasta 500 Hz).
 - La **decimación solo se aplica a Nextion** (visualización) debido a limitaciones de ancho de banda UART.
 - El **filtro RC analógico** (fc = 1.59 kHz) actúa como filtro de reconstrucción, suavizando los escalones del DAC.
 
@@ -1959,9 +1970,9 @@ PPG:  T = 700 px × 10 ms = 7000 ms = 7.0 s
 │                                                                             │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
 │  │   MODELO     │───►│INTERPOLACIÓN │───►│     DAC      │                   │
-│  │  (Fs_modelo) │    │  (4000 Hz)   │    │  (4000 Hz)   │                   │
+│  │  (Fs_modelo) │    │  (2000 Hz)   │    │  (2000 Hz)   │                   │
 │  └──────────────┘    └──────────────┘    └──────┬───────┘                   │
-│   750/2000/100 Hz       Upsampling          Sin decimación                  │
+│   300/1000/20 Hz        Upsampling          Sin decimación                  │
 │                                                  │                          │
 │                              ┌───────────────────┴───────────────────┐      │
 │                              │                                       │      │
@@ -1973,8 +1984,8 @@ PPG:  T = 700 px × 10 ms = 7000 ms = 7.0 s
 │                       Reconstrucción                        200/100 Hz      │
 │                                                                             │
 │  SALIDAS:                                                                   │
-│  • DAC/BNC: 4000 Hz SIN decimación → espectro completo para osciloscopio   │
-│  • Nextion: Decimado 20:1/40:1 → visualización (limitación UART)           │
+│  • DAC/BNC: 2000 Hz SIN decimación → espectro completo para osciloscopio   │
+│  • Nextion: Decimado 10:1/20:1 → visualización (limitación UART)           │
 │                                                                             │
 │  PASOS DE DISEÑO:                                                           │
 │  1. Analizar contenido espectral de señales (Tabla 9.1)                    │
@@ -1985,13 +1996,13 @@ PPG:  T = 700 px × 10 ms = 7000 ms = 7.0 s
 │  6. Calcular parámetros de visualización (Tabla 9.6)                       │
 │                                                                             │
 │  IMPLEMENTACIÓN EN config.h:                                                │
-│  • FS_TIMER_HZ = 4000 (también Fs_DAC)                                     │
-│  • MODEL_SAMPLE_RATE_ECG = 750                                              │
-│  • MODEL_SAMPLE_RATE_EMG = 2000                                             │
-│  • MODEL_SAMPLE_RATE_PPG = 100                                              │
-│  • NEXTION_DOWNSAMPLE_ECG = 4000 / 200 = 20                                │
-│  • NEXTION_DOWNSAMPLE_EMG = 4000 / 100 = 40                                │
-│  • NEXTION_DOWNSAMPLE_PPG = 4000 / 100 = 40                                │
+│  • FS_TIMER_HZ = 2000 (también Fs_DAC)                                     │
+│  • MODEL_SAMPLE_RATE_ECG = 300                                              │
+│  • MODEL_SAMPLE_RATE_EMG = 1000                                             │
+│  • MODEL_SAMPLE_RATE_PPG = 20                                               │
+│  • NEXTION_DOWNSAMPLE_ECG = 2000 / 200 = 10                                │
+│  • NEXTION_DOWNSAMPLE_EMG = 2000 / 100 = 20                                │
+│  • NEXTION_DOWNSAMPLE_PPG = 2000 / 100 = 20                                │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -2011,19 +2022,19 @@ Esta sección documenta la arquitectura de la **salida analógica funcional** de
 │                    ARQUITECTURA DE SALIDA ANALÓGICA                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ¿Por qué DAC a 4 kHz SIN decimación?                                       │
+│  ¿Por qué DAC a 2 kHz SIN decimación?                                       │
 │  ────────────────────────────────────                                       │
 │  • EMG tiene contenido espectral hasta 500 Hz (Nyquist mínimo = 1 kHz)     │
 │  • Si decimamos a 100 Hz, Nyquist = 50 Hz → perdemos 90% del espectro      │
-│  • Solución: DAC escribe TODAS las muestras interpoladas a 4 kHz           │
+│  • Solución: DAC escribe TODAS las muestras interpoladas a 2 kHz           │
 │                                                                             │
 │  FLUJO DE SEÑAL:                                                            │
 │  ───────────────                                                            │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────┐  │
 │  │   MODELO     │───►│INTERPOLACIÓN │───►│    DAC       │───►│ FILTRO   │  │
-│  │ (Fs_modelo)  │    │  (4000 Hz)   │    │  (4000 Hz)   │    │ RC 1.6kHz│  │
+│  │ (Fs_modelo)  │    │  (2000 Hz)   │    │  (2000 Hz)   │    │ RC 1.6kHz│  │
 │  └──────────────┘    └──────────────┘    └──────────────┘    └──────────┘  │
-│   750/2000/100 Hz      Upsampling          Sin decimación     Reconstrucción│
+│   300/1000/20 Hz       Upsampling          Sin decimación     Reconstrucción│
 │                                                                             │
 │  DECIMACIÓN SELECTIVA (solo visualización):                                 │
 │  ──────────────────────────────────────────                                 │
@@ -2038,9 +2049,9 @@ Esta sección documenta la arquitectura de la **salida analógica funcional** de
 
 | Señal | Fs_modelo | Fs_DAC | Fs_Nextion | Nyquist DAC | Contenido útil |
 |-------|-----------|--------|------------|-------------|----------------|
-| **ECG** | 300 Hz | **4000 Hz** | 200 Hz | 2000 Hz | 0.5–150 Hz ✓ |
-| **EMG** | 1000 Hz | **4000 Hz** | 100 Hz | 2000 Hz | 20–500 Hz ✓ |
-| **PPG** | 20 Hz | **4000 Hz** | 100 Hz | 2000 Hz | 0.5–10 Hz ✓ |
+| **ECG** | 300 Hz | **2000 Hz** | 200 Hz | 1000 Hz | 0.5–150 Hz ✓ |
+| **EMG** | 1000 Hz | **2000 Hz** | 100 Hz | 1000 Hz | 20–500 Hz ✓ |
+| **PPG** | 20 Hz | **2000 Hz** | 100 Hz | 1000 Hz | 0.5–10 Hz ✓ |
 
 ### 10.2 Cadena de Procesamiento Digital (Antes del DAC)
 
@@ -2060,21 +2071,21 @@ La señal pasa por tres etapas de procesamiento digital antes de llegar al DAC:
 │           │                                                                 │
 │           │ Muestras a frecuencia del modelo (variable)                     │
 │           ▼                                                                 │
-│  ETAPA 2: INTERPOLACIÓN LINEAL (Upsampling a 4 kHz)                         │
+│  ETAPA 2: INTERPOLACIÓN LINEAL (Upsampling a 2 kHz)                         │
 │  ┌─────────────────────────────────────────────────────────────────┐        │
-│  │  Ratio ECG: 4000/750 ≈ 5.3:1                                    │        │
-│  │  Ratio EMG: 4000/2000 = 2:1                                     │        │
-│  │  Ratio PPG: 4000/100 = 40:1                                     │        │
+│  │  Ratio ECG: 2000/300 ≈ 7:1                                      │        │
+│  │  Ratio EMG: 2000/1000 = 2:1                                     │        │
+│  │  Ratio PPG: 2000/20 = 100:1                                     │        │
 │  │                                                                  │        │
 │  │  Fórmula: sample(t) = prev + (curr - prev) × t/ratio           │        │
 │  │  Suaviza transiciones entre muestras del modelo                 │        │
 │  └─────────────────────────────────────────────────────────────────┘        │
 │           │                                                                 │
-│           │ Buffer circular @ 4000 Hz (oversampled)                        │
+│           │ Buffer circular @ 2000 Hz (oversampled)                        │
 │           ▼                                                                 │
 │  ETAPA 3: SALIDA DAC (Sin decimación - espectro completo)                   │
 │  ┌─────────────────────────────────────────────────────────────────┐        │
-│  │  Timer ISR @ 4000 Hz escribe directamente al DAC:               │        │
+│  │  Timer ISR @ 2000 Hz escribe directamente al DAC:               │        │
 │  │                                                                  │        │
 │  │  void IRAM_ATTR timerISR() {                                    │        │
 │  │      dacWrite(DAC_SIGNAL_PIN, lastDACValue);  // Cada tick      │        │
@@ -2082,13 +2093,13 @@ La señal pasa por tres etapas de procesamiento digital antes de llegar al DAC:
 │  │                                                                  │        │
 │  │  JUSTIFICACIÓN (espectro frecuencial):                          │        │
 │  │  • EMG tiene contenido hasta 500 Hz (Nyquist = 1 kHz mínimo)    │        │
-│  │  • DAC @ 4 kHz → Nyquist = 2 kHz → preserva todo el espectro   │        │
+│  │  • DAC @ 2 kHz → Nyquist = 1 kHz → preserva todo el espectro   │        │
 │  │  • Si decimáramos a 100 Hz → Nyquist = 50 Hz → pérdida del 90% │        │
 │  │  • El filtro RC (fc=1.59 kHz) suaviza escalones del DAC         │        │
 │  └─────────────────────────────────────────────────────────────────┘        │
 │           │                                                                 │
 │           ▼                                                                 │
-│  [Timer ISR → DAC @ 4000 Hz (SIN decimación)]                               │
+│  [Timer ISR → DAC @ 2000 Hz (SIN decimación)]                               │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -2102,9 +2113,9 @@ La señal pasa por tres etapas de procesamiento digital antes de llegar al DAC:
 │                                                                             │
 │  ESP32 DAC (GPIO25)                                                         │
 │  ┌─────────────────┐                                                        │
-│  │  8-bit DAC      │  ← Señal interpolada a 4 kHz                          │
+│  │  8-bit DAC      │  ← Señal interpolada a 2 kHz                          │
 │  │  0-3.3V         │                                                        │
-│  │  @ 4000 Hz      │  ← SIN decimación (espectro completo)                 │
+│  │  @ 2000 Hz      │  ← SIN decimación (espectro completo)                 │
 │  └────────┬────────┘                                                        │
 │           │                                                                 │
 │           ▼                                                                 │
@@ -2123,7 +2134,7 @@ La señal pasa por tres etapas de procesamiento digital antes de llegar al DAC:
 │  │    • Criterio: fmax_señal < fc < Fs_DAC/2                       │        │
 │  │    •           500 Hz < 1590 Hz < 2000 Hz  ✓                    │        │
 │  │    • Preserva banda útil (0-500 Hz para EMG)                    │        │
-│  │    • Atenúa stepping del DAC (~8 dB @ 4 kHz)                    │        │
+│  │    • Atenúa stepping del DAC (~22 dB @ 2 kHz)                   │        │
 │  │    • Convierte señal escalonada en curva continua               │        │
 │  └─────────────────────────────────────────────────────────────────┘        │
 │           │                                                                 │
@@ -2190,12 +2201,12 @@ El DAC de 8 bits del ESP32 genera una señal **escalonada** (staircase), no cont
 |-----------|-------|---------------|
 | R | 10 kΩ | Compromiso entre atenuación y carga al DAC |
 | C | 100 nF | Frecuencia de corte adecuada para señales biomédicas |
-| fc | 159 Hz | Atenúa armónicos de muestreo (4 kHz) sin afectar señal |
-| Atenuación @ 4 kHz | -28 dB | Escalones del DAC reducidos a <5% de amplitud |
+| fc | 159 Hz | Atenúa armónicos de muestreo (2 kHz) sin afectar señal |
+| Atenuación @ 2 kHz | -22 dB | Escalones del DAC reducidos a <8% de amplitud |
 
 **Cálculo de atenuación:**
 $$H(f) = \frac{1}{\sqrt{1 + (f/f_c)^2}}$$
-$$H(4000\,Hz) = \frac{1}{\sqrt{1 + (4000/159)^2}} = 0.04 = -28\,dB$$
+$$H(2000\,Hz) = \frac{1}{\sqrt{1 + (2000/159)^2}} = 0.08 = -22\,dB$$
 
 **Explicación de la discrepancia DAC vs ADC:**
 
@@ -2223,11 +2234,11 @@ El filtro RC suaviza → ADC lee ~2.32V (correcto)
 │        │ EMG: Fuglevand MU @ 1000 Hz                                        │
 │        │ PPG: Suma Gaussianas @ 20 Hz                                       │
 │        ▼                                                                    │
-│  [Interpolación Lineal] ──► Upsampling a 4000 Hz (OVERSAMPLING)             │
+│  [Interpolación Lineal] ──► Upsampling a 2000 Hz (OVERSAMPLING)             │
 │        ▼                                                                    │
-│  [Buffer Circular DRAM_ATTR] ──► 2048 muestras @ 4 kHz                      │
+│  [Buffer Circular DRAM_ATTR] ──► 2048 muestras @ 2 kHz                      │
 │        ▼                                                                    │
-│  [Decimación] ──► ECG: 20:1 (200 Hz), EMG/PPG: 40:1 (100 Hz)               │
+│  [Decimación] ──► ECG: 10:1 (200 Hz), EMG/PPG: 20:1 (100 Hz)               │
 │        ▼                                                                    │
 │  [Timer ISR → DAC] ──► dacWrite(GPIO25, valor) @ Fds                        │
 │        ▼                                                                    │
@@ -2252,7 +2263,7 @@ El filtro RC suaviza → ADC lee ~2.32V (correcto)
 │  [Conector BNC] ──► Cable loopback ──► [ADC GPIO34]                         │
 │                                              │                              │
 │                                              ▼                              │
-│                                    [Lectura ADC @ 4000 Hz]                  │
+│                                    [Lectura ADC @ 2000 Hz]                  │
 │                                              │                              │
 │                                              ▼                              │
 │                                    [Acumulación + Promediado]               │
@@ -2270,10 +2281,10 @@ El filtro RC suaviza → ADC lee ~2.32V (correcto)
 │  • NO afecta la señal funcional del dispositivo                            │
 │                                                                             │
 │  NOTA SOBRE DECIMACIÓN:                                                     │
-│  • DAC escribe a 4000 Hz SIN decimación (espectro completo)                │
+│  • DAC escribe a 2000 Hz SIN decimación (espectro completo)                │
 │  • Serial Plotter y Nextion usan decimación (visualización)                │
 │  • ECG: 200 Hz, EMG/PPG: 100 Hz (limitación UART)                          │
-│  • El osciloscopio ve la señal REAL a 4 kHz                                │
+│  • El osciloscopio ve la señal REAL a 2 kHz                                │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -2291,7 +2302,7 @@ El filtro RC suaviza → ADC lee ~2.32V (correcto)
 │                                                                             │
 │  SERIAL PLOTTER (main.cpp líneas 1200-1248):                                │
 │  ┌──────────────────────────────────────────────────────────────┐           │
-│  │  1. ADC lee GPIO34 @ 4000 Hz (cada 250 µs)                   │           │
+│  │  1. ADC lee GPIO34 @ 2000 Hz (cada 500 µs)                   │           │
 │  │  2. Acumula muestras en dacAccum y adcAccum                  │           │
 │  │  3. Cada 5ms (ECG) o 10ms (EMG/PPG):                         │           │
 │  │     - Calcula promedio: dacAvg = dacAccum / sampleCount      │           │
@@ -2311,7 +2322,7 @@ El filtro RC suaviza → ADC lee ~2.32V (correcto)
 │  ┌──────────────────────┬────────────────────┬──────────────────┐           │
 │  │ Característica       │ Serial Plotter     │ Osciloscopio     │           │
 │  ├──────────────────────┼────────────────────┼──────────────────┤           │
-│  │ Frecuencia muestreo  │ 4000 Hz → 200/100  │ 1-10 MHz         │           │
+│  │ Frecuencia muestreo  │ 2000 Hz → 200/100  │ 1-10 MHz         │           │
 │  │ Promediado           │ SÍ (20-40 muestras)│ NO (configurable)│           │
 │  │ Ruido visible        │ Reducido           │ Completo         │           │
 │  │ Forma de onda        │ Suavizada          │ Más detallada    │           │
@@ -2332,8 +2343,8 @@ El filtro RC suaviza → ADC lee ~2.32V (correcto)
 **Implementación en código (main.cpp):**
 
 ```cpp
-// Acumular muestras a 4000 Hz
-if (micros() - lastSample_us >= 250) {  // 250 µs = 4000 Hz
+// Acumular muestras a 2000 Hz
+if (micros() - lastSample_us >= 500) {  // 500 µs = 2000 Hz
     uint16_t adcRaw = analogRead(ADC_LOOPBACK_PIN);
     float adcVoltage = (adcRaw / 4095.0f) * 3.3f;
     dacAccum += dacVoltage;
@@ -2366,7 +2377,7 @@ if (millis() - lastADCRead_ms >= downsampleInterval_ms) {
 
 | Elemento | Tipo | Frecuencia | Propósito |
 |----------|------|------------|-----------|
-| DAC GPIO25 | **Funcional** | **4000 Hz** (sin decimación) | Salida analógica principal |
+| DAC GPIO25 | **Funcional** | **2000 Hz** (sin decimación) | Salida analógica principal |
 | Filtro RC | **Funcional** | Analógico (fc=1.59 kHz) | Reconstrucción de señal |
 | Buffer Op-Amp | **Funcional** | Analógico | Aislamiento de impedancia |
 | Conector BNC | **Funcional** | Analógico | Conexión a equipos externos |
@@ -2375,9 +2386,9 @@ if (millis() - lastADCRead_ms >= downsampleInterval_ms) {
 | Nextion Waveform | Interfaz | 200/100 Hz (decimado) | Visualización para usuario |
 
 **Nota importante sobre frecuencias:**
-- **DAC:** Escribe a **4000 Hz SIN decimación** para preservar espectro completo (EMG hasta 500 Hz)
+- **DAC:** Escribe a **2000 Hz SIN decimación** para preservar espectro completo (EMG hasta 500 Hz)
 - **Nextion/Serial Plotter:** Decimados a 200/100 Hz por limitación de ancho de banda UART
-- El osciloscopio conectado al BNC ve la señal completa a 4 kHz
+- El osciloscopio conectado al BNC ve la señal completa a 2 kHz
 
 ### 10.8 Validación del Diseño Analógico mediante Análisis FFT
 
@@ -2442,8 +2453,8 @@ tools/
 │  CRITERIO DE ACEPTACIÓN:                                                    │
 │  ✓ Frecuencia fundamental coincide con parámetro configurado               │
 │  ✓ Contenido espectral dentro de banda de paso (ECG: 0.05-150 Hz)          │
-│  ✓ Atenuación > 20 dB para f > 2 kHz (efectividad del filtro RC)           │
-│  ✓ Ausencia de picos en 4 kHz (aliasing DAC suprimido)                     │
+│  ✓ Atenuación > 20 dB para f > 1 kHz (efectividad del filtro RC)           │
+│  ✓ Ausencia de picos en 2 kHz (aliasing DAC suprimido)                     │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -2576,7 +2587,7 @@ BioSignalSimulator Pro/
 │  1. INICIALIZACIÓN (setup())                                                │
 │     ├── Serial.begin(115200)                                                │
 │     ├── SignalEngine::getInstance().begin()                                 │
-│     │   ├── Configurar timer ISR @ 4 kHz                                    │
+│     │   ├── Configurar timer ISR @ 2 kHz                                    │
 │     │   └── Inicializar buffer circular (2048 muestras)                     │
 │     ├── mux.begin()  →  GPIO32/33 como salidas, CH1 por defecto             │
 │     ├── nextion.begin()  →  UART2 @ 115200 baud                             │
@@ -2596,11 +2607,11 @@ BioSignalSimulator Pro/
 │         ├── if (state == RUNNING):                                          │
 │         │   ├── Calcular espacio disponible en buffer                       │
 │         │   ├── Generar muestras con modelo activo                          │
-│         │   ├── Interpolar a 4 kHz                                          │
+│         │   ├── Interpolar a 2 kHz                                          │
 │         │   └── Escribir en buffer circular                                 │
 │         └── vTaskDelay(1)  →  Yield a otras tareas                          │
 │                                                                             │
-│  4. ISR DEL TIMER (timerISR @ 4 kHz, IRAM_ATTR)                             │
+│  4. ISR DEL TIMER (timerISR @ 2 kHz, IRAM_ATTR)                             │
 │     ├── Leer muestra de buffer[readIndex]                                   │
 │     ├── dacWrite(GPIO25, value)                                             │
 │     ├── readIndex = (readIndex + 1) % BUFFER_SIZE                           │
@@ -2615,7 +2626,7 @@ BioSignalSimulator Pro/
 
 | Constante | Valor | Descripción |
 |-----------|-------|-------------|
-| `FS_TIMER_HZ` | 4000 | Frecuencia del timer DAC (Hz) |
+| `FS_TIMER_HZ` | 2000 | Frecuencia del timer DAC (Hz) |
 | `SIGNAL_BUFFER_SIZE` | 2048 | Tamaño del buffer circular |
 | `DAC_SIGNAL_PIN` | 25 | GPIO para salida DAC |
 | `MUX_SELECT_S0` | 32 | GPIO selector S0 del CD4051 |

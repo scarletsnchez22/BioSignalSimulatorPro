@@ -36,7 +36,7 @@
  *    │(S0)  │                        │         │    ┌─[1.0kΩ]─┬─[1µF]─GND ──► BNC_EMG
  *    │      │                        │CH1(14)  ├────┘         │
  *    │GPIO33├────────────────────────┤S1(10)   │              │
- *    │(S1)  │                        │         │    ┌─[33kΩ]──┬─[1µF]─GND ──► BNC_PPG
+ *    │(S1)  │                        │         │    ┌─[25kΩ]──┬─[1µF]─GND ──► BNC_PPG
  *    │      │                        │CH2(15)  ├────┘         │
  *    │      │                        │         │              │
  *    │ GND  ├────────────────────────┤S2(9)=GND│              │
@@ -51,7 +51,7 @@
  * 
  *   DEMUX CH0 ──[R=6.8kΩ]──┬──[C=1µF]── GND  ──► BNC_ECG (Fc=23.4Hz)
  *   DEMUX CH1 ──[R=1.0kΩ]──┬──[C=1µF]── GND  ──► BNC_EMG (Fc=159Hz)
- *   DEMUX CH2 ──[R=33kΩ]───┬──[C=1µF]── GND  ──► BNC_PPG (Fc=4.8Hz)
+ *   DEMUX CH2 ──[R=25kΩ]───┬──[C=1µF]── GND  ──► BNC_PPG (Fc=6.37Hz)
  * 
  * NOTA: Solo se usa GPIO32 (S0) y GPIO33 (S1) para seleccionar canal activo.
  *       S2 conectado a GND permanentemente (solo usamos canales 0-2).
@@ -80,11 +80,11 @@
 // Un solo CD4051 distribuye la señal DAC a 3 caminos independientes:
 // - CH0 → Filtro ECG (6.8kΩ) → BNC_ECG
 // - CH1 → Filtro EMG (1.0kΩ) → BNC_EMG  
-// - CH2 → Filtro PPG (33kΩ)  → BNC_PPG
+// - CH2 → Filtro PPG (25kΩ)  → BNC_PPG
 enum class MuxChannel : uint8_t {
     CH0_ECG_6K8     = 0,    // Canal 0: R=6.8kΩ, C=1µF, Fc=23.4Hz → BNC_ECG
     CH1_EMG_1K0     = 1,    // Canal 1: R=1.0kΩ, C=1µF, Fc=159Hz  → BNC_EMG
-    CH2_PPG_33K     = 2,    // Canal 2: R=33kΩ,  C=1µF, Fc=4.8Hz  → BNC_PPG
+    CH2_PPG_25K     = 2,    // Canal 2: R=25kΩ,  C=1µF, Fc=6.37Hz → BNC_PPG
     CH3_UNUSED      = 3,    // Canal 3: No conectado
     CH4_UNUSED      = 4,    // Canal 4: No accesible (S2=GND)
     CH5_UNUSED      = 5,    // Canal 5: No accesible
@@ -95,7 +95,7 @@ enum class MuxChannel : uint8_t {
 // Alias para tipo de señal (más semántico)
 #define MUX_CHANNEL_ECG     MuxChannel::CH0_ECG_6K8   // 6.8kΩ → Fc=23.4Hz
 #define MUX_CHANNEL_EMG     MuxChannel::CH1_EMG_1K0   // 1.0kΩ → Fc=159Hz
-#define MUX_CHANNEL_PPG     MuxChannel::CH2_PPG_33K   // 33kΩ  → Fc=4.8Hz
+#define MUX_CHANNEL_PPG     MuxChannel::CH2_PPG_25K   // 25kΩ  → Fc=6.37Hz
 
 // ============================================================================
 // NIVELES DE ATENUACIÓN PREDEFINIDOS
@@ -103,7 +103,7 @@ enum class MuxChannel : uint8_t {
 enum class AttenuationLevel : uint8_t {
     ATTEN_NONE    = 0,    // Sin atenuación (CH1 directo) - Máxima amplitud
     ATTEN_MEDIUM  = 1,    // Atenuación media (CH0: 6.8kΩ)
-    ATTEN_HIGH    = 2     // Atenuación alta (CH2: 33kΩ) - Mínima amplitud
+    ATTEN_HIGH    = 2     // Atenuación alta (CH2: 25kΩ) - Mínima amplitud
 };
 
 // ============================================================================

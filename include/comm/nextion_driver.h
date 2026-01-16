@@ -121,6 +121,7 @@ private:
     // Buffer de recepción
     uint8_t rxBuffer[32];
     uint8_t rxIndex;
+    unsigned long lastRxTime;  // Para timeout de buffer
     
     // Estado
     NextionPage currentPage;

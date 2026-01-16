@@ -131,7 +131,7 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
         // CRÍTICO: Cada señal requiere un filtro RC diferente
         // - ECG: CH0 (R=6.8kΩ, Fc=23.4 Hz)  → Filtro paso-bajo para ECG
         // - EMG: CH1 (R=1.0kΩ, Fc=159 Hz)   → Filtro paso-bajo para EMG
-        // - PPG: CH2 (R=33kΩ, Fc=4.8 Hz)    → Filtro paso-bajo para PPG
+        // - PPG: CH2 (R=25kΩ, Fc=6.37 Hz)   → Filtro paso-bajo para PPG
         // ========================================================================
         switch (type) {
             case SignalType::ECG:
@@ -143,8 +143,8 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
                 Serial.println("[MUX] Canal seleccionado: CH1 (1.0kΩ, Fc=159Hz) para EMG");
                 break;
             case SignalType::PPG:
-                mux.selectChannel(MuxChannel::CH2_PPG_33K);
-                Serial.println("[MUX] Canal seleccionado: CH2 (33kΩ, Fc=4.8Hz) para PPG");
+                mux.selectChannel(MuxChannel::CH2_PPG_25K);
+                Serial.println("[MUX] Canal seleccionado: CH2 (25kΩ, Fc=6.37Hz) para PPG");
                 break;
             default:
                 Serial.println("[MUX] ADVERTENCIA: Señal desconocida, manteniendo canal actual");
