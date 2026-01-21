@@ -1,233 +1,156 @@
-# Rangos Clínicos - BioSimulator Pro
+# Rangos clinicos y parametros usados en los modelos
 
-> Tablas de referencia para validación de señales biológicas simuladas.  
-> Para información técnica del modelo ver: `docs/models_info/`
+Este documento consolida los rangos clinicos y parametros usados para ajustar los modelos de generacion (ECG, EMG, PPG) y para construir las variantes patologicas. Las tablas se basan en las referencias proporcionadas por el equipo.
 
----
+## ECG
 
-## ECG - Electrocardiograma (Lead II)
+### Tabla 1. Complejo PQRST normal (Lead II)
 
-### Complejo PQRST Normal
-
-| Componente | Duración | Amplitud (mV) |
-|------------|----------|---------------|
-| Onda P | < 110 ms | 0.15 – 0.25 |
-| Intervalo PR | 120 – 200 ms | — |
-| Complejo QRS | 70 – 100 ms | — |
+| Componente | Duracion | Amplitud (mV) |
+|---|---|---|
+| Onda P | < 110 ms | 0.15 - 0.25 |
+| Intervalo PR | 120 - 200 ms | -- |
+| Complejo QRS | 70 - 100 ms | -- |
 | Onda Q | < 40 ms | < 25% de R |
-| Onda R | — | 0.8 – 1.2 |
-| Onda S | — | −0.05 a −0.50 |
-| Segmento ST | — | ≈ 0 (isoeléctrico) |
-| Onda T | — | 0.20 – 0.40 |
-| Intervalo QT | 320 – 440 ms | — |
-| QTc (Bazett) | 320 – 460 ms | — |
-| HR | 60 – 100 BPM | — |
+| Onda R | -- | 0.8 - 1.2 |
+| Onda S | -- | -0.05 a -0.50 |
+| Segmento ST | -- | ~ 0 (isoelectrico) |
+| Onda T | -- | 0.20 - 0.40 |
+| Intervalo QT | 320 - 440 ms | -- |
+| QTc (Bazett) | 320 - 460 ms | -- |
+| HR | 60 - 100 BPM | -- |
 
-> **Refs:** Goldberger AL. Clinical Electrocardiography. 9th ed. Elsevier, 2017. | Surawicz B. Chou's Electrocardiography. 6th ed. 2008.
+Fuentes: ecgwaves.com, "Reference values for adult ECG" (amplitudes y rangos generales); SalusPlay, "Lectura del electrocardiograma" (duraciones e intervalos P, PR, QRS, QT/QTc).
 
----
+### Tabla 2. Rangos QTc
 
-### Rangos QTc
-
-| Clasificación | QTc (ms) | Riesgo |
-|---------------|----------|--------|
+| Clasificacion | QTc (ms) | Riesgo |
+|---|---|---|
 | QTc corto | < 320 | Arritmias ventriculares |
-| Normal | 320 – 460 | Sin riesgo |
+| Normal | 320 - 460 | Sin riesgo |
 | QTc prolongado | > 460 | Torsades de Pointes |
 
-> **Ref:** Bazett HC. Heart. 1920;7:353-370.
+Fuente: ecgwaves.com, "Reference values for adult ECG".
+Nota: SalusPlay reporta QTc < 0.45 s en hombres y < 0.47 s en mujeres.
 
----
+### Tabla 3. Condiciones ECG (patologias)
 
-### Condiciones ECG (8 Patologías)
+| Condicion | HR (BPM) | RR (ms) | PR (ms) | QRS (ms) | ST/T |
+|---|---|---|---|---|---|
+| Ritmo normal | 60-100 | 600-1000 | 120-200 | 80-120 | ST=0, T 0.2-0.6 mV |
+| Taquicardia sinusal | >100 | <600 | 120-200 | 80-120 | Normales |
+| Bradicardia sinusal | <60 | >1000 | 170-200 | 80-120 | Normales |
+| Fibrilacion auricular | Variable | Irregular | -- | 80-120 | Secundarios |
+| Fibrilacion ventricular | -- | -- | -- | -- | Caotico 4-10 Hz |
+| Bloqueo AV 1er grado | 60-100 | 600-1000 | >200 | 80-120 | Normales |
+| Elevacion ST (STEMI) | Variable | Variable | 120-200 | 80-120 | ST >= 0.2 mV |
+| Depresion ST | Variable | Variable | 120-200 | 80-120 | ST 0.05-0.2 mV |
 
-| # | Condición | HR (BPM) | RR (ms) | PR (ms) | QRS (ms) | ST/T |
-|---|-----------|----------|---------|---------|----------|------|
-| 0 | Ritmo Normal | 60–100 | 600–1000 | 120–200 | 80–120 | ST=0, T 0.2–0.6 mV |
-| 1 | Taquicardia Sinusal | >100 | <600 | 120–200 | 80–120 | Normales |
-| 2 | Bradicardia Sinusal | <60 | >1000 | 170–200 | 80–120 | Normales |
-| 3 | Fibrilación Auricular | Variable | Irregular | — | 80–120 | Secundarios |
-| 4 | Fibrilación Ventricular | — | — | — | — | Caótico 4–10 Hz |
-| 5 | Bloqueo AV 1º | 60–100 | 600–1000 | >200 | 80–120 | Normales |
-| 6 | Elevación ST (STEMI) | Variable | Variable | 120–200 | 80–120 | ST↑ ≥0.2 mV |
-| 7 | Depresión ST | Variable | Variable | 120–200 | 80–120 | ST↓ 0.05–0.2 mV |
+Fuente: ecgwaves.com, "Reference values for adult ECG".
 
-> **Refs:** Task Force ESC/NASPE 1996 (HRV) | AHA/ACC/HRS 2014 (AFib) | ACC/AHA 2004 (STEMI) | AHA/ACC/HRS 2018 (Bradycardia)
+### Tabla 4. Variabilidad RR
 
----
-
-### Variabilidad RR
-
-| Condición | CV% RR | Interpretación |
-|-----------|--------|----------------|
+| Condicion | CV% RR | Interpretacion |
+|---|---|---|
 | Normal/Sinus | < 10% | Regular |
-| Fibrilación Auricular | 15–35% | Irregularmente irregular |
-| Fibrilación Ventricular | N/A | Caótico |
+| Fibrilacion auricular | 15-35% | Irregularmente irregular |
+| Fibrilacion ventricular | N/A | Caotico |
 
-> **Ref:** Task Force ESC/NASPE. Circulation. 1996;93(5):1043-1065.
+Fuente: ecgwaves.com, "Reference values for adult ECG".
 
----
+## EMG
 
-## EMG - Electromiografía de Superficie (sEMG)
+### Tabla 5. Condiciones EMG (rangos usados en el modelo)
 
-### 📊 Tabla de condiciones validadas con Fuglevand 1993
+| Condicion | Excitacion (MVC) | MUs activas | FR media (Hz) | RMS pico (mV) | Estado |
+|---|---|---|---|---|---|
+| Reposo | 0.5% | 0 | 0 | 0.001 | Solo ruido termico |
+| Leve | 12% | 68-70 | 8-10 | 0.52 | Durante contraccion |
+| Moderada | 35% | 100 | 15-17 | 1.7 | Durante contraccion |
+| Alta | 80% | 100 | 31-37 | 2.8 | Durante contraccion |
+| Temblor Parkinson | Variable | Variable | 4-6 Hz modulacion | 0.1-0.5 | Temblor continuo |
+| Fatiga | 50% sostenido | 100 | Decay progresivo | 1.5 -> 0.4 | MDF 120 -> 80 Hz |
 
-**IMPORTANTE:** Las condiciones LOW, MODERATE y HIGH usan **secuencias dinámicas** que alternan entre REST y CONTRACCIÓN para mostrar claramente el envelope. Los valores RMS son los **picos durante la fase de contracción**.
+Fuentes:
+- Frontiers in Neurology (2021), "Tremor Syndromes: An Updated Review" (temblor en reposo en PD tipicamente 4-6 Hz).
+- IntechOpen, "The Usefulness of Mean and Median Frequencies in Electromyography Analysis" (fatiga produce desplazamiento del espectro hacia frecuencias bajas y disminucion de MNF/MDF).
 
-| Condición | Excitación (MVC) | MUs Activas | FR Media (Hz) | RMS Pico (mV) | Secuencia | Estado | Fuente |
-|----------|------------------|-------------|---------------|---------------|-----------|---------|--------|
-| **Reposo** | 0.5% | 0 | 0 | 0.001 | Estático | Solo ruido térmico | Fuglevand 1993 ✅ |
-| **Leve** | 12% | 68-70 | 8-10 | 0.52 | REST 1s → LOW 3s (ciclo 4s) | Durante contracción | Fuglevand 1993 ✅ |
-| **Moderada** | 35% | 100 | 15-17 | 1.7 | REST 1s → MOD 3s (ciclo 4s) | Durante contracción | Fuglevand 1993 ✅ |
-| **Alta** | 80% | 100 | 31-37 | 2.8 | REST 1s → HIGH 3s (ciclo 4s) | Durante contracción | Fuglevand 1993 ✅ |
-| **Temblor Parkinson** | Variable | Variable | 4-6 Hz modulación | 0.1-0.5 | Estático con modulación interna | Temblor continuo | Gulati & Pandey 2024 |
-| **Fatiga** | 50% sostenido | 100 | Decay progresivo | 1.5 → 0.4 | Estático con decay | MDF 120→80 Hz | Cifrek 2009, Sun 2022 |
+Nota: El valor MDF 120 -> 80 Hz es una meta de simulacion coherente con el descenso reportado en la literatura.
 
-#### ✅ Valores Validados por Hardware
+### Tabla 6. Frecuencias de disparo EMG
 
-Todos los valores de REST, LOW, MODERATE y HIGH fueron **validados experimentalmente** en ESP32 comparando con los parámetros del modelo Fuglevand 1993:
-
-- **Pool de MUs:** 100 unidades motoras
-- **Distribución de umbrales:** Exponencial con RTE=0.35 y RR=30
-- **Primera MU:** Umbral ~1.2% MVC
-- **Última MU:** Umbral 35% MVC
-- **Reclutamiento completo:** ≥35% MVC (todas las 100 MUs activas)
-- **Rate coding:** >35% MVC (aumento de FR, no de MUs)
-
-#### 🔄 Secuencias Dinámicas (Visualización de Envelope)
-
-Las secuencias dinámicas permiten observar la **modulación del envelope RMS** en tiempo real. Ciclos de 4 segundos optimizados para Nextion (50 Hz → 200 muestras/ciclo), permitiendo visualizar 3-4 bursts en ventana de 15s:
-
-**LOW_CONTRACTION:**
-- Ciclo: 4 segundos (REST 1s + LOW 3s)
-- RMS: 0.001 mV → 0.52 mV → 0.001 mV
-- Muestra reclutamiento parcial (70 MUs)
-
-**MODERATE_CONTRACTION:**
-- Ciclo: 4 segundos (REST 1s + MODERATE 3s)
-- RMS: 0.001 mV → 1.7 mV → 0.001 mV
-- Muestra reclutamiento completo (100 MUs, FR moderado)
-
-**HIGH_CONTRACTION:**
-- Ciclo: 4 segundos (REST 1s + HIGH 3s)
-- RMS: 0.001 mV → 2.8 mV → 0.001 mV
-- Muestra rate coding dominante (100 MUs, FR alto 31-37 Hz)
-
-> **Refs:** De Luca CJ. J Appl Biomech. 1997;13(2):135-163. | De Luca CJ, Hostage EC. J Neurophysiol. 2010;104(2):1034-1046. | Gulati D, Pandey S. Neurol India. 2024;72(1):41-48. | Cifrek M et al. Coll Antropol. 2009;33(2):439-449. | Sun Y et al. Comput Intell Neurosci. 2022;2022:4950936. | Wang L et al. Biomed Signal Process Control. 2021;68:102694.
-
----
-
-### Frecuencias de Disparo
-
-| Parámetro | Valor | Unidad |
-|-----------|-------|--------|
-| FR mínima (reclutamiento) | 6–8 | Hz |
-| FR máxima (MVC) | 30–50 | Hz |
+| Parametro | Valor | Unidad |
+|---|---|---|
+| FR minima (reclutamiento) | 6-8 | Hz |
+| FR maxima (MVC) | 30-50 | Hz |
 | Ganancia FR | ~40 | Hz/unidad |
-| CV ISI | 15–25 | % |
+| CV ISI | 15-25 | % |
 
-> **Ref:** De Luca CJ, Hostage EC. J Neurophysiol. 2010;104(2):1034-1046.
-
----
-
-
-### Tipos de Unidades Motoras
+### Tabla 7. Tipos de unidades motoras
 
 | Tipo | Umbral | Amplitud | Fatigabilidad |
-|------|--------|----------|---------------|
-| I (S) | Bajo (0–20%) | Pequeña | Resistente |
-| IIa (FR) | Medio (20–50%) | Media | Moderada |
-| IIb (FF) | Alto (50–100%) | Grande | Fatigable |
+|---|---|---|---|
+| I (S) | Bajo (0-20%) | Pequena | Resistente |
+| IIa (FR) | Medio (20-50%) | Media | Moderada |
+| IIb (FF) | Alto (50-100%) | Grande | Fatigable |
 
-> **Ref:** Henneman E, et al. J Neurophysiol. 1965;28:560-580.
+### Nota de amplitud EMG cruda (sEMG)
 
----
+- Rango reportado previo a amplificacion: 0-10 mV (±5 mV).
+- Senales sEMG son de baja amplitud: varios uV hasta 4-5 mV; 90-95% de la energia en 20-400 Hz.
 
-## PPG - Fotopletismografía
+Fuentes:
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC1455479/
+- https://www.mdpi.com/1424-8220/14/5/8235
 
-### Tabla de Condiciones Clínicas PPG
+## PPG
 
-| # | Condición | PI (%) | Morfología / Notas | Muesca Dicrótica |
-|---|-----------|--------|-------------------|------------------|
-| 0 | **Normal** | 2.9–6.1 | Pico sistólico claro; upstroke rápido; muesca sutil; d/s 0.1–0.4 | Posición: 20–50%; Amplitud: ≥20%; Anchura: 20–60 ms |
-| 1 | **Arritmia** | 1.0–5.0 | Latidos irregulares; amplitud variable; plantilla promedio dispersa | Posición: variable; Amplitud: 10–30%; Anchura: 20–70 ms |
-| 2 | **Weak Perfusion** | 0.5–2.1 | AC muy reducido; pico atenuado; muesca ausente o tenue | Posición: <20% o ausente; Amplitud: <10%; no detectable |
-| 3 | **Vasodilatación** | 5.0–10.0 | Pico más alto y ancho; muesca más marcada; mejor relleno diastólico | Posición: 25–55%; Amplitud: 20–40%; Anchura: 30–60 ms |
-| 4 | **Strong Perfusion** | 7.0–20.0 | Señal robusta; muesca y reflejo vascular prominentes; alta AC | Posición: 30–60%; Amplitud: ≥30%; Anchura: 30–80 ms |
-| 5 | **Vasoconstricción** | 0.7–0.8 | Pulso pequeño y aplanado; upstroke menos pronunciado; muesca tenue | Posición: <20% o ausente; Amplitud: <10%; no medible |
+### Tabla 8. Condiciones PPG (rangos de PI y morfologia)
 
-### Clasificación de Muesca Dicrótica (Aguilar et al. 2022)
+| Condicion | PI (%) | Morfologia / notas | Muesca dicrotica |
+|---|---|---|---|
+| Normal | 2.9-6.1 | Pico sistolico claro; upstroke rapido; muesca sutil; d/s 0.1-0.4 | Posicion: 20-50%; Amplitud: >=20%; Anchura: 20-60 ms |
+| Arritmia | 1.0-5.0 | Latidos irregulares; amplitud variable; plantilla promedio dispersa | Posicion: variable; Amplitud: 10-30%; Anchura: 20-70 ms |
+| Weak perfusion | 0.5-2.1 | AC muy reducido; pico atenuado; muesca ausente o tenue | Posicion: <20% o ausente; Amplitud: <10%; no detectable |
+| Vasodilatacion | 5.0-10.0 | Pico mas alto y ancho; muesca mas marcada; mejor relleno diastolico | Posicion: 25-55%; Amplitud: 20-40%; Anchura: 30-60 ms |
+| Strong perfusion | 7.0-20.0 | Senal robusta; muesca y reflejo vascular prominentes; alta AC | Posicion: 30-60%; Amplitud: >=30%; Anchura: 30-80 ms |
+| Vasoconstriccion | 0.7-0.8 | Pulso pequeno y aplanado; upstroke menos pronunciado; muesca tenue | Posicion: <20% o ausente; Amplitud: <10%; no medible |
 
-| Clase | Profundidad | Interpretación |
-|-------|-------------|----------------|
-| I | < 20% | Vasodilatación / Tono bajo |
-| II | 20–35% | Normal bajo |
-| **III** | **20–50%** | **Tono vascular normal** |
-| IV | > 50% | Vasoconstricción / Rigidez arterial |
+### Tabla 9. Indice de perfusion
 
-### Modelo de Duración Sístole/Diástole (Fisiología Cardiovascular)
+| Clase | Profundidad | Interpretacion |
+|---|---|---|
+| I | < 20% | Vasodilatacion / tono bajo |
+| II | 20-35% | Normal bajo |
+| III | 20-50% | Tono vascular normal |
+| IV | > 50% | Vasoconstriccion / rigidez arterial |
 
-La literatura fisiológica describe que la **duración de la sístole varía poco** con la frecuencia cardíaca, mientras que la **diástole absorbe el cambio**. El modelo implementa:
+### Tabla 10. Modelo de duracion sistole/diastole
 
-- **Sístole ~constante**: ~300ms base (rango 250-350ms)
-- **Diástole variable**: RR - sístole (se comprime a HR alto)
-
-| HR (BPM) | RR (ms) | Sístole (ms) | Diástole (ms) | Fracción Sístole |
-|----------|---------|--------------|---------------|------------------|
+| HR (BPM) | RR (ms) | Sistole (ms) | Diastole (ms) | Fraccion sistole |
+|---|---|---|---|---|
 | 60 | 1000 | ~320 | ~680 | 32% |
 | 75 | 800 | ~300 | ~500 | 37% |
 | 90 | 667 | ~285 | ~382 | 43% |
 | 120 | 500 | ~270 | ~230 | 54% |
 
-> El acortamiento del ciclo cardíaco a frecuencias elevadas se produce predominantemente a expensas de la diástole.
+Fuentes PPG:
+- Sun, X., He, H., Xu, M., & Long, Y. (2024). Peripheral perfusion index of pulse oximetry in adult patients: a narrative review. European Journal of Medical Research, 29, 457. https://link.springer.com/article/10.1186/s40001-024-02048-3
+- De la Pena Sanabria, I., et al. (2017). Peripheral perfusion index in the neonatal ICU. doi:10.1016/j.rprh.2017.10.015
+- University of California San Diego. (2017). Cardiac Cycle (teaching notes). https://cvil.ucsd.edu/wp-content/uploads/2017/02/cardiac-cycle.pdf
+- Aguilar, F. G., Monares Z., E., et al. (2022). Algoritmo de Emergencias Medicas de Chiapas para pacientes en estado de choque. Medicina Critica.
+- Allen J. (2007). Photoplethysmography and its application in clinical physiological measurement. Physiological Measurement, 28(3):R1-R39.
 
+## Referencias generales
 
-**Flujo del modelo:**
-```
-Patología → HR,PI (aleatorios dentro del rango) → RR = 60/HR
-→ systole_time = f(HR), diastole_time = RR - systole
-→ pulseShape normalizado [0,1] (base Allen: systolic=1.0, diastolic=0.4)
-→ AC = PI × 15 mV/% → signal = DC + pulse × AC
-```
-
-**Variabilidad (sigma = mean × CV):**
-| Condición | HR CV | PI CV | Notas |
-|-----------|-------|-------|-------|
-| Normal | 2% | 10% | Variabilidad fisiológica |
-| Arritmia | 15% | 20% | Alta variabilidad RR |
-| Otras | 2% | 10-15% | Según condición |
-
-**Forma de onda (Allen 2007):**
-- `systolicAmplitude = 1.0` (base, siempre)
-- `diastolicAmplitude = 0.4` (ratio d/s, siempre)
-- `dicroticDepth` = según tabla clínica (0.05-0.35)
-- **PI controla la amplitud AC** (único escalado de amplitud)
-
----
-
-### Referencias PPG
-
-1. **Sun, X., He, H., Xu, M., & Long, Y.** (2024). *Peripheral perfusion index of pulse oximetry in adult patients: a narrative review.* European Journal of Medical Research, 29, 457. https://link.springer.com/article/10.1186/s40001-024-02048-3
-
-2. **De la Peña Sanabria, I., Ochoa Martelo, M., Baquero Latorre, H., & Acosta‑Reyes, J.** (2017). *Peripheral perfusion index in the neonatal ICU: A response to non‑invasive monitoring of the critical newborn.* doi:10.1016/j.rprh.2017.10.015
-
-3. **University of California San Diego.** (2017). *Cardiac Cycle* (teaching notes / PDF). https://cvil.ucsd.edu/wp-content/uploads/2017/02/cardiac-cycle.pdf
-
-4. **Aguilar, F. G., Monares Z., E., et al.** (2022). *Algoritmo de Emergencias Médicas de Chiapas para pacientes en estado de choque.* Medicina Crítica (Colegio Mexicano de Medicina Crítica). — Clasificación de muesca dicrótica Clase III = 20–50% como tono vascular normal.
-
-5. **Allen J.** (2007). *Photoplethysmography and its application in clinical physiological measurement.* Physiological Measurement, 28(3):R1-R39.
-
----
-
-## Referencias Generales
-
-| Señal | Referencias Principales |
-|-------|------------------------|
-| ECG | Goldberger AL 2017, Surawicz 2008, Task Force ESC/NASPE 1996 |
-| EMG | Fuglevand 1993, De Luca 1997/2010, Kimura 2013, Henneman 1965 |
-| PPG | Sun 2024, De la Peña 2017, UCSD 2017, Aguilar 2022, Allen 2007 |
-
----
-
-*BioSignalSimulator Pro*  
-*Revisado: 06.01.2026*
+- ecgwaves.com. Reference values for adult ECG. https://ecgwaves.com/docs/reference-values-for-adult-ecg/
+- SalusPlay. TEMA 3. LECTURA DEL ELECTROCARDIOGRAMA. https://www.salusplay.com/apuntes/cuidados-medico-quirurgicos/tema-3-lectura-del-electrocardiograma
+- PMC1455479. Electrical noise and factors affecting EMG signal. https://pmc.ncbi.nlm.nih.gov/articles/PMC1455479/
+- Grujic Supuk T., Kuzmanic Skelin A., Cic M. (2014). Design, Development and Testing of a Low-Cost sEMG System. Sensors, 14(5):8235. https://www.mdpi.com/1424-8220/14/5/8235
+- Frontiers in Neurology (2021). Tremor Syndromes: An Updated Review. https://www.frontiersin.org/articles/10.3389/fneur.2021.684835/full
+- IntechOpen. The Usefulness of Mean and Median Frequencies in Electromyography Analysis. https://www.intechopen.com/chapters/40123
+- Sun, X., He, H., Xu, M., & Long, Y. (2024). Peripheral perfusion index of pulse oximetry in adult patients: a narrative review. https://link.springer.com/article/10.1186/s40001-024-02048-3
+- De la Pena Sanabria, I., et al. (2017). Peripheral perfusion index in the neonatal ICU. doi:10.1016/j.rprh.2017.10.015
+- University of California San Diego (2017). Cardiac Cycle. https://cvil.ucsd.edu/wp-content/uploads/2017/02/cardiac-cycle.pdf
+- Aguilar, F. G., Monares Z., E., et al. (2022). Algoritmo de Emergencias Medicas de Chiapas. Medicina Critica.
+- Allen J. (2007). Photoplethysmography and its application in clinical physiological measurement. Physiological Measurement, 28(3):R1-R39.

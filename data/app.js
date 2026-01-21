@@ -5,8 +5,14 @@
 
 const CFG = {
     wsUrl: `ws://${window.location.hostname}/ws`,
-    reconnectMs: 3000,
-    pingInterval: 15000,
+    reconnectMs: 2000,
+    reconnectMaxMs: 8000,
+    pingInterval: 25000,      // Ping cada 25s (menos agresivo)
+    pongTimeout: 20000,       // Esperar 20s por pong (ESP32 puede estar ocupado)
+    statusDebounce: 1500,     // Debounce para cambios de estado
+    healthCheckInterval: 2000,// Revisar cada 2s si llegan datos
+    healthTimeout: 6000,      // Si pasan 6s sin datos, reiniciar socket
+    sampleRate: 20,             // 20 Hz (WS_SEND_INTERVAL_MS = 50 ms)
     bufSize: 800,
     gridX: 10,
     gridY: 8,
@@ -25,6 +31,8 @@ const CFG = {
     timeWin: { ECG: 3.5, EMG: 7.0, PPG: 7.0 }
 };
 
+const SCALE_Q = 100; // Server sends values cuantized x100
+
 const S = {
     ws: null,
     connected: false,
@@ -41,14 +49,41 @@ const S = {
     ptsCounter: 0,
     zoom: 100,
     hzoom: 100,
-    lastMetrics: null
+    lastMetrics: null,
+    windowSamples: 0
 };
+
+function decodeSample(q) {
+    if (q === undefined || q === null) return undefined;
+    const num = Number(q);
+    if (Number.isNaN(num)) return undefined;
+    return num / SCALE_Q;
+}
+
+function getWindowSamples() {
+    const winSecBase = CFG.timeWin[S.sig] || CFG.timeWin.ECG;
+    const hScale = S.hzoom / 100;
+    const winSec = Math.max(1.5, winSecBase / hScale); // nunca menos de 1.5s
+    return Math.round(winSec * CFG.sampleRate);
+}
+
+function applySlidingWindow() {
+    S.windowSamples = getWindowSamples();
+    const limit = S.windowSamples;
+    
+    while (S.buf1.length > limit) S.buf1.shift();
+    while (S.buf2.length > limit) S.buf2.shift();
+}
 
 let canvas, ctx;
 let pingTimer = null;
+let pongTimer = null;
 let reconTimer = null;
 let statsTimer = null;
 let animFrame = null;
+let reconAttempts = 0;
+let statusTimer = null;
+let lastDataTime = 0;
 
 const $ = id => document.getElementById(id);
 
@@ -68,11 +103,13 @@ document.addEventListener("DOMContentLoaded", () => {
     $("zoomSlider").oninput = () => {
         S.zoom = parseInt($("zoomSlider").value);
         $("zoomVal").textContent = S.zoom + "%";
+        applySlidingWindow();
     };
     
     $("hzoomSlider").oninput = () => {
         S.hzoom = parseInt($("hzoomSlider").value);
         $("hzoomVal").textContent = S.hzoom + "%";
+        applySlidingWindow();
     };
     
     canvas.addEventListener("wheel", e => {
@@ -82,6 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
         S.zoom = z;
         $("zoomSlider").value = z;
         $("zoomVal").textContent = z + "%";
+        applySlidingWindow();
     });
     
     connect();
@@ -117,16 +155,34 @@ function connect() {
     
     S.ws.onopen = () => {
         S.connected = true;
+        reconAttempts = 0;
+        lastDataTime = Date.now();
+        if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
         updConn(true, "Conectado");
         startPing();
     };
     
-    S.ws.onclose = () => {
+    S.ws.onclose = (evt) => {
+        stopPing();
+        console.log(`[WS] Conexión cerrada: code=${evt.code}, reason=${evt.reason}`);
+        
         if (S.connected) {
             S.connected = false;
-            stopPing();
-            updConn(false, "Desconectado");
-            scheduleReconnect();
+            
+            // Solo reconectar si fue cierre anormal (no código 1000 = cierre normal)
+            if (evt.code !== 1000) {
+                // Debounce: no mostrar desconectado inmediatamente
+                if (statusTimer) clearTimeout(statusTimer);
+                statusTimer = setTimeout(() => {
+                    if (!S.connected) {
+                        updConn(false, "Reconectando...");
+                    }
+                }, CFG.statusDebounce);
+                scheduleReconnect();
+            } else {
+                // Cierre normal, no reconectar automáticamente
+                updConn(false, "Desconectado");
+            }
         }
     };
     
@@ -141,25 +197,54 @@ function connect() {
 
 function scheduleReconnect() {
     if (reconTimer) clearTimeout(reconTimer);
-    reconTimer = setTimeout(connect, CFG.reconnectMs);
+    // Backoff exponencial: 2s, 4s, 8s... hasta max 10s
+    const delay = Math.min(CFG.reconnectMs * Math.pow(2, reconAttempts), CFG.reconnectMaxMs);
+    reconAttempts++;
+    console.log(`[WS] Reconectando en ${delay}ms (intento ${reconAttempts})`);
+    reconTimer = setTimeout(connect, delay);
 }
 
 function startPing() {
     stopPing();
     pingTimer = setInterval(() => {
         if (S.ws && S.ws.readyState === WebSocket.OPEN) {
-            try { S.ws.send("ping"); } catch (e) {}
+            try {
+                S.ws.send("ping");
+                // Iniciar timeout para pong
+                if (pongTimer) clearTimeout(pongTimer);
+                pongTimer = setTimeout(() => {
+                    console.log("[WS] Pong timeout - reconectando");
+                    if (S.ws) S.ws.close();
+                }, CFG.pongTimeout);
+            } catch (e) {
+                console.log("[WS] Error enviando ping");
+            }
         }
     }, CFG.pingInterval);
 }
 
 function stopPing() {
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
 }
 
 function handleMsg(msg) {
+    // Cualquier mensaje recibido indica conexión activa
+    lastDataTime = Date.now();
+    
+    // Si estábamos "desconectados" pero llegan datos, reconectar estado visual
+    if (!S.connected && S.ws && S.ws.readyState === WebSocket.OPEN) {
+        S.connected = true;
+        if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
+        updConn(true, "Conectado");
+    }
+    
     switch (msg.type) {
         case "welcome": break;
+        case "pong":
+            // Cancelar timeout de pong - conexión activa
+            if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+            break;
         case "data": handleData(msg); break;
         case "metrics": handleMetrics(msg); break;
         case "state": handleState(msg); break;
@@ -184,27 +269,26 @@ function handleData(msg) {
     
     if (!S.viewing) return;
     
-    const v = msg.v;
-    if (v !== undefined && !isNaN(v)) {
-        S.buf1.push(v);
-        if (S.buf1.length > CFG.bufSize) S.buf1.shift();
-        
+    const val = decodeSample(msg.v);
+    if (val !== undefined) {
+        S.buf1.push(val);
         S.csvData.push({
             t: msg.t || Date.now(),
             sig: S.sig,
-            v: v,
-            env: msg.env || 0
+            v: val,
+            env: decodeSample(msg.env) ?? 0
         });
         if (S.csvData.length > 50000) S.csvData.shift();
-        
         S.ptsTotal++;
         S.ptsCounter++;
     }
     
-    if (msg.env !== undefined && msg.env !== 0) {
-        S.buf2.push(msg.env);
-        if (S.buf2.length > CFG.bufSize) S.buf2.shift();
+    const envVal = decodeSample(msg.env);
+    if (envVal !== undefined) {
+        S.buf2.push(envVal);
     }
+    
+    applySlidingWindow();
     
     const elapsed = (Date.now() - S.startTime) / 1000;
     $("statTime").textContent = elapsed.toFixed(1) + "s";
@@ -263,6 +347,7 @@ function startViewing() {
     S.ptsCounter = 0;
     S.startTime = Date.now();
     S.viewing = true;
+    applySlidingWindow();
     
     $("btnStart").disabled = true;
     $("btnStop").disabled = false;

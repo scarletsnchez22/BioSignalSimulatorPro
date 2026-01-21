@@ -50,7 +50,11 @@ bool WiFiServer_BioSim::begin() {
     
     WiFi.softAPConfig(WIFI_LOCAL_IP, WIFI_GATEWAY, WIFI_SUBNET);
     
-    // Intentar crear AP hasta 3 veces
+    // Recomendaciones de estabilidad
+    WiFi.setSleep(false); // Desactivar sleep WiFi
+    WiFi.setTxPower(WIFI_POWER_19_5dBm); // Máxima potencia
+
+    // Usar canal definido en config (canal 6, menos saturado en 2.4GHz)
     int attempts = 0;
     while (!WiFi.softAP(WIFI_SSID, WIFI_PASSWORD, WIFI_CHANNEL, false, WIFI_MAX_CLIENTS)) {
         attempts++;
@@ -62,7 +66,7 @@ bool WiFiServer_BioSim::begin() {
         delay(500);
     }
     
-    Serial.printf("[WiFi] AP creado: %s\n", WIFI_SSID);
+    Serial.printf("[WiFi] AP creado: %s (canal %d)\n", WIFI_SSID, WIFI_CHANNEL);
     Serial.printf("[WiFi] IP: %s\n", WiFi.softAPIP().toString().c_str());
     
     // Crear servidor HTTP
@@ -76,6 +80,10 @@ bool WiFiServer_BioSim::begin() {
                         AwsEventType type, void* arg, uint8_t* data, size_t len) {
         this->onWsEvent(server, client, type, arg, data, len);
     });
+    
+    // Configurar límites del WebSocket para evitar desconexiones
+    // Solo limpiar clientes que estén realmente muertos (queue > 16 mensajes)
+    _ws->enable(true);
     
     // Agregar WebSocket al servidor
     _server->addHandler(_ws);
@@ -179,6 +187,8 @@ void WiFiServer_BioSim::onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
         case WS_EVT_CONNECT:
             Serial.printf("[WS] Cliente #%u conectado desde %s\n", 
                          client->id(), client->remoteIP().toString().c_str());
+            client->setCloseClientOnQueueFull(false); // preferimos descartar frames que cerrar conexión
+            client->keepAlivePeriod(15); // ping/pong cada 15s para mantener viva la sesión
             // Enviar mensaje de bienvenida
             {
                 StaticJsonDocument<128> doc;
@@ -200,7 +210,15 @@ void WiFiServer_BioSim::onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
             break;
             
         case WS_EVT_DATA:
-            // Los clientes solo visualizan, no envían comandos
+            // Manejar ping del cliente para mantener conexión activa
+            {
+                AwsFrameInfo* info = (AwsFrameInfo*)arg;
+                if (info->opcode == WS_TEXT && len >= 4) {
+                    if (strncmp((char*)data, "ping", 4) == 0) {
+                        client->text("{\"type\":\"pong\"}");
+                    }
+                }
+            }
             break;
             
         default:
@@ -213,22 +231,39 @@ void WiFiServer_BioSim::onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
 // ============================================================================
 
 void WiFiServer_BioSim::sendSignalData(const WSSignalData& data) {
-    if (!_isActive || !_streamingEnabled || !_ws || _ws->count() == 0) return;
+    if (!_isActive || !_streamingEnabled || !_ws) return;
     
     uint32_t now = millis();
     if (now - _lastSendTime < WS_SEND_INTERVAL_MS) return;
+    
+    // Verificar si hay clientes antes de enviar
+    uint8_t clientCount = _ws->count();
+    if (clientCount == 0) return;
+    
     _lastSendTime = now;
     
-    // Cleanup periódico más frecuente para evitar acumulación
+    // Cleanup muy conservador: solo cada 10 segundos
     if (now - _lastCleanupTime >= WS_CLEANUP_INTERVAL_MS) {
-        _ws->cleanupClients();
         _lastCleanupTime = now;
+        // Solo limpiar clientes que realmente están muertos
+        _ws->cleanupClients();
     }
     
-    if (_ws->count() == 0) return;
-    
     String json = buildDataJson(data);
-    _ws->textAll(json);
+    
+    if (!_ws->availableForWriteAll()) {
+        static uint32_t lastBackpressureLog = 0;
+        if (now - lastBackpressureLog > 2000) {
+            Serial.println("[WS] Backpressure detectada (colas llenas), descartando frames viejos");
+            lastBackpressureLog = now;
+        }
+        return; // No encolar más datos, esperamos al siguiente tick
+    }
+    
+    auto status = _ws->textAll(json);
+    if (status == AsyncWebSocket::SendStatus::DISCARDED) {
+        Serial.println("[WS] textAll() descartó frame por cola llena");
+    }
 }
 
 void WiFiServer_BioSim::sendMetrics(const WSSignalMetrics& metrics) {
@@ -239,14 +274,30 @@ void WiFiServer_BioSim::sendMetrics(const WSSignalMetrics& metrics) {
     _lastMetricsTime = now;
     
     String json = buildMetricsJson(metrics);
-    _ws->textAll(json);
+    
+    if (!_ws->availableForWriteAll()) {
+        return;
+    }
+    
+    auto status = _ws->textAll(json);
+    if (status == AsyncWebSocket::SendStatus::DISCARDED) {
+        Serial.println("[WS] metrics descartadas por cola llena");
+    }
 }
 
 void WiFiServer_BioSim::sendStateChange(const char* signalType, const char* condition, const char* state) {
     if (!_isActive || _ws->count() == 0) return;
     
     String json = buildStateJson(signalType, condition, state);
-    _ws->textAll(json);
+    
+    if (!_ws->availableForWriteAll()) {
+        return;
+    }
+    
+    auto status = _ws->textAll(json);
+    if (status == AsyncWebSocket::SendStatus::DISCARDED) {
+        Serial.println("[WS] estado descartado por cola llena");
+    }
 }
 
 // ============================================================================
@@ -254,15 +305,21 @@ void WiFiServer_BioSim::sendStateChange(const char* signalType, const char* cond
 // ============================================================================
 
 String WiFiServer_BioSim::buildDataJson(const WSSignalData& data) {
-    StaticJsonDocument<320> doc;
+    // JSON compacto para reducir tamaño de mensaje (valores cuantizados x100)
+    StaticJsonDocument<192> doc;
     doc["type"] = "data";
     doc["signal"] = data.signalType;
     doc["condition"] = data.condition;
     doc["state"] = data.state;
     doc["t"] = data.timestamp;
-    doc["v"] = data.value;
-    doc["env"] = data.envelope;
-    doc["dac"] = data.dacValue;
+    
+    int16_t value_q = (int16_t)roundf(data.value * 100.0f);
+    int16_t env_q = (int16_t)roundf(data.envelope * 100.0f);
+    
+    doc["v"] = value_q;
+    if (env_q != 0) {
+        doc["env"] = env_q;
+    }
     
     String json;
     serializeJson(doc, json);
@@ -325,13 +382,12 @@ uint8_t WiFiServer_BioSim::getClientCount() {
 }
 
 void WiFiServer_BioSim::loop() {
-    if (_ws) {
-        _ws->cleanupClients();
-    }
+    // NO hacer cleanup aquí - ya se hace en sendSignalData() cada 3 segundos
+    // Cleanup duplicado causa desconexiones erráticas
     
-    // Verificar que el WiFi AP sigue activo cada 5 segundos
+    // Verificar que el WiFi AP sigue activo cada 10 segundos
     static uint32_t lastCheck = 0;
-    if (millis() - lastCheck > 5000) {
+    if (millis() - lastCheck > 10000) {
         lastCheck = millis();
         
         // Si el WiFi no está en modo AP, reiniciar

@@ -24,7 +24,7 @@
 
 #define WIFI_SSID           "BioSignalSimulator_Pro"
 #define WIFI_PASSWORD       "biosignal123"
-#define WIFI_CHANNEL        1
+#define WIFI_CHANNEL        6       // Canal 6 menos saturado en 2.4GHz
 #define WIFI_MAX_CLIENTS    4       // Reducido a 4 para mayor estabilidad
 
 // IP Configuration
@@ -40,10 +40,10 @@
 // CONFIGURACIÓN STREAMING
 // ============================================================================
 
-#define WS_SEND_INTERVAL_MS     25      // 40 Hz - Más conservador para 4 clientes
-#define WS_METRICS_INTERVAL_MS  500     // 2 Hz para métricas
-#define WS_MAX_QUEUE_SIZE       8       // Buffer reducido para mejor gestión de memoria
-#define WS_CLEANUP_INTERVAL_MS  1000    // Cleanup cada 1 segundo
+#define WS_SEND_INTERVAL_MS     50      // 20 Hz base, evita saturación en colas
+#define WS_METRICS_INTERVAL_MS  750     // ~1.3 Hz para métricas
+#define WS_MAX_QUEUE_SIZE       16      // Buffer más grande para evitar drops
+#define WS_CLEANUP_INTERVAL_MS  10000   // Cleanup cada 10 segundos (muy conservador)
 
 // ============================================================================
 // ESTRUCTURAS DE DATOS
