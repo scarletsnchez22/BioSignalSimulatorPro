@@ -11,9 +11,9 @@ const CFG = {
     pongTimeout: 20000,       // Esperar 20s por pong (ESP32 puede estar ocupado)
     statusDebounce: 1500,     // Debounce para cambios de estado
     healthCheckInterval: 2000,// Revisar cada 2s si llegan datos
-    healthTimeout: 6000,      // Si pasan 6s sin datos, reiniciar socket
-    sampleRate: 20,             // 20 Hz (WS_SEND_INTERVAL_MS = 50 ms)
-    bufSize: 800,
+    healthTimeout: 3000,      // Si pasan 3s sin datos, reiniciar socket
+    sampleRate: { ECG: 200, EMG: 100, PPG: 100 },  // Hz según tipo (igual que Nextion)
+    bufSize: 1200,
     gridX: 10,
     gridY: 8,
     colors: {
@@ -26,7 +26,7 @@ const CFG = {
     ranges: {
         ECG: { min: -0.5, max: 1.5, div: 0.25, unit: "mV" },
         EMG: { min: -5.0, max: 5.0, div: 1.25, unit: "mV" },
-        PPG: { min: 0, max: 150, div: 18.75, unit: "mV" }
+        PPG: { min: 0, max: 150, div: 15, unit: "mV" }  // AC = PI × 15 mV (DC=1.5V, PI = AC/DC × 100%)
     },
     timeWin: { ECG: 3.5, EMG: 7.0, PPG: 7.0 }
 };
@@ -64,7 +64,8 @@ function getWindowSamples() {
     const winSecBase = CFG.timeWin[S.sig] || CFG.timeWin.ECG;
     const hScale = S.hzoom / 100;
     const winSec = Math.max(1.5, winSecBase / hScale); // nunca menos de 1.5s
-    return Math.round(winSec * CFG.sampleRate);
+    const rate = CFG.sampleRate[S.sig] || CFG.sampleRate.ECG;
+    return Math.round(winSec * rate);
 }
 
 function applySlidingWindow() {
@@ -257,10 +258,18 @@ function handleData(msg) {
         S.buf1 = [];
         S.buf2 = [];
         updateSignalUI();
+        // Actualizar título si estamos visualizando
+        if (S.viewing) {
+            $("plotTitle").textContent = "📡 " + S.sig + " - " + S.cond + " (En vivo)";
+        }
     }
-    if (msg.condition) {
+    if (msg.condition && msg.condition !== S.cond) {
         S.cond = msg.condition;
         $("sigCond").textContent = S.cond;
+        // Actualizar título si estamos visualizando
+        if (S.viewing) {
+            $("plotTitle").textContent = "📡 " + S.sig + " - " + S.cond + " (En vivo)";
+        }
     }
     if (msg.state) {
         S.state = msg.state;
@@ -270,22 +279,21 @@ function handleData(msg) {
     if (!S.viewing) return;
     
     const val = decodeSample(msg.v);
+    const envVal = decodeSample(msg.env) ?? 0;  // Decodificar envelope (0 si no existe)
+    
     if (val !== undefined) {
         S.buf1.push(val);
+        S.buf2.push(envVal);  // SIEMPRE agregar envelope para mantener sincronización con buf1
+        
         S.csvData.push({
             t: msg.t || Date.now(),
             sig: S.sig,
             v: val,
-            env: decodeSample(msg.env) ?? 0
+            env: envVal
         });
         if (S.csvData.length > 50000) S.csvData.shift();
         S.ptsTotal++;
         S.ptsCounter++;
-    }
-    
-    const envVal = decodeSample(msg.env);
-    if (envVal !== undefined) {
-        S.buf2.push(envVal);
     }
     
     applySlidingWindow();

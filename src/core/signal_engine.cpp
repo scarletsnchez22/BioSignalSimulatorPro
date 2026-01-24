@@ -39,6 +39,17 @@ static float currentModelValueMV = 0.0f;       // Último valor del modelo en mV
 static float previousModelValueMV = 0.0f;      // Valor anterior en mV
 static uint16_t interpolationCounter = 0;      // Contador para interpolación
 
+// ============================================================================
+// BUFFER WEBSOCKET SINCRONIZADO (frecuencia dinámica según señal)
+// ============================================================================
+static WSSampleData wsBuffer[WS_SAMPLE_BUFFER_SIZE];
+static volatile uint8_t wsBufferReadIdx = 0;
+static volatile uint8_t wsBufferWriteIdx = 0;
+static uint32_t lastWSSampleTime_us = 0;
+// Intervalos según tipo de señal (igual que Nextion):
+// ECG: 200 Hz = 5000 us, EMG/PPG: 100 Hz = 10000 us
+static uint32_t wsSampleInterval_us = 5000;  // Default ECG 200 Hz
+
 // NOTA: El DAC escribe a 4 kHz SIN decimación para espectro correcto
 // La decimación solo se aplica a Nextion y Serial Plotter (visualización)
 
@@ -124,6 +135,24 @@ bool SignalEngine::startSignal(SignalType type, uint8_t condition) {
         currentSignal.type = type;
         currentSignal.sampleCount = 0;
         currentSignal.lastUpdateTime = millis();
+        
+        // Configurar intervalo WebSocket según tipo (igual que Nextion)
+        // ECG: 200 Hz = 5000 us, EMG/PPG: 100 Hz = 10000 us
+        switch (type) {
+            case SignalType::ECG:
+                wsSampleInterval_us = 5000;   // 200 Hz
+                break;
+            case SignalType::EMG:
+            case SignalType::PPG:
+                wsSampleInterval_us = 10000;  // 100 Hz
+                break;
+            default:
+                wsSampleInterval_us = 10000;
+        }
+        // Reset buffer WebSocket
+        wsBufferReadIdx = 0;
+        wsBufferWriteIdx = 0;
+        lastWSSampleTime_us = micros();
         
         // ========================================================================
         // CONFIGURAR CANAL DE MUX SEGÚN TIPO DE SEÑAL
@@ -424,6 +453,46 @@ void SignalEngine::generationTask(void* parameter) {
                     previousModelValueMV = currentModelValueMV;
                 }
             }
+            
+            // ================================================================
+            // LLENAR BUFFER WEBSOCKET (frecuencia igual a Nextion)
+            // ECG: 200 Hz, EMG/PPG: 100 Hz
+            // ================================================================
+            uint32_t now_ws = micros();
+            if (now_ws - lastWSSampleTime_us >= wsSampleInterval_us) {
+                lastWSSampleTime_us = now_ws;
+                
+                // Calcular siguiente índice de escritura
+                uint8_t nextWriteIdx = (wsBufferWriteIdx + 1) % WS_SAMPLE_BUFFER_SIZE;
+                
+                // Solo escribir si hay espacio (evitar sobrescribir datos no leídos)
+                if (nextWriteIdx != wsBufferReadIdx) {
+                    WSSampleData& sample = wsBuffer[wsBufferWriteIdx];
+                    sample.timestamp = millis();
+                    sample.valid = true;
+                    
+                    // Obtener valor según tipo de señal
+                    switch (engine->currentSignal.type) {
+                        case SignalType::ECG:
+                            sample.value = engine->ecgModel.getCurrentValueMV();
+                            sample.envelope = 0;
+                            break;
+                        case SignalType::EMG:
+                            sample.value = engine->emgModel.getCurrentValueMV();
+                            sample.envelope = engine->emgModel.getProcessedSample();
+                            break;
+                        case SignalType::PPG:
+                            sample.value = engine->ppgModel.getLastACValue();
+                            sample.envelope = 0;
+                            break;
+                        default:
+                            sample.value = 0;
+                            sample.envelope = 0;
+                    }
+                    
+                    wsBufferWriteIdx = nextWriteIdx;
+                }
+            }
         }
         
         // Pequeño delay para no saturar CPU
@@ -550,4 +619,30 @@ void SignalEngine::setEMGDACOutput(EMGDACOutput output) {
     emgDacOutput = output;
     Serial.printf("[SignalEngine] EMG DAC Output: %s\n", 
                   output == EMGDACOutput::RAW ? "RAW" : "ENVELOPE");
+}
+
+// ============================================================================
+// BUFFER WEBSOCKET SINCRONIZADO
+// ============================================================================
+bool SignalEngine::getNextWSSample(WSSampleData& outSample) {
+    // Verificar si hay datos disponibles
+    if (wsBufferReadIdx == wsBufferWriteIdx) {
+        return false;  // Buffer vacío
+    }
+    
+    // Leer muestra del buffer
+    outSample = wsBuffer[wsBufferReadIdx];
+    
+    // Avanzar índice de lectura
+    wsBufferReadIdx = (wsBufferReadIdx + 1) % WS_SAMPLE_BUFFER_SIZE;
+    
+    return outSample.valid;
+}
+
+uint8_t SignalEngine::getWSBufferCount() const {
+    if (wsBufferWriteIdx >= wsBufferReadIdx) {
+        return wsBufferWriteIdx - wsBufferReadIdx;
+    } else {
+        return WS_SAMPLE_BUFFER_SIZE - wsBufferReadIdx + wsBufferWriteIdx;
+    }
 }

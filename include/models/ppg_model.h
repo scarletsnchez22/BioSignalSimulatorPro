@@ -49,7 +49,12 @@
 #define PPG_BASE_DICROTIC_DEPTH  0.25f   // Profundidad muesca base
 
 // --- Escalado AC ---
-#define PPG_AC_SCALE_PER_PI  15.0f  // mV por cada 1% de PI (DC=1000mV, PI=3% → AC=45mV)
+// Fórmula clínica: PI = (AC / DC) × 100%
+// Despejando:      AC = PI × DC / 100
+// Con DC = 1500 mV (1.5V):
+//                  AC = PI × 1500 / 100 = PI × 15 mV
+// Ejemplos: PI=3% → AC=45mV, PI=10% → AC=150mV
+#define PPG_AC_SCALE_PER_PI  15.0f  // = DC / 100 = 1500 / 100
 
 // --- Duración sistólica (fisiología: ~constante, ~300ms en reposo) ---
 // La sístole varía poco con HR; la diástole absorbe el cambio

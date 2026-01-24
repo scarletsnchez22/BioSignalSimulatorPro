@@ -32,6 +32,18 @@ struct PerformanceStats {
 };
 
 // ============================================================================
+// BUFFER PARA WEBSOCKET (muestras sincronizadas a 100 Hz)
+// ============================================================================
+#define WS_SAMPLE_BUFFER_SIZE 128  // Buffer circular para WebSocket (128 muestras = ~640ms @ 200Hz ECG)
+
+struct WSSampleData {
+    float value;      // Valor en mV
+    float envelope;   // Envelope (solo EMG)
+    uint32_t timestamp;
+    bool valid;
+};
+
+// ============================================================================
 // CLASE SignalEngine (Singleton)
 // ============================================================================
 class SignalEngine {
@@ -111,6 +123,10 @@ public:
     ECGModel& getECGModel() { return ecgModel; }
     EMGModel& getEMGModel() { return emgModel; }
     PPGModel& getPPGModel() { return ppgModel; }
+    
+    // Buffer WebSocket sincronizado (100 Hz)
+    bool getNextWSSample(WSSampleData& outSample);
+    uint8_t getWSBufferCount() const;
 };
 
 #endif // SIGNAL_ENGINE_H

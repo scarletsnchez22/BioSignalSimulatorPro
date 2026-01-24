@@ -1270,25 +1270,50 @@ void loop() {
     wifiServer.loop();
     
     // Enviar datos a clientes WebSocket si hay señal activa
+    // USAR BUFFER SINCRONIZADO para evitar aliasing y pausas
     if (wifiServer.getClientCount() > 0 && stateMachine.getState() == SystemState::SIMULATING) {
-        WSSignalData wsData;
-        WSSignalMetrics wsMetrics;
-        memset(&wsData, 0, sizeof(wsData));
-        memset(&wsMetrics, 0, sizeof(wsMetrics));
-        
         SignalType type = signalEngine->getCurrentType();
+        
+        // Consumir TODAS las muestras disponibles del buffer sincronizado (100 Hz)
+        WSSampleData wsSample;
+        while (signalEngine->getNextWSSample(wsSample)) {
+            WSSignalData wsData;
+            memset(&wsData, 0, sizeof(wsData));
+            
+            // Usar valores del buffer sincronizado (no del modelo directamente)
+            wsData.value = wsSample.value;
+            wsData.envelope = wsSample.envelope;
+            wsData.timestamp = wsSample.timestamp;
+            wsData.dacValue = signalEngine->getLastDACValue();
+            wsData.state = "RUNNING";
+            
+            switch (type) {
+                case SignalType::ECG:
+                    wsData.signalType = "ECG";
+                    wsData.condition = signalEngine->getECGModel().getConditionName();
+                    break;
+                case SignalType::EMG:
+                    wsData.signalType = "EMG";
+                    wsData.condition = signalEngine->getEMGModel().getConditionName();
+                    break;
+                case SignalType::PPG:
+                    wsData.signalType = "PPG";
+                    wsData.condition = signalEngine->getPPGModel().getConditionName();
+                    break;
+                default:
+                    break;
+            }
+            
+            wifiServer.sendSignalData(wsData);
+        }
+        
+        // Métricas se envían a menor frecuencia (controlado por wifi_server)
+        WSSignalMetrics wsMetrics;
+        memset(&wsMetrics, 0, sizeof(wsMetrics));
         
         switch (type) {
             case SignalType::ECG: {
                 ECGModel& ecg = signalEngine->getECGModel();
-                wsData.signalType = "ECG";
-                wsData.condition = ecg.getConditionName();
-                wsData.state = "RUNNING";
-                wsData.value = ecg.getCurrentValueMV();
-                wsData.envelope = 0;
-                wsData.dacValue = signalEngine->getLastDACValue();
-                wsData.timestamp = millis();
-                
                 wsMetrics.hr = (int)ecg.getCurrentHeartRate();
                 wsMetrics.rr = (int)ecg.getCurrentRRInterval();
                 wsMetrics.qrs = ecg.getQRSAmplitude();
@@ -1303,32 +1328,16 @@ void loop() {
             }
             case SignalType::EMG: {
                 EMGModel& emg = signalEngine->getEMGModel();
-                wsData.signalType = "EMG";
-                wsData.condition = emg.getConditionName();
-                wsData.state = "RUNNING";
-                wsData.value = emg.getCurrentValueMV();
-                wsData.envelope = emg.getProcessedSample();  // Envelope RMS
-                wsData.dacValue = signalEngine->getLastDACValue();
-                wsData.timestamp = millis();
-                
                 wsMetrics.rms = emg.getRMSAmplitude();
                 wsMetrics.excitation = (int)(emg.getExcitation() * 100);
                 wsMetrics.activeUnits = emg.getActiveMotorUnits();
-                wsMetrics.freq = (int)emg.getFatigueMDF();  // Frecuencia mediana (MDF)
+                wsMetrics.freq = (int)emg.getFatigueMDF();
                 wsMetrics.mvc = (int)emg.getContractionLevel();
                 wsMetrics.raw = emg.getCurrentValueMV();
                 break;
             }
             case SignalType::PPG: {
                 PPGModel& ppg = signalEngine->getPPGModel();
-                wsData.signalType = "PPG";
-                wsData.condition = ppg.getConditionName();
-                wsData.state = "RUNNING";
-                wsData.value = ppg.getLastACValue();
-                wsData.envelope = 0;
-                wsData.dacValue = signalEngine->getLastDACValue();
-                wsData.timestamp = millis();
-                
                 wsMetrics.hr = (int)ppg.getCurrentHeartRate();
                 wsMetrics.rr = (int)ppg.getCurrentRRInterval();
                 wsMetrics.pi = ppg.getPerfusionIndex();
@@ -1341,7 +1350,6 @@ void loop() {
                 break;
         }
         
-        wifiServer.sendSignalData(wsData);
         wifiServer.sendMetrics(wsMetrics);
     }
     

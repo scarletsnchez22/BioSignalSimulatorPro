@@ -47,8 +47,9 @@ void PPGModel::reset() {
     currentPI = 3.0f;
     currentRR = 60.0f / currentHR;  // 0.8s a 75 BPM
     
-    // DC baseline por defecto
-    dcBaseline = 1000.0f;
+    // DC baseline por defecto (1500 mV para que AC = PI × 15 mV)
+    // Fórmula: PI = (AC / DC) × 100%  →  AC = PI × DC / 100 = PI × 15 mV
+    dcBaseline = 1500.0f;
     lastSampleValue = dcBaseline;
     lastACValue = 0.0f;
     
@@ -559,6 +560,8 @@ uint8_t PPGModel::voltageToDACValue(float voltage) {
 
 uint8_t PPGModel::acValueToDACValue(float acValue_mV) {
     // Mapeo de componente AC pura a DAC 8-bit
+    // Fórmula: PI = (AC / DC) × 100%  →  AC = PI × DC / 100
+    // Con DC = 1500 mV:  AC = PI × 15 mV
     // La señal AC del PPG es UNIPOLAR: va de 0 (valle) a ~150 mV (pico sistólico)
     // donde AC_max = PI_max × 15 mV/% ≈ 10% × 15 = 150 mV
     // 
@@ -639,12 +642,13 @@ const char* PPGModel::getConditionName() const {
 // ============================================================================
 uint8_t PPGModel::getWaveformValue() const {
     // Rango AC clínico fijo para visualización óptima:
-    // - AC = PI * 15 mV (PPG_AC_SCALE_PER_PI)
+    // - Fórmula: PI = (AC / DC) × 100%  →  AC = PI × DC / 100
+    // - Con DC = 1500 mV:  AC = PI × 15 mV
     // - PI típico: 0.5% - 10% → AC: 7.5 - 150 mV
     //
     // La señal AC es UNIPOLAR: pulse va de 0 a 1, acValue va de 0 a AC_amplitude
     // Se aplica factor de amplificación configurado por el usuario (0.5-2.0)
-    const float AC_DISPLAY_MAX = 150.0f;  // mV - rango clínico base para visualización
+    const float AC_DISPLAY_MAX = 150.0f;  // mV - PI 10% → AC 150 mV
     const uint8_t WAVEFORM_MIN = 26;      // Piso: 26/255 ≈ 10%
     const uint8_t WAVEFORM_RANGE = 229;   // 255 - 26 = 229 niveles útiles
     

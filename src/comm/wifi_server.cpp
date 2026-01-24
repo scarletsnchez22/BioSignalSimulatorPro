@@ -233,37 +233,27 @@ void WiFiServer_BioSim::onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
 void WiFiServer_BioSim::sendSignalData(const WSSignalData& data) {
     if (!_isActive || !_streamingEnabled || !_ws) return;
     
-    uint32_t now = millis();
-    if (now - _lastSendTime < WS_SEND_INTERVAL_MS) return;
-    
     // Verificar si hay clientes antes de enviar
     uint8_t clientCount = _ws->count();
     if (clientCount == 0) return;
     
-    _lastSendTime = now;
+    uint32_t now = millis();
     
     // Cleanup muy conservador: solo cada 10 segundos
     if (now - _lastCleanupTime >= WS_CLEANUP_INTERVAL_MS) {
         _lastCleanupTime = now;
-        // Solo limpiar clientes que realmente están muertos
         _ws->cleanupClients();
     }
     
-    String json = buildDataJson(data);
-    
+    // El rate limiting ahora lo hace el buffer sincronizado en signal_engine (100 Hz)
+    // Aquí solo verificamos backpressure para evitar saturar la cola
     if (!_ws->availableForWriteAll()) {
-        static uint32_t lastBackpressureLog = 0;
-        if (now - lastBackpressureLog > 2000) {
-            Serial.println("[WS] Backpressure detectada (colas llenas), descartando frames viejos");
-            lastBackpressureLog = now;
-        }
-        return; // No encolar más datos, esperamos al siguiente tick
+        // Backpressure: descartar este frame silenciosamente
+        return;
     }
     
-    auto status = _ws->textAll(json);
-    if (status == AsyncWebSocket::SendStatus::DISCARDED) {
-        Serial.println("[WS] textAll() descartó frame por cola llena");
-    }
+    String json = buildDataJson(data);
+    _ws->textAll(json);
 }
 
 void WiFiServer_BioSim::sendMetrics(const WSSignalMetrics& metrics) {
