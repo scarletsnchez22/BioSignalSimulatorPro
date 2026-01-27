@@ -274,6 +274,9 @@ public:
     // Parámetros Tipo A (aplicación inmediata con validación)
     void setNoiseLevel(float noise);
     void setAmplitude(float amp);
+    void setExcitationLevel(float exc);  // Aplica excitación SIN resetear secuencias
+    void setWaveformGain(float gain) { waveformGain = constrain(gain, 0.5f, 2.0f); }
+    float getWaveformGain() const { return waveformGain; }
     
     // ✅ NUEVO: Método principal de tick (llamar 1 vez por ciclo)
     /**

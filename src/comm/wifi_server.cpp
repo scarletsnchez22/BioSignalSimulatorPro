@@ -245,13 +245,6 @@ void WiFiServer_BioSim::sendSignalData(const WSSignalData& data) {
         _ws->cleanupClients();
     }
     
-    // El rate limiting ahora lo hace el buffer sincronizado en signal_engine (100 Hz)
-    // Aquí solo verificamos backpressure para evitar saturar la cola
-    if (!_ws->availableForWriteAll()) {
-        // Backpressure: descartar este frame silenciosamente
-        return;
-    }
-    
     String json = buildDataJson(data);
     _ws->textAll(json);
 }
@@ -264,15 +257,7 @@ void WiFiServer_BioSim::sendMetrics(const WSSignalMetrics& metrics) {
     _lastMetricsTime = now;
     
     String json = buildMetricsJson(metrics);
-    
-    if (!_ws->availableForWriteAll()) {
-        return;
-    }
-    
-    auto status = _ws->textAll(json);
-    if (status == AsyncWebSocket::SendStatus::DISCARDED) {
-        Serial.println("[WS] metrics descartadas por cola llena");
-    }
+    _ws->textAll(json);
 }
 
 void WiFiServer_BioSim::sendStateChange(const char* signalType, const char* condition, const char* state) {
@@ -295,20 +280,17 @@ void WiFiServer_BioSim::sendStateChange(const char* signalType, const char* cond
 // ============================================================================
 
 String WiFiServer_BioSim::buildDataJson(const WSSignalData& data) {
-    // JSON compacto para reducir tamaño de mensaje (valores cuantizados x100)
+    // JSON con valores float directos para mayor precisión
     StaticJsonDocument<192> doc;
     doc["type"] = "data";
     doc["signal"] = data.signalType;
     doc["condition"] = data.condition;
     doc["state"] = data.state;
     doc["t"] = data.timestamp;
-    
-    int16_t value_q = (int16_t)roundf(data.value * 100.0f);
-    int16_t env_q = (int16_t)roundf(data.envelope * 100.0f);
-    
-    doc["v"] = value_q;
-    if (env_q != 0) {
-        doc["env"] = env_q;
+    doc["value"] = data.value;
+    doc["dac"] = data.dacValue;
+    if (data.envelope != 0) {
+        doc["env"] = data.envelope;
     }
     
     String json;

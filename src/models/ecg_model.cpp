@@ -143,6 +143,9 @@ void ECGModel::reset() {
     gaussHasSpare = false;
     gaussSpare = 0.0f;
     
+    // Ganancia waveform (default 100%)
+    waveformGain = 1.0f;
+    
     // Inicializar filtrado digital (deshabilitado por defecto)
     filterChain.configureForECG(ECG_SFECG, 60.0f);  // 500 Hz, notch 60 Hz
     filterChain.reset();
@@ -830,9 +833,10 @@ float ECGModel::generateSample(float deltaTime) {
         // No necesita escalado adicional
         float ecgMV = vfibMV;
         
-        // Añadir ruido si está configurado
+        // Añadir ruido si está configurado (proporcional al rango)
         if (noiseLevel > 0.0f) {
-            ecgMV += gaussianRandom(0.0f, noiseLevel);
+            float noiseSigma = noiseLevel * ECG_DISPLAY_RANGE_MV;
+            ecgMV += gaussianRandom(0.0f, noiseSigma);
         }
         
         // Guardar para getCurrentValueMV()
@@ -913,8 +917,12 @@ float ECGModel::generateSample(float deltaTime) {
     detectNewBeat();
     
     // Añadir ruido si está configurado
+    // noiseLevel está en rango 0.0-0.10 (0-10%)
+    // Ruido proporcional al rango de señal ECG (2 mV)
+    // 10% ruido = 0.2 mV sigma → variación visible ±0.6 mV (3σ)
     if (noiseLevel > 0.0f) {
-        ecgMV += gaussianRandom(0.0f, noiseLevel);
+        float noiseSigma = noiseLevel * ECG_DISPLAY_RANGE_MV;  // 0.1 * 2.0 = 0.2 mV
+        ecgMV += gaussianRandom(0.0f, noiseSigma);
     }
     
     return ecgMV;
@@ -940,8 +948,14 @@ uint8_t ECGModel::getWaveformValue() const {
     // Usar último valor generado (ya en mV)
     float mV = getCurrentValueMV();
     
+    // Aplicar ganancia de waveform (10-200%)
+    // La ganancia se aplica respecto al centro del rango (0.5 mV = baseline típico)
+    const float CENTER_MV = 0.5f;  // Centro visual del ECG
+    float amplified = CENTER_MV + (mV - CENTER_MV) * waveformGain;
+    
     // Mapear [-0.5, 1.5] mV → [0, 255] (rango completo)
-    float normalized = (mV - ECG_DISPLAY_MIN_MV) / ECG_DISPLAY_RANGE_MV;
+    // Si amplificación excede rango, se clampea automáticamente
+    float normalized = (amplified - ECG_DISPLAY_MIN_MV) / ECG_DISPLAY_RANGE_MV;
     normalized = fmaxf(0.0f, fminf(1.0f, normalized));
     
     return (uint8_t)(normalized * 255.0f);

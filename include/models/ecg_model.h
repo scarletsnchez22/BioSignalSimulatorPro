@@ -266,6 +266,11 @@ private:
     ECGParameters params;               // Parámetros del usuario
     
     // =========================================================================
+    // GANANCIA WAVEFORM (para visualización en Nextion)
+    // =========================================================================
+    float waveformGain;                 // Factor de amplificación (0.1-2.0 = 10-200%)
+    
+    // =========================================================================
     // GENERADOR ALEATORIO (Box-Muller)
     // =========================================================================
     bool gaussHasSpare;
@@ -361,6 +366,9 @@ public:
     // Parámetros de aplicación inmediata (Tipo A)
     void setNoiseLevel(float noise) { noiseLevel = noise; }
     void setAmplitude(float amp);
+    void setHeartRate(float hr) { hrMean = constrain(hr, 30.0f, 220.0f); }
+    void setWaveformGain(float gain) { waveformGain = constrain(gain, 0.5f, 2.0f); }
+    float getWaveformGain() const { return waveformGain; }
     
     // =========================================================================
     // GENERACIÓN DE SEÑAL

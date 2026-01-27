@@ -658,7 +658,8 @@ float EMGModel::generateSample(float deltaTime) {
     signal *= params.amplitude;  // Ganancia de usuario (default 1.0x)
     
     // Ruido de fondo (interferencia, ruido de electrodo)
-    signal += gaussianRandom(0.0f, params.noiseLevel * 0.1f);
+    // 10% ruido = 0.5 mV sigma (proporcional al rango EMG ±5 mV)
+    signal += gaussianRandom(0.0f, params.noiseLevel * 5.0f);
     
     // =========================================================================
     // CLAMP FISIOLÓGICO DE SEÑAL CRUDA (SATURACIÓN DE AMPLIFICADOR)
@@ -1439,6 +1440,30 @@ void EMGModel::setNoiseLevel(float noise) {
  */
 void EMGModel::setAmplitude(float amp) {
     params.amplitude = constrain(amp, 0.5f, 2.0f);  // ±100% rango seguro
+}
+
+void EMGModel::setExcitationLevel(float exc) {
+    exc = constrain(exc, 0.0f, 1.0f);
+    
+    // Si hay secuencia activa, NO interferir - la secuencia controla excitación
+    if (sequenceActive) {
+        // Solo actualizar si el usuario cambió significativamente (>10%)
+        float diff = fabsf(exc - params.excitationLevel);
+        if (diff > 0.10f) {
+            // Usuario quiere control manual - detener secuencia
+            sequenceActive = false;
+            params.excitationLevel = exc;
+            currentExcitation = exc;
+            targetExcitation = exc;
+            Serial.printf("[EMG] Secuencia detenida - excitación manual %.0f%%\n", exc * 100);
+        }
+        return;
+    }
+    
+    // Sin secuencia activa - aplicar directamente
+    params.excitationLevel = exc;
+    currentExcitation = exc;
+    targetExcitation = exc;
 }
 
 // ============================================================================

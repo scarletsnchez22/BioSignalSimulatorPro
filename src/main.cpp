@@ -394,23 +394,41 @@ void handleUIEvent(UIEvent event, uint8_t param) {
             stateMachine.processEvent(SystemEvent::STOP);
             // Deshabilitar streaming WiFi
             wifiServer.setStreamingEnabled(false);
-            // Volver a la página de selección de condición
+            // Resetear sliders a valores del modelo (no guardar cambios)
             switch (stateMachine.getSelectedSignal()) {
-                case SignalType::ECG:
+                case SignalType::ECG: {
+                    ECGModel& ecg = signalEngine->getECGModel();
+                    ecgSliderValues.hr = (int)ecg.getHRMean();
+                    ecgSliderValues.noise = (int)(ecg.getNoiseLevel() * 100);
+                    ecgSliderValues.hrv = (int)(ecg.getHRStd() / ecg.getHRMean() * 100);
+                    ecgSliderValues.modified = false;
                     nextion->goToPage(NextionPage::ECG_SIM);
                     delay(60);
                     nextion->updateECGConditionButtons(stateMachine.getSelectedCondition());
                     break;
-                case SignalType::EMG:
+                }
+                case SignalType::EMG: {
+                    EMGModel& emg = signalEngine->getEMGModel();
+                    emgSliderValues.exc = (int)(emg.getExcitation() * 100);
+                    emgSliderValues.amp = (int)(emg.getAmplitude() * 100);
+                    emgSliderValues.noise = (int)(emg.getNoiseLevel() * 100);
+                    emgSliderValues.modified = false;
                     nextion->goToPage(NextionPage::EMG_SIM);
                     delay(60);
                     nextion->updateEMGConditionButtons(stateMachine.getSelectedCondition());
                     break;
-                case SignalType::PPG:
+                }
+                case SignalType::PPG: {
+                    PPGModel& ppg = signalEngine->getPPGModel();
+                    ppgSliderValues.hr = (int)ppg.getCurrentHeartRate();
+                    ppgSliderValues.pi = (int)(ppg.getPerfusionIndex() * 10);
+                    ppgSliderValues.noise = (int)(ppg.getNoiseLevel() * 100);
+                    ppgSliderValues.modified = false;
                     nextion->goToPage(NextionPage::PPG_SIM);
                     delay(60);
                     nextion->updatePPGConditionButtons(stateMachine.getSelectedCondition());
                     break;
+                }
                 default:
                     break;
             }
@@ -466,60 +484,47 @@ void handleUIEvent(UIEvent event, uint8_t param) {
         // NOTA: BUTTON_BACK_POPUP eliminado - no hay popups de valores separados
         
         case UIEvent::BUTTON_APPLY_PARAMS:
-            // bt_act: Aplicar cambios de sliders y cerrar popup
+            // bt_act: Aplicar cambios de sliders - usar métodos directos para no resetear secuencias
             if (stateMachine.getSelectedSignal() == SignalType::ECG) {
                 if (ecgSliderValues.modified) {
                     ECGModel& ecg = signalEngine->getECGModel();
-                    ECGParameters params;
-                    params.condition = ecg.getCondition();
-                    params.heartRate = (float)ecgSliderValues.hr;
-                    // NOTA: zoom NO afecta el modelo, solo la visualización
-                    params.noiseLevel = ecgSliderValues.noise / 100.0f;
-                    ecg.setParameters(params);
-                    yield();  // Alimentar watchdog para evitar reset
-                    delay(50);  // Dar tiempo al sistema para estabilizarse
-                    
-                    // Actualizar escala mV/div en waveform_ecg
+                    // Métodos directos - no resetea el modelo
+                    ecg.setHeartRate((float)ecgSliderValues.hr);
+                    ecg.setNoiseLevel(ecgSliderValues.noise / 100.0f);
+                    ecg.setWaveformGain(ecgSliderValues.zoom / 100.0f);  // 50-200% → 0.5-2.0
                     nextion->updateECGScale(ecgSliderValues.zoom);
-                    Serial.printf("[UI] Parámetros ECG aplicados, Zoom: %d%%\n", ecgSliderValues.zoom);
+                    Serial.printf("[UI] ECG: HR=%d, Ruido=%d%%, Ganancia=%d%%\n", 
+                                  ecgSliderValues.hr, ecgSliderValues.noise, ecgSliderValues.zoom);
                 }
                 ecgSliderValues.modified = false;
                 nextion->goToPage(NextionPage::WAVEFORM_ECG);
-                nextion->updateECGScaleLabels();  // Actualizar escalas: 0.2 mV/div, 350 ms/div
+                nextion->updateECGScaleLabels();
             } else if (stateMachine.getSelectedSignal() == SignalType::EMG) {
                 if (emgSliderValues.modified) {
                     EMGModel& emg = signalEngine->getEMGModel();
-                    EMGParameters params;
-                    params.condition = emg.getCondition();
-                    params.excitationLevel = emgSliderValues.exc / 100.0f;  // 50 → 0.5
-                    params.amplitude = emgSliderValues.amp / 100.0f;        // 150 → 1.5
-                    params.noiseLevel = emgSliderValues.noise / 100.0f;     // 0 → 0.00 (sin ruido)
-                    emg.setParameters(params);
-                    yield();  // Alimentar watchdog para evitar reset
-                    delay(50);  // Dar tiempo al sistema para estabilizarse
-                    Serial.println("[UI] Parámetros EMG aplicados");
+                    // Métodos directos - NO resetea secuencias de contracción
+                    emg.setExcitationLevel(emgSliderValues.exc / 100.0f);
+                    emg.setNoiseLevel(emgSliderValues.noise / 100.0f);
+                    emg.setWaveformGain(emgSliderValues.amp / 100.0f);  // 50-200% → 0.5-2.0
+                    Serial.printf("[UI] EMG: Exc=%d%%, Ruido=%d%%, Ganancia=%d%%\n", 
+                                  emgSliderValues.exc, emgSliderValues.noise, emgSliderValues.amp);
                 }
                 emgSliderValues.modified = false;
                 nextion->goToPage(NextionPage::WAVEFORM_EMG);
-                nextion->updateEMGScaleLabels();  // Actualizar escalas: RAW 1.0 mV/div, ENV 1.0 mV/div, 700 ms/div
+                nextion->updateEMGScaleLabels();
             } else if (stateMachine.getSelectedSignal() == SignalType::PPG) {
                 if (ppgSliderValues.modified) {
                     PPGModel& ppg = signalEngine->getPPGModel();
-                    PPGParameters params;
-                    params.condition = ppg.getCondition();
-                    params.heartRate = (float)ppgSliderValues.hr;
-                    params.perfusionIndex = ppgSliderValues.pi / 10.0f;  // 52 → 5.2
-                    params.noiseLevel = ppgSliderValues.noise / 100.0f;  // 0 → 0.00 (sin ruido)
-                    params.amplification = ppgSliderValues.amp / 100.0f; // 150 → 1.5
-                    params.dicroticNotch = 0.4f;  // Mantener valor por defecto
-                    ppg.setParameters(params);
-                    yield();  // Alimentar watchdog para evitar reset
-                    delay(50);  // Dar tiempo al sistema para estabilizarse
-                    Serial.println("[UI] Parámetros PPG aplicados");
+                    // Métodos directos
+                    ppg.setHeartRate((float)ppgSliderValues.hr);
+                    ppg.setNoiseLevel(ppgSliderValues.noise / 100.0f);
+                    ppg.setWaveformGain(ppgSliderValues.amp / 100.0f);  // 50-200% → 0.5-2.0
+                    Serial.printf("[UI] PPG: HR=%d, Ruido=%d%%, Ganancia=%d%%\n", 
+                                  ppgSliderValues.hr, ppgSliderValues.noise, ppgSliderValues.amp);
                 }
                 ppgSliderValues.modified = false;
                 nextion->goToPage(NextionPage::WAVEFORM_PPG);
-                nextion->updatePPGScaleLabels();  // Actualizar escalas: 15 mV/div, 700 ms/div
+                nextion->updatePPGScaleLabels();
             }
             break;
         

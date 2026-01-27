@@ -31,8 +31,6 @@ const CFG = {
     timeWin: { ECG: 3.5, EMG: 7.0, PPG: 7.0 }
 };
 
-const SCALE_Q = 100; // Server sends values cuantized x100
-
 const S = {
     ws: null,
     connected: false,
@@ -52,13 +50,6 @@ const S = {
     lastMetrics: null,
     windowSamples: 0
 };
-
-function decodeSample(q) {
-    if (q === undefined || q === null) return undefined;
-    const num = Number(q);
-    if (Number.isNaN(num)) return undefined;
-    return num / SCALE_Q;
-}
 
 function getWindowSamples() {
     const winSecBase = CFG.timeWin[S.sig] || CFG.timeWin.ECG;
@@ -278,8 +269,8 @@ function handleData(msg) {
     
     if (!S.viewing) return;
     
-    const val = decodeSample(msg.v);
-    const envVal = decodeSample(msg.env) ?? 0;  // Decodificar envelope (0 si no existe)
+    const val = msg.value;
+    const envVal = msg.env ?? 0;  // Envelope directo (0 si no existe)
     
     if (val !== undefined) {
         S.buf1.push(val);

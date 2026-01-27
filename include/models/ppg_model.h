@@ -230,6 +230,8 @@ public:
     float getNoiseLevel() const { return params.noiseLevel; }
     float getCurrentPI() const { return currentPI; }
     float getAmplification() const { return params.amplification; }
+    void setWaveformGain(float gain) { params.amplification = constrain(gain, 0.5f, 2.0f); }
+    float getWaveformGain() const { return params.amplification; }
     const PPGParameters& getParameters() const { return params; }
     
     // Métricas calculadas (del modelo)

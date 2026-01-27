@@ -309,8 +309,9 @@ float PPGModel::calculateSystoleFraction(float hr) {
 // GENERACIÓN DE RR CON VARIABILIDAD
 // ============================================================================
 float PPGModel::generateNextRR() {
-    // Actualizar HR dinámico
-    currentHR = generateDynamicHR();
+    // Usar HR de params (seteado por usuario o por condición inicial)
+    // NO sobrescribir con generateDynamicHR() para respetar setHeartRate()
+    currentHR = params.heartRate;
     
     // RR = 60 / HR
     float rrMean = 60.0f / currentHR;
@@ -437,7 +438,10 @@ float PPGModel::generateSample(float deltaTime) {
     signal_mv += wanderAmplitude * sinf(baselineWander);
     
     // 6. Ruido gaussiano proporcional a AC
-    float noiseAmplitude = params.noiseLevel * acAmplitude * 0.5f;
+    // noiseLevel está en rango 0.0-0.10 (0-10%)
+    // Ruido proporcional a amplitud AC de la señal
+    // 10% ruido = acAmplitude * 0.1 sigma → variación visible
+    float noiseAmplitude = params.noiseLevel * acAmplitude;
     signal_mv += gaussianRandom(0.0f, noiseAmplitude);
     
     // Evitar valores negativos si DC > 0
